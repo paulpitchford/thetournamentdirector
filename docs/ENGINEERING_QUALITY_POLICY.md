@@ -334,7 +334,7 @@ behaviour, and regressions outside the changed module.
 
 ### Finding schema
 
-Every finding contains:
+Every structured Codex finding contains:
 
 ```text
 id
@@ -349,9 +349,11 @@ suggestedTest
 confidence
 ```
 
-Critical/high findings always block. Medium findings block unless the human
-owner records a time-limited exception. Low/note findings cannot trigger
-unbounded polishing.
+Critical/high findings always block. Medium findings block unless the user
+records a time-limited exception. Low/note findings cannot trigger unbounded
+polishing. Current Copilot PR-review comments are blocking by default because
+Copilot returns comment-only reviews rather than this structured severity
+schema; the controller routes them through bounded remediation/re-review.
 
 ## Remediation and rejection
 

@@ -17,12 +17,12 @@ Related documents:
 An operator approves a detailed backlog. A long-running controller then:
 
 1. finds approved, unblocked tasks;
-2. creates or approves a task issue and dispatches it to Copilot coding agent;
-3. reconciles the branch and draft PR created by Copilot;
+2. leases a named branch and runs one Codex implementer through Sandcastle;
+3. validates the diff, pushes it, and opens or updates a draft PR;
 4. runs deterministic build, security, and test gates;
-5. asks separate Sandcastle agents for structured code, security, and QA reviews;
-6. routes blocking findings back to Copilot through a bounded remediation loop;
-7. waits for clean GitHub CI and independent review statuses;
+5. triggers GitHub Copilot PR review and separate Codex code/security/QA reviews;
+6. routes blocking findings to a fresh Codex remediation session;
+7. reruns all gates/reviews and waits for clean required statuses;
 8. enables policy-controlled auto-merge when every required status passes;
 9. escalates only R3/high-risk or non-converging work to the user;
 10. reconciles merged state and continues with newly unblocked tasks.
@@ -35,9 +35,8 @@ pause individual work or the whole queue when policy says continuing is unsafe.
 1. **Finite workers, continuous reconciler.** No unbounded agent session.
 2. **One task, one branch, one PR.** Scope and ownership are explicit.
 3. **Git and CI are authoritative.** Agent statements are evidence, not gates.
-4. **Least privilege.** Copilot uses its managed GitHub integration; local
-   Sandcastle workers receive no push, merge, issue-close, or production
-   credentials.
+4. **Least privilege.** The controller alone pushes and manages PR metadata;
+   Codex/Sandcastle workers receive no GitHub or production credentials.
 5. **Independent review.** An implementer cannot approve its own work.
 6. **Fail closed.** Missing output, malformed plans, stale base branches, and
    unavailable checks block progress.
@@ -53,29 +52,28 @@ pause individual work or the whole queue when policy says continuing is unsafe.
 ## Proposed architecture
 
 ```text
-GitHub Issues/Project ----dispatch----> Copilot coding agent
-(approved task specification)                |
-            ^                                v
-            |                     branch + draft pull request
-            |                                |
+GitHub Issues/Project                         GitHub pull requests
+(approved task specifications)               (integration record)
+            |                                           ^
+            v                                           |
 +------------------------------------------------------------------+
 | Durable controller / reconciler                                  |
 | scheduler | leases | budgets | policy | retries | PR coordinator |
 +------------------------------------------------------------------+
       |                 |                    |
       |                 |                    +--> GitHub Actions CI
-      |                 |                         (no model secrets)
+      |                 |                    +--> Copilot PR review
       |                 v
       |          local SQLite + JSONL evidence
       v
-Sandcastle adapter
+Sandcastle adapter (Codex only)
       |
+      +--> implementer sandbox (named task branch)
       +--> planner sandbox (read-only structured output)
-      +--> code/security reviewer sandboxes (read-only findings)
-      +--> QA sandbox (read-only acceptance assessment)
-      +--> approved fallback/remediation support (exception path)
+      +--> code/security reviewer sandboxes (fresh read-only sessions)
+      +--> QA sandbox (fresh read-only acceptance assessment)
+      +--> remediation sandbox (same task branch, bounded)
 
-Controller --blocking findings--> Copilot remediation on the same PR
 Controller --all required statuses green--> GitHub auto-merge
 ```
 
@@ -92,8 +90,8 @@ Controller --all required statuses green--> GitHub auto-merge
     risk.ts                 risk classification and required approvals
     gates.ts                required deterministic checks
   providers/
-    sandcastle.ts           isolated planner/reviewer/fallback adapter
-    github.ts               issues, Copilot dispatch, PRs, checks, auto-merge
+    sandcastle.ts           isolated Codex role adapter
+    github.ts               branches, PRs, Copilot review, checks, auto-merge
   schemas/
     task.ts                 validated task contract
     plan.ts                 planner output
@@ -101,7 +99,7 @@ Controller --all required statuses green--> GitHub auto-merge
     evidence.ts             run/gate evidence
   prompts/
     plan.md
-    copilot-task.md
+    implement.md
     code-review.md
     qa-review.md
     remediate.md
@@ -154,9 +152,9 @@ PROPOSED
   -> APPROVED
   -> QUEUED
   -> LEASED
-  -> COPILOT_DISPATCHED
-  -> PR_DRAFT
+  -> IMPLEMENTING
   -> VERIFYING
+  -> PR_DRAFT
   -> REVIEWING
   -> REMEDIATING (bounded loop back to VERIFYING)
   -> CI_PENDING
@@ -183,14 +181,15 @@ head SHA, actor, command/gate identifier, result, and artifact links.
 
 - A task lease has an owner, acquired time, heartbeat, and expiry.
 - Only one active lease may exist per task and branch.
-- On restart, the controller inspects its DB plus the issue, Copilot assignment,
-  remote branch, PR, checks, and head/base SHAs before deciding whether to
-  resume, redispatch, or quarantine.
-- The controller never duplicates a Copilot assignment or PR for an active task.
-- Local Sandcastle fallback worktrees are retained until their evidence and diff
-  have been captured.
-- The controller never force-pushes a Copilot-owned branch. Unexpected remote
-  movement is reconciled or quarantined rather than overwritten.
+- On restart, the controller inspects its DB, worktree, remote branch, PR,
+  checks, review threads, and head/base SHAs before deciding whether to resume,
+  redispatch, or quarantine.
+- The controller never duplicates an active task branch or PR.
+- Sandcastle worktrees are retained until their evidence and diff have been
+  captured.
+- Controller pushes use `--force-with-lease` only when an exact expected remote
+  SHA is recorded. Unexpected remote movement is reconciled or quarantined
+  rather than overwritten.
 
 ## Agent roles
 
@@ -202,22 +201,31 @@ head SHA, actor, command/gate identifier, result, and artifact links.
 - A deterministic validator rejects cycles, duplicate IDs, missing acceptance
   criteria, overlapping parallel path claims, and unknown dependencies.
 
-### Copilot implementer and PR owner
+### Codex implementer
 
-- Receives one approved issue/task and only the context needed for it.
-- Creates and updates its managed branch and pull request through GitHub.
+- Runs through Sandcastle in one named task worktree with no GitHub credential.
+- Receives one approved task and only the context needed for it.
 - May change only task-approved paths and must add tests alongside behaviour.
+- Commits locally; the trusted controller validates and pushes the branch.
 - Cannot alter merge policy, required statuses, risk class, or acceptance rules.
-- Responds to accepted blocking findings on the same PR.
-- PR creation or a Copilot completion message is never acceptance.
+- A completion signal or commit is never acceptance.
 
-### Code reviewer
+### Codex code/security reviewer
 
-- Starts in a separate agent session.
-- Initially has read-only filesystem/tool access.
+- Starts in a fresh Sandcastle session, separate from implementation and QA.
+- Has read-only filesystem/tool access.
 - Returns structured findings with severity, file/line evidence, rationale,
   required action, and confidence.
 - Does not silently edit the implementation branch.
+
+### Copilot PR reviewer
+
+- Is requested automatically for every current PR head SHA.
+- Adds an independent provider's review comments but always uses GitHub's
+  `Comment` state, not `Approve` or `Request changes`.
+- Cannot directly satisfy or block required approvals; the controller collects
+  unresolved findings and publishes a required `review/copilot` status.
+- Re-reviews after remediation/new pushes; stale review evidence is invalid.
 
 ### QA reviewer
 
@@ -226,14 +234,13 @@ head SHA, actor, command/gate identifier, result, and artifact links.
   operation, and target device sizes.
 - Produces structured evidence and may request specific new tests.
 
-### Remediation
+### Codex remediation
 
-- The controller sends only accepted findings and the original task contract
-  back to Copilot coding agent on the existing PR.
-- Copilot may update only the original allowed paths and relevant tests.
-- A local Sandcastle remediation/fallback agent is used only when explicitly
-  configured and recorded.
-- No remediation path may broaden scope or dismiss a high-severity finding.
+- A fresh Sandcastle session receives only accepted Copilot/Codex findings and
+  the original task contract.
+- It updates the existing local task branch within the original path and
+  change-size limits; the controller validates and pushes with lease protection.
+- It cannot broaden scope or dismiss a high-severity finding.
 
 ### Controller
 
@@ -369,14 +376,18 @@ baseline exists, then prevent changed-code coverage from falling.
 
 ## Review and PR policy
 
-1. Controller dispatches one approved issue to Copilot coding agent.
-2. Copilot creates the task branch and draft PR.
-3. Controller checks the diff/path policy and GitHub CI runs `verify` cleanly.
-4. Read-only code, security, and QA reviews run in separate Sandcastle sessions.
-5. Controller validates findings and sends blocking items back to Copilot for at
-   most two remediation rounds on the same PR.
-6. All deterministic gates and independent reviews rerun after every repair.
-7. Controller maintains one evidence/status comment rather than noisy logs.
+1. Controller leases a named branch and runs one Codex implementer.
+2. Controller checks the local diff/path policy, runs preflight gates, pushes
+   with lease protection, and creates or updates the draft PR.
+3. GitHub CI runs `verify` from a clean environment.
+4. Controller requests Copilot PR review and runs fresh Codex code, security,
+   and QA review sessions.
+5. Copilot comment-only reviews are collected; a controller-owned status fails
+   while any accepted Copilot finding is unresolved.
+6. Controller sends blocking findings to at most two fresh Codex remediation
+   sessions on the same task branch.
+7. All deterministic gates, Copilot re-review, and Codex reviews rerun after
+   every repair; a new head SHA invalidates old evidence.
 8. PR becomes policy-ready only when required checks pass, no critical/high or
    unexcepted medium findings remain, and the head/base SHAs are current.
 9. R0-R2 PRs enter GitHub auto-merge; R3/escalated PRs wait for the user.
@@ -389,10 +400,10 @@ resolve several unrelated branches directly on main.
 
 | Class | Typical change | Pilot policy |
 |---|---|---|
-| R0 | Documentation only, no workflow/security policy | Copilot PR; deterministic checks and independent review status; policy auto-merge |
-| R1 | Tests, isolated UI, non-critical refactor | Copilot implementation/remediation; full CI/review statuses; policy auto-merge |
-| R2 | Domain logic, persistence, money, clock, seating | Copilot implementation; code, security, and QA reviews; full CI; policy auto-merge |
-| R3 | CI/workflows, dependencies, imports, auth/secrets, release config | Copilot may propose; explicit user approval; never auto-merge |
+| R0 | Documentation only, no workflow/security policy | Codex branch/PR; deterministic checks plus Copilot and Codex review statuses; policy auto-merge |
+| R1 | Tests, isolated UI, non-critical refactor | Codex implementation/remediation; full CI and review statuses; policy auto-merge |
+| R2 | Domain logic, persistence, money, clock, seating | Codex implementation; Copilot plus fresh Codex code/security/QA reviews; full CI; policy auto-merge |
+| R3 | CI/workflows, dependencies, imports, auth/secrets, release config | Codex may propose; explicit user approval; never auto-merge |
 
 Auto-merge remains disabled globally until the adversarial controller suite and
 first documentation-only pilot PR pass. It is then enabled by policy for R0,
@@ -477,13 +488,14 @@ Exit: ten planner runs produce valid proposals and no repository mutations.
 
 ### Stage 2 — documentation-only PR
 
-- Implement leases, Copilot dispatch/reconciliation, evidence capture, path
-  guard, required statuses, and policy auto-merge control.
+- Implement leases, Codex/Sandcastle execution, controller-owned push/PR
+  creation, evidence capture, Copilot review trigger/collection, required
+  statuses, and policy auto-merge control.
 - Permit only an R0 documentation task.
 - Restart the controller during execution and verify idempotent recovery.
 
-Exit: Copilot creates one PR, checks and independent review status pass,
-auto-merge occurs once, and no routine user action is needed.
+Exit: the controller creates one PR from Codex work, CI plus Copilot/Codex review
+statuses pass, auto-merge occurs once, and no routine user action is needed.
 
 ### Stage 3 — code pilot
 
@@ -533,13 +545,15 @@ Track these rather than raw agent activity:
 ## Decisions required before implementation
 
 1. Where should the private GitHub remote live?
-2. Which Sandcastle model/provider should perform independent reviews?
+2. Which Codex model/reasoning level should implementation and independent
+   review roles use?
 3. Which credentials and monthly/daily spend limit are acceptable?
 4. Should the controller run only on this machine or on a dedicated runner?
 5. How long should failed worktrees, prompts, and model transcripts be retained?
 
-Accepted defaults: Copilot coding agent owns routine implementation and PRs;
-R0-R2 may policy-auto-merge after their staged gates; R3 and escalations require
-the user. Remaining recommendation: private GitHub repository, one active agent
-run at a time, explicit review reserve and hard budget, and 14-day failed-run
-retention.
+Accepted defaults: Codex/Sandcastle performs implementation and fresh-session
+reviews; the controller owns branches/PRs; Copilot supplies an additional
+comment-only PR review; R0-R2 may policy-auto-merge after staged gates; R3 and
+escalations require the user. Remaining recommendation: private GitHub
+repository, one active Codex run at a time, explicit review reserve and hard
+budget, and 14-day failed-run retention.

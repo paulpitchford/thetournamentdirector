@@ -78,31 +78,31 @@ source of truth for workflow state or merge approval.
 | [OpenHands Agent Canvas](https://github.com/OpenHands/OpenHands) | Self-hosted control centre, multiple agent backends, schedules/webhooks, local/remote execution, UI and run history | Broader platform with several services; project-specific branch, gate, and merge policy still needs to be designed |
 | [SWE-agent / mini-SWE-agent](https://github.com/SWE-agent/mini-swe-agent) | Focused, hackable issue-solving agent and strong benchmark/research lineage | Worker implementation rather than end-to-end orchestration, PR governance, or continuous operations |
 | [Claude Code Action](https://github.com/anthropics/claude-code-action) | Mature GitHub issue/PR trigger, implementation, review, structured output, and provider options | Provider-specific workflow building block; not a durable multi-agent scheduler or complete QA policy |
-| [GitHub Copilot cloud agent](https://docs.github.com/en/copilot/concepts/agents/cloud-agent/about-cloud-agent) | Existing entitlement; tasks can be started or issues assigned programmatically; creates a branch/PR and exposes task status | Agent task and issue-assignment APIs are public preview; user-to-server authentication and carefully scoped repository permissions are required |
+| [GitHub Copilot code review](https://docs.github.com/en/copilot/how-tos/use-copilot-agents/request-a-code-review/use-code-review) | Existing entitlement; PR review can be requested by API/CLI or configured automatically for new pushes; adds independent review comments | Always leaves `Comment`, never `Approve` or `Request changes`, so it neither counts toward required approvals nor blocks merging by itself |
 
 ## Recommendation
 
-Run a staged experiment with a **thin repository-specific controller**, GitHub
-Copilot coding agent as the primary implementer/PR owner, and Sandcastle for
-independent agent roles.
+Run a staged experiment with a **thin repository-specific controller**, Codex
+through Sandcastle for all coding-agent roles, and GitHub Copilot as an
+additional PR reviewer.
 
 - GitHub Issues/Projects: approved work queue and visible status.
-- Copilot coding agent: routine implementation, branch creation, PR ownership,
-  and remediation.
+- Sandcastle with a hardened local sandbox: Codex implementation, planning,
+  remediation, and fresh-session code/security/QA reviews.
 - Local SQLite plus append-only run records: leases, attempts, budgets,
   heartbeats, and recovery.
-- Sandcastle with a hardened local sandbox: planning plus independent code,
-  security, and QA reviews; explicit fallback only.
-- Host-side controller: dispatch, reconciliation, policy statuses, evidence,
-  and policy-controlled auto-merge eligibility.
+- Host-side controller: branch push, PR creation, Copilot review request,
+  reconciliation, policy statuses, evidence, and auto-merge eligibility.
+- GitHub Copilot code review: additional provider review comments on every PR
+  and remediation push.
 - GitHub Actions: independent, deterministic CI on every PR.
 - Branch protection: authoritative required checks; R0-R2 may auto-merge after
   staged qualification, while R3/escalated work requires the user.
 - Optional `gh-aw`: later for read-only triage, CI-failure summaries, or safe
   repository reporting.
 
-This uses the available Copilot PR workflow while retaining independent review
-and avoiding a direct merge loop whose safety depends mostly on prompts.
+This automates routine PR mechanics without assuming unavailable Copilot coding
+agent access and avoids a direct merge loop whose safety depends on prompts.
 
 Gas Town is worth a separate spike if maintaining our own scheduler and
 watchdogs becomes the dominant work. It should not be adopted before a small
@@ -169,8 +169,8 @@ Primary material reviewed on 2026-08-28:
   <https://github.com/SWE-agent/SWE-agent>
 - Claude Code Action README:
   <https://github.com/anthropics/claude-code-action>
-- Copilot cloud-agent API and issue-assignment guidance:
-  <https://docs.github.com/en/copilot/how-tos/use-copilot-agents/cloud-agent/use-cloud-agent-via-the-api>
+- Copilot code-review behaviour, API/CLI trigger, and automatic re-review:
+  <https://docs.github.com/en/copilot/how-tos/use-copilot-agents/request-a-code-review/use-code-review>
 - GitHub Actions secure-use guidance:
   <https://docs.github.com/en/actions/reference/security/secure-use>
 - GitHub Security Lab on `pull_request_target` risks:

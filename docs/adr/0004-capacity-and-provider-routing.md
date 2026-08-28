@@ -5,25 +5,25 @@
 
 ## Context
 
-Copilot coding agent and Sandcastle review providers such as Codex can each hit
-request, account, context, credit, or billing limits during a task. Sandcastle
-fails fast and deliberately does not retry provider errors. Subscription
-capacity may not expose a reliable remaining quota or reset API.
+Codex is the only coding agent and must cover implementation, remediation,
+planning, and fresh-session reviews. It can hit request, account, context,
+credit, or billing limits during any role. Sandcastle fails fast and
+deliberately does not retry provider errors. Subscription capacity may not
+expose a reliable remaining quota or reset API. Copilot is a separate PR-review
+integration, not fallback coding capacity.
 
 ## Proposed decision
 
 The durable controller owns provider state, admission, cooldowns, budgets, and
-recovery. Track Copilot implementation capacity separately from each Sandcastle
-review provider. Start with one Copilot task in flight, one Sandcastle model run
-at a time, Codex as the proposed independent reviewer, 30% of Sandcastle
-capacity reserved for review/remediation, no blind retries, and no automatic
+recovery. Start with one Codex/Sandcastle run at a time, 30% of the shared Codex
+allowance reserved for review/remediation, no blind retries, and no automatic
 provider fallback.
 
-A mid-task Copilot interruption preserves its remote branch/PR. A local
-Sandcastle interruption preserves the named branch and dirty worktree. Both
-enter durable `WAITING_CAPACITY` and resume only after a reliable reset,
-conservative cooldown, or explicit operator action. Auth/billing failures never
-retry automatically.
+A mid-task Sandcastle interruption preserves the named branch and dirty
+worktree, enters durable `WAITING_CAPACITY`, and resumes only after a reliable
+reset, conservative cooldown, or explicit operator action. Auth/billing
+failures never retry automatically. Copilot review timeout/failure pauses the PR
+review status but is not treated as Codex capacity.
 
 ## Consequences
 
@@ -41,11 +41,10 @@ retry automatically.
   failures.
 - Automatic cross-provider fallback: obscures cost and behaviour during the
   pilot.
-- Unlimited concurrency: can consume Copilot or review capacity before the
-  required acceptance work completes.
+- Unlimited concurrency: can consume Codex implementation quota before the
+  required review/remediation work completes.
 
 ## Approval needed
 
-Confirm the Sandcastle review provider/model, separate Copilot/review hard
-limits, 30% review reserve, fallback policy, and local versus dedicated review
-execution.
+Confirm the Codex model/reasoning levels by role, hard run/spend limits, 30%
+review reserve, fallback policy, and local versus dedicated execution.

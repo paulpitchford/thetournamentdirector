@@ -110,17 +110,19 @@ level-zero transition must be guarded by level ID/revision so it occurs once.
 
 The user wants to trial an always-on orchestrator that works from a detailed
 plan and manages isolated agents, builds, QA, reviews, branches, and PRs with
-strong guards. The accepted design uses Copilot coding agent as the routine
-implementer and PR owner, with Sandcastle for independent planning/review roles,
-not as the durable authority. GitHub issues/PRs, deterministic CI, a thin local
-controller, bounded jobs, and policy-controlled auto-merge form the experiment.
+strong guards. The accepted design uses Codex through Sandcastle for
+implementation, remediation, planning, and fresh-session reviews. The trusted
+controller pushes branches and creates PRs; GitHub Copilot supplies additional
+PR review only. GitHub issues/PRs, deterministic CI, bounded jobs, and
+policy-controlled auto-merge form the experiment.
 `docs/ENGINEERING_QUALITY_POLICY.md` defines mandatory compiler, lint,
 architecture, testing, security, independent-review, and remediation gates so
 agent-written code cannot progress merely because an agent claims it is done.
 `docs/POLICY_ENFORCEMENT.md` makes the trust boundary explicit: Sandcastle only
-runs bounded independent reviewers/fallback workers; trusted controller code
-checks Copilot's PR diff and statuses, while GitHub branch protection controls
-policy auto-merge and routes only R3/escalated work to the user.
+runs bounded Codex workers without GitHub credentials; trusted controller code
+checks diffs, pushes branches, opens PRs, requests/collects Copilot review, and
+publishes required statuses. GitHub branch protection controls policy auto-merge
+and routes only R3/escalated work to the user.
 `docs/AGENT_CAPACITY_POLICY.md` defines safe unattended behaviour when Codex or
 another provider hits a rate, account, context, or spend limit: preserve Git
 work, enter a durable cooldown, avoid blind retries, reserve review capacity,
@@ -129,8 +131,8 @@ and resume only when policy permits.
 Do not start an unattended mutating loop yet. Complete Stage 0 in
 `docs/AGENT_ORCHESTRATION_PLAN.md` first. This workspace is now a local Git
 repository on `main` with a verified clean baseline commit, but it has no remote
-or branch protection and the current user cannot access the Docker daemon. Never pass the current broad personal `gh` token into an agent
-container.
+or branch protection and the current user cannot access the Docker daemon.
+Never pass the current broad personal `gh` token into an agent container.
 
 ## Next concrete tasks
 
@@ -186,7 +188,7 @@ Ask the user later for the product name/branding, preferred blind presets,
 default currency, and whether remote display should follow the MVP.
 
 The orchestration pilot still requires explicit choices before mutation:
-private GitHub remote, Sandcastle review provider, credential and spend limits,
-local versus dedicated review runner, and artifact/transcript retention.
-Copilot coding agent PR ownership and R0-R2 policy auto-merge are accepted;
-R3/escalated work requires the user.
+private GitHub remote, Codex model/reasoning levels, credential and spend
+limits, local versus dedicated runner, and artifact/transcript retention.
+Controller-owned PR automation, Copilot comment-only review, and R0-R2 policy
+auto-merge are accepted; R3/escalated work requires the user.

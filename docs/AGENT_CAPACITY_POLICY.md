@@ -18,14 +18,14 @@ Sandcastle deliberately does **not** retry provider errors such as rate limits,
 authentication failures, quota exhaustion, or network timeouts. It launches
 provider CLIs but does not own their API protocol, and blindly retrying a
 non-zero exit could hide a real error or waste more quota. A provider failure
-therefore ends that Sandcastle planning/review/fallback run and is returned to
-our harness.
+therefore ends that Sandcastle implementation/planning/review/remediation run
+and is returned to our harness.
 
-Copilot coding agent runs through GitHub rather than Sandcastle. The controller
-observes its issue assignment, branch, PR, checks, comments, and timeout state.
-Copilot implementation capacity and Sandcastle review-provider capacity are
-tracked separately; exhaustion of one must not be mistaken for exhaustion of
-the other.
+GitHub Copilot is used only for PR review, not implementation. Its review
+availability is observed through GitHub review requests/comments and tracked as
+an integration status, separate from Codex capacity. Codex is the only coding
+agent, so its allowance must cover implementation, remediation, planning, and
+fresh-session code/security/QA reviews.
 
 Sandcastle can expose raw token usage when the provider stream/session contains
 it. It does not know the user's total account allowance, reliable remaining
@@ -137,12 +137,13 @@ Stale reservations expire safely.
 
 For the pilot:
 
-- maximum one Copilot implementation task in flight at a time;
-- maximum one Sandcastle planning/review model run at a time until usage is
+- maximum one Codex/Sandcastle model run of any role at a time until usage is
   understood;
-- track Copilot and each Sandcastle provider in separate capacity ledgers;
-- reserve at least 30% of the configured Sandcastle allowance for
+- track Codex runs by task and role in one shared capacity ledger;
+- reserve at least 30% of the configured Codex allowance for fresh-session
   code/security/QA review and remediation;
+- track Copilot PR-review timeout/failure separately; it does not provide Codex
+  implementation capacity;
 - stop new implementations at the soft budget threshold;
 - permit already-started verification/review to use only its reserved budget;
 - stop all model dispatch at the hard threshold;
@@ -156,14 +157,8 @@ conservative signal and rely on provider errors as the hard stop.
 
 ## Work preservation when a limit is hit
 
-For Copilot implementation, committed progress is already on its managed remote
-branch/PR. If Copilot stops mid-task, the controller records the current PR head
-SHA and diff, leaves the PR draft, marks the task `WAITING_CAPACITY`, and later
-asks Copilot to continue on that same PR. It never creates a duplicate issue,
-branch, or PR.
-
-For local Sandcastle planning/review/fallback, the bind-mounted Git worktree
-survives the agent process and container. On a limit:
+For local Sandcastle implementation/planning/review/remediation, the
+bind-mounted Git worktree survives the Codex process and container. On a limit:
 
 1. cancel/finish the Sandcastle run;
 2. stop its timeout and capacity reservation;
@@ -175,8 +170,8 @@ survives the agent process and container. On a limit:
 8. retain the task lease in `WAITING_CAPACITY`, with a long heartbeat/expiry;
 9. schedule a wake-up at `retryAt` or await operator action.
 
-If Sandcastle captured a valid resumable Codex/Claude/Pi session, the controller
-may resume it after capacity returns. If not, a fresh agent receives the
+If Sandcastle captured a valid resumable Codex session, the controller may
+resume it after capacity returns. If not, a fresh agent receives the
 original task, current branch diff, completed checks, and a compact factual
 checkpoint. Git state, not conversation memory, is authoritative.
 
@@ -256,34 +251,16 @@ controller still enforces them even when prompt context is compacted.
 
 ## Provider fallback
 
-Multiple installed CLIs do not automatically create safe interchangeable
-capacity. Models differ in behaviour, authentication, cost, session formats,
-and review independence.
+There is currently no alternate coding-agent provider: Codex is the only agent
+available through Pi/Sandcastle/local runs, and Copilot provides PR review only.
+If Codex capacity is exhausted, coding, remediation, and Codex review waits.
+Copilot review and deterministic CI may continue for work already pushed, but
+they cannot replace the missing Codex implementation/review roles.
 
-A fallback route must be pre-approved, for example:
-
-```text
-role: independent-review
-primary: codex / approved model
-fallback: claude-code / approved model
-maxFallbackRuns: 1
-requiresFreshSession: true
-```
-
-Rules:
-
-- never silently switch provider/model;
-- show provider/model on every run and PR evidence record;
-- do not resume one provider's private session with another provider;
-- hand off through task contract, Git diff, test evidence, and checkpoint;
-- fallback uses its own concurrency and spend budget;
-- R2/R3 fallback requires the same or stronger review policy;
-- credentials must already be configured and purpose-limited;
-- if all approved providers are unavailable, wait.
-
-A useful later configuration may use a lower-cost model for planning and routine
-R0 review while preserving a stronger model and quota reserve for R2 domain
-work. This should follow measured pilot results, not assumptions.
+Never treat another installed but unauthenticated/unfunded CLI as fallback.
+Adding a provider or alternate Codex model route requires an explicit ADR,
+credentials, separate budget, fresh-session handoff rules, and equal or stronger
+quality policy. Until then, the only fallback behaviour is durable waiting.
 
 ## Unattended reconciliation loop
 
