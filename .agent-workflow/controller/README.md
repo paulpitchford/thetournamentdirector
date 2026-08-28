@@ -12,8 +12,9 @@ This package is trusted deterministic host code. It currently provides:
 
 It does **not** yet enable model dispatch, mutate a worktree, call GitHub, or run
 as a daemon. Review models run locally with a hash-pinned Codex runtime, an
-empty filesystem/network permission profile, no inherited shell environment,
-and hosted web search disabled. Any exposed patch operation is denied before
+empty filesystem/network permission profile, a minimal allowlisted parent
+process environment, no inherited tool environment, and hosted web search
+disabled. Any exposed patch operation is denied before
 execution; tool events and unexpected process diagnostics fail closed.
 Deterministic commands run separately in rootless Podman. GitHub receives only
 deterministic CI and controller-published status/evidence.

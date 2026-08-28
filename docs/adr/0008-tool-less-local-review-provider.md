@@ -23,7 +23,11 @@ contained before execution. Attest the exact Codex binary version and SHA-256,
 ignore user configuration and rules, disable shell, browser, computer-use, apps,
 MCP, and hosted web search, and select a named permission profile that grants
 only minimal runtime reads with no workspace reads, writes, or network access.
-Inherit no host shell environment and disable approvals. Run from an empty
+Launch Codex with a minimal parent environment containing only `HOME`, locale,
+and a controlled `PATH`; the file-backed provider authentication remains
+available at its intended home location, while credential-bearing variables,
+proxy settings, and unrelated host state are omitted. Inherit no additional
+environment into tool processes and disable approvals. Run from an empty
 temporary directory and pass only size-bounded inert JSON evidence through
 standard input.
 

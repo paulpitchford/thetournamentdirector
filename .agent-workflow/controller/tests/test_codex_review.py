@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -111,7 +112,27 @@ def event_stream(value: dict[str, object], *, tool: str | None = None) -> bytes:
 
 
 class SubprocessExecutorTests(unittest.TestCase):
-    """Prove output floods and timeouts terminate the process boundary."""
+    """Prove output floods, environment leaks, and timeouts fail closed."""
+
+    def test_child_receives_only_minimal_environment(self) -> None:
+        executor = SubprocessExecutor()
+        script = (
+            "import json, os; "
+            "print(json.dumps({'sentinel': os.getenv('TD_SECRET_SENTINEL'), "
+            "'home': bool(os.getenv('HOME')), 'path': bool(os.getenv('PATH'))}))"
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch.dict(os.environ, {"TD_SECRET_SENTINEL": "must-not-leak"}):
+                output = executor.run(
+                    [sys.executable, "-c", script],
+                    input_bytes=b"",
+                    cwd=Path(temporary),
+                    timeout_seconds=5,
+                )
+        reported = json.loads(output.stdout)
+        self.assertIsNone(reported["sentinel"])
+        self.assertTrue(reported["home"])
+        self.assertTrue(reported["path"])
 
     def test_output_flood_is_killed_at_the_hard_limit(self) -> None:
         executor = SubprocessExecutor()

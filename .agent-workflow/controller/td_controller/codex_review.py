@@ -37,6 +37,16 @@ class ProcessOutput:
     stderr: bytes
 
 
+def _minimal_codex_environment(executable: str) -> dict[str, str]:
+    home = Path.home().resolve(strict=True)
+    return {
+        "HOME": str(home),
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "PATH": os.pathsep.join((str(Path(executable).parent), "/usr/bin", "/bin")),
+    }
+
+
 def _attest_codex_runtime() -> str:
     executable = shutil.which("codex")
     if executable is None:
@@ -55,6 +65,7 @@ def _attest_codex_runtime() -> str:
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         timeout=10,
+        env=_minimal_codex_environment(resolved),
     )
     if version.returncode != 0 or version.stdout.decode(errors="replace").strip() != (
         PINNED_CODEX_VERSION
@@ -96,6 +107,7 @@ class SubprocessExecutor:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             cwd=cwd,
+            env=_minimal_codex_environment(command[0]),
             start_new_session=True,
         )
         if process.stdin is None or process.stdout is None or process.stderr is None:
