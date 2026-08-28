@@ -95,14 +95,14 @@ def _validate_trusted_evidence(evidence: tuple[TrustedEvidence, ...]) -> None:
         _required_string(item.description, "evidence.description")
         if evidence_id in identifiers:
             raise CodexReviewError(f"duplicate trusted evidence ID: {evidence_id}")
-        if item.source not in allowed_sources:
+        if not isinstance(item.source, str) or item.source not in allowed_sources:
             raise CodexReviewError(f"unapproved trusted evidence source: {item.source}")
         identifiers.add(evidence_id)
 
 
 def _parse_artifact(message: str, request: ReviewRequest) -> ReviewArtifact:
     role_types = {"code_review": "code_security", "qa_review": "qa"}
-    if request.role not in ALLOWED_ROLES:
+    if not isinstance(request.role, str) or request.role not in ALLOWED_ROLES:
         raise CodexReviewError(f"unsupported local review role: {request.role}")
     if not isinstance(request.task_contract, dict):
         raise CodexReviewError("task contract must be an object")
@@ -138,27 +138,28 @@ def _parse_artifact(message: str, request: ReviewRequest) -> ReviewArtifact:
         raise CodexReviewError("review artifact has the wrong task ID")
     if value["baseSha"] != request.base_sha or value["headSha"] != request.head_sha:
         raise CodexReviewError("review artifact references stale Git SHAs")
-    if value["verdict"] not in {"pass", "block"}:
-        raise CodexReviewError("review artifact has an invalid verdict")
+    verdict = _validate_choice(
+        value["verdict"], {"pass", "block"}, "review artifact verdict"
+    )
     findings = _parse_findings(value["findings"])
     acceptance = _parse_acceptance(value["acceptanceEvidence"], request)
     if request.role == "qa_review":
-        _validate_qa_acceptance(acceptance, request, verdict=value["verdict"])
-        if value["verdict"] == "pass" and findings:
+        _validate_qa_acceptance(acceptance, request, verdict=verdict)
+        if verdict == "pass" and findings:
             raise CodexReviewError("passing QA review cannot contain findings")
     else:
         if acceptance:
             raise CodexReviewError("code/security review returned QA acceptance evidence")
-        if value["verdict"] == "pass" and findings:
+        if verdict == "pass" and findings:
             raise CodexReviewError("passing review cannot contain findings")
-        if value["verdict"] == "block" and not findings:
+        if verdict == "block" and not findings:
             raise CodexReviewError("blocking code review must contain findings")
     return ReviewArtifact(
         review_type=expected_type,
         task_id=request.task_id,
         base_sha=request.base_sha,
         head_sha=request.head_sha,
-        verdict=value["verdict"],
+        verdict=verdict,
         findings=findings,
         acceptance_evidence=acceptance,
     )
@@ -183,8 +184,11 @@ def _parse_findings(value: Any) -> tuple[Finding, ...]:
     for item in value:
         if not isinstance(item, dict) or set(item) != keys:
             raise CodexReviewError("finding has missing or unknown fields")
-        if item["severity"] not in {"critical", "high", "medium", "low", "note"}:
-            raise CodexReviewError("finding has invalid severity")
+        severity = _validate_choice(
+            item["severity"],
+            {"critical", "high", "medium", "low", "note"},
+            "finding severity",
+        )
         confidence = item["confidence"]
         if isinstance(confidence, bool) or not isinstance(confidence, (int, float)):
             raise CodexReviewError("finding confidence must be numeric")
@@ -200,7 +204,7 @@ def _parse_findings(value: Any) -> tuple[Finding, ...]:
         findings.append(
             Finding(
                 finding_id=finding_id,
-                severity=item["severity"],
+                severity=severity,
                 path=_required_string(item["path"], "finding.path"),
                 line=line,
                 evidence=_required_string(item["evidence"], "finding.evidence"),
@@ -230,8 +234,9 @@ def _parse_acceptance(
         keys = {"criterion", "status", "evidence", "evidenceRefs"}
         if not isinstance(item, dict) or set(item) != keys:
             raise CodexReviewError("acceptance evidence has missing or unknown fields")
-        if item["status"] not in {"pass", "fail", "not_tested"}:
-            raise CodexReviewError("acceptance evidence has invalid status")
+        status = _validate_choice(
+            item["status"], {"pass", "fail", "not_tested"}, "acceptance status"
+        )
         references = item["evidenceRefs"]
         if not isinstance(references, list) or not references:
             raise CodexReviewError("acceptance evidence requires trusted evidence refs")
@@ -247,7 +252,7 @@ def _parse_acceptance(
         evidence.append(
             AcceptanceEvidence(
                 criterion=_required_string(item["criterion"], "acceptance.criterion"),
-                status=item["status"],
+                status=status,
                 evidence=_required_string(item["evidence"], "acceptance.evidence"),
                 evidence_refs=tuple(references),
             )
@@ -317,6 +322,12 @@ def _validate_qa_acceptance(
     has_non_passing = any(item.status != "pass" for item in evidence)
     if (verdict == "pass") == has_non_passing:
         raise CodexReviewError("QA verdict must match aggregate criterion status")
+
+
+def _validate_choice(value: Any, choices: set[str], field: str) -> str:
+    if not isinstance(value, str) or value not in choices:
+        raise CodexReviewError(f"{field} is invalid")
+    return value
 
 
 def _validate_git_sha(value: Any, field: str) -> None:
