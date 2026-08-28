@@ -118,7 +118,7 @@ docs/
 ```
 
 Do not create this layout until the proposed ADRs and pilot decisions at the
-end of this document are approved and the private remote is protected.
+end of this document are approved and the public remote is protected.
 
 ## Durable task contract
 
@@ -464,13 +464,18 @@ shell `while true` around an agent prompt.
 
 ### Stage 0 — prerequisites and threat model
 
-- Local Git and a clean baseline commit are complete; create a private remote.
-- Reconfirm ignored proprietary files are absent before the first push.
-- Establish `main`, branch protection, CODEOWNERS, and required checks.
-- Fix Docker access without weakening socket permissions broadly.
-- Choose agent provider/model routes, authentication, concurrency, review
-  reserve, hard run/spend budgets, fallback policy, and log retention.
-- Approve this threat model and the kill-switch procedure.
+- Local Git and a clean baseline commit are complete; the public GitHub remote
+  is established.
+- Ignored proprietary files were confirmed absent before the first push and
+  before changing repository visibility to public.
+- Protected `main`, CODEOWNERS, baseline CI, secret scanning, push protection,
+  and guarded auto-merge are enabled.
+- Install and prove the approved local rootless container runner without
+  weakening the host Docker socket.
+- Provision a repository-scoped controller identity and enforce the approved
+  Codex model, concurrency, run-count, duration, review-reserve, remediation,
+  fallback, and retention limits.
+- Implement and test the approved global pause file and hard budget stop.
 
 Exit: a human can run clean CI and an isolated no-op worker without exposing
 host credentials or vendor artifacts.
@@ -542,18 +547,23 @@ Track these rather than raw agent activity:
 - duplicate PR/state-recovery incidents;
 - flaky test rate.
 
-## Decisions required before implementation
+## Approved pilot settings
 
-1. Where should the private GitHub remote live?
-2. Which Codex model/reasoning level should implementation and independent
-   review roles use?
-3. Which credentials and monthly/daily spend limit are acceptable?
-4. Should the controller run only on this machine or on a dedicated runner?
-5. How long should failed worktrees, prompts, and model transcripts be retained?
+Approved on 2026-08-28:
 
-Accepted defaults: Codex/Sandcastle performs implementation and fresh-session
-reviews; the controller owns branches/PRs; Copilot supplies an additional
-comment-only PR review; R0-R2 may policy-auto-merge after staged gates; R3 and
-escalations require the user. Remaining recommendation: private GitHub
-repository, one active Codex run at a time, explicit review reserve and hard
-budget, and 14-day failed-run retention.
+- public GitHub repository with protected `main`;
+- local runner using a rootless container boundary;
+- Codex only, using one high-reasoning session at a time for every agent role;
+- maximum 60 minutes per run and eight model runs per day;
+- 30% of model capacity reserved for review/remediation;
+- no fallback provider and at most two remediation rounds;
+- 14-day retention for failed worktrees, prompts, and transcripts;
+- a host-only controller credential that is scoped to this repository and never
+  mounted into a worker;
+- a global pause file plus hard budget stop;
+- Copilot as an additional comment-only PR reviewer;
+- R0-R2 policy auto-merge after all current-SHA gates; R3 and escalations require
+  the user.
+
+A local machine cannot run while asleep or shut down. Moving to a dedicated
+runner requires a later R3 decision.
