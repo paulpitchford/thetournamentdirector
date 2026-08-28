@@ -63,8 +63,8 @@ The diagram is a summary; each task's `Depends on` field is authoritative.
   artifacts cannot enter ordinary worktrees.
 - **Required work:** confirm `.gitignore`; inspect the initial staged file list;
   create `main`; push to a private remote; configure branch protection,
-  CODEOWNERS, required CI, secret scanning where available, and human-only
-  merge.
+  CODEOWNERS, required CI, secret scanning where available, and guarded
+  auto-merge that excludes R3/escalated work.
 - **Acceptance:** `git ls-files` contains none of `downloads/`, `extracted/`, or
   ignored `analysis/`; a clean clone contains all authored research docs and no
   vendor binary/source; direct push to protected `main` is rejected.

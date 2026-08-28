@@ -18,7 +18,14 @@ Sandcastle deliberately does **not** retry provider errors such as rate limits,
 authentication failures, quota exhaustion, or network timeouts. It launches
 provider CLIs but does not own their API protocol, and blindly retrying a
 non-zero exit could hide a real error or waste more quota. A provider failure
-therefore ends that Sandcastle run and is returned to our harness.
+therefore ends that Sandcastle planning/review/fallback run and is returned to
+our harness.
+
+Copilot coding agent runs through GitHub rather than Sandcastle. The controller
+observes its issue assignment, branch, PR, checks, comments, and timeout state.
+Copilot implementation capacity and Sandcastle review-provider capacity are
+tracked separately; exhaustion of one must not be mistaken for exhaustion of
+the other.
 
 Sandcastle can expose raw token usage when the provider stream/session contains
 it. It does not know the user's total account allowance, reliable remaining
@@ -130,10 +137,12 @@ Stale reservations expire safely.
 
 For the pilot:
 
-- maximum one implementation model run at a time;
-- maximum one model run of any role at a time until usage is understood;
-- reserve at least 30% of the configured allowance for code/security/QA review
-  and remediation;
+- maximum one Copilot implementation task in flight at a time;
+- maximum one Sandcastle planning/review model run at a time until usage is
+  understood;
+- track Copilot and each Sandcastle provider in separate capacity ledgers;
+- reserve at least 30% of the configured Sandcastle allowance for
+  code/security/QA review and remediation;
 - stop new implementations at the soft budget threshold;
 - permit already-started verification/review to use only its reserved budget;
 - stop all model dispatch at the hard threshold;
@@ -147,8 +156,14 @@ conservative signal and rely on provider errors as the hard stop.
 
 ## Work preservation when a limit is hit
 
-With local Docker bind-mounted worktrees, the Git worktree survives the agent
-process and container. On a limit:
+For Copilot implementation, committed progress is already on its managed remote
+branch/PR. If Copilot stops mid-task, the controller records the current PR head
+SHA and diff, leaves the PR draft, marks the task `WAITING_CAPACITY`, and later
+asks Copilot to continue on that same PR. It never creates a duplicate issue,
+branch, or PR.
+
+For local Sandcastle planning/review/fallback, the bind-mounted Git worktree
+survives the agent process and container. On a limit:
 
 1. cancel/finish the Sandcastle run;
 2. stop its timeout and capacity reservation;
@@ -248,7 +263,7 @@ and review independence.
 A fallback route must be pre-approved, for example:
 
 ```text
-role: implementation
+role: independent-review
 primary: codex / approved model
 fallback: claude-code / approved model
 maxFallbackRuns: 1
@@ -384,7 +399,8 @@ The safest initial expectation is not “agents work every minute”. It is:
 - review capacity is preserved;
 - work resumes automatically when a reliable reset time/cooldown permits;
 - ambiguous quota/auth/billing failures wait for a person;
-- no merge occurs without independent CI and human approval.
+- no R0-R2 merge occurs without independent CI and required review statuses;
+- R3/escalated work does not merge without explicit user approval.
 
 This still provides the main unattended benefit: the controller manages starts,
 stops, waiting, recovery, checks, reviews, and PR state without requiring a

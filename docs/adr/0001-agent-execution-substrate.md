@@ -1,45 +1,53 @@
-# ADR 0001: Use Sandcastle as the agent execution substrate
+# ADR 0001: Use Copilot for implementation and Sandcastle for independent agent roles
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-08-28
 
 ## Context
 
-The experiment needs isolated worktrees, bounded coding-agent runs, provider
-adapters, logs, structured output, session capture, and explicit branches.
-Sandcastle supplies these primitives in TypeScript but intentionally does not
-provide our durable queue, quality policy, provider retry policy, or PR
-governance.
+The user has GitHub Copilot coding agent and does not want to create, maintain,
+review, or merge routine pull requests. The experiment still needs isolated
+planning/review agents, provider flexibility, bounded runs, structured outputs,
+and an independent quality path.
 
-## Proposed decision
+## Decision
 
-Use `@ai-hero/sandcastle` as a replaceable execution adapter. Build a thin,
-repository-specific controller for leases, capacity, policy checks, reviews,
-remediation, GitHub state, and recovery.
+Use GitHub Copilot coding agent as the primary implementer and PR owner. The
+controller creates or approves a task issue, dispatches it to Copilot, and then
+reconciles the branch and PR that Copilot creates.
 
-Use explicit named branches only. Do not use unattended `head`,
-`merge-to-head`, or `noSandbox()` execution.
+Use `@ai-hero/sandcastle` as a replaceable execution adapter for planning,
+independent code/security/QA review, controlled remediation support, and an
+explicitly configured fallback—not as the routine PR author or merge authority.
+
+The deterministic controller owns task state, capacity, policy checks, review
+status, remediation routing, and merge eligibility. GitHub Actions and branch
+rules remain authoritative.
+
+For any local Sandcastle work, use explicit named branches. Do not use
+unattended `head`, `merge-to-head`, or `noSandbox()` execution.
 
 ## Consequences
 
-- We reuse maintained sandbox and agent-provider plumbing.
-- The controller remains responsible for acceptance and durable state.
-- Sandcastle completion signals and commits never imply quality approval.
-- The adapter must be replaceable if the pilot exposes unacceptable security,
-  reliability, or maintenance problems.
-- A hardened sandbox provider or wrapper may be needed beyond the standard
-  Docker provider.
+- Routine implementation and PR mechanics use the existing Copilot entitlement.
+- Sandcastle reviews remain independent of the Copilot implementer.
+- The controller needs a Copilot/GitHub dispatch adapter and a Sandcastle review
+  adapter; Copilot agent-task/assignment APIs are public preview and must be
+  isolated behind a versioned interface.
+- Copilot completion or PR creation never implies quality approval.
+- Agent responsibilities, provider usage, and review evidence remain visible on
+  every PR.
+- Sandcastle remains replaceable if the pilot exposes security, reliability, or
+  maintenance problems.
+- A hardened sandbox provider may still be needed for local review/fallback
+  agents.
 
 ## Alternatives considered
 
+- Sandcastle implementers for every task: flexible, but duplicates an available
+  Copilot coding-agent workflow and consumes separate model capacity.
+- Copilot for implementation and self-review: rejected because implementation
+  and acceptance would not be independent.
 - Gas Town as the whole control plane: more complete, but much heavier for one
   application and less suited to a small measured pilot.
-- GitHub Agentic Workflows only: useful later for safe GitHub automation, but
-  not the preferred local durable build controller.
-- Build all sandbox/provider plumbing ourselves: maximum control but unnecessary
-  initial scope and risk.
-
-## Approval needed
-
-Confirm Sandcastle should be the first execution substrate rather than running
-a comparative Sandcastle/Gas Town spike.
+- Build all provider plumbing ourselves: maximum control but unnecessary scope.

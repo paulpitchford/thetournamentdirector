@@ -5,20 +5,23 @@
 
 ## Context
 
-Codex and other providers can hit request, account, context, credit, or billing
-limits during a task. Sandcastle fails fast and deliberately does not retry
-provider errors. Subscription capacity may not expose a reliable remaining
-quota or reset API.
+Copilot coding agent and Sandcastle review providers such as Codex can each hit
+request, account, context, credit, or billing limits during a task. Sandcastle
+fails fast and deliberately does not retry provider errors. Subscription
+capacity may not expose a reliable remaining quota or reset API.
 
 ## Proposed decision
 
 The durable controller owns provider state, admission, cooldowns, budgets, and
-recovery. Start with one model run at a time, Codex as the proposed primary,
-30% capacity reserved for review/remediation, no blind retries, and no automatic
+recovery. Track Copilot implementation capacity separately from each Sandcastle
+review provider. Start with one Copilot task in flight, one Sandcastle model run
+at a time, Codex as the proposed independent reviewer, 30% of Sandcastle
+capacity reserved for review/remediation, no blind retries, and no automatic
 provider fallback.
 
-A mid-task provider interruption preserves the named branch and dirty worktree,
-enters durable `WAITING_CAPACITY`, and resumes only after a reliable reset,
+A mid-task Copilot interruption preserves its remote branch/PR. A local
+Sandcastle interruption preserves the named branch and dirty worktree. Both
+enter durable `WAITING_CAPACITY` and resume only after a reliable reset,
 conservative cooldown, or explicit operator action. Auth/billing failures never
 retry automatically.
 
@@ -38,9 +41,11 @@ retry automatically.
   failures.
 - Automatic cross-provider fallback: obscures cost and behaviour during the
   pilot.
-- Unlimited concurrency: can consume implementation quota before review.
+- Unlimited concurrency: can consume Copilot or review capacity before the
+  required acceptance work completes.
 
 ## Approval needed
 
-Confirm the primary provider/model, hard run/spend limits, 30% review reserve,
-fallback policy, and local versus dedicated execution.
+Confirm the Sandcastle review provider/model, separate Copilot/review hard
+limits, 30% review reserve, fallback policy, and local versus dedicated review
+execution.

@@ -40,21 +40,24 @@ change”. The repository-specific controller must make that decision.
 
 ## Trust model
 
-Treat an agent like an unreliable external contributor who has shell access
-inside one disposable worktree.
+Treat every agent like an unreliable external contributor.
 
-The agent is allowed to:
+Copilot coding agent is allowed through its managed GitHub integration to:
 
-- read the clean repository worktree;
-- edit task-approved paths;
-- run local development tools;
-- commit to its task branch;
-- report completion, blockers, and structured review findings.
+- receive one approved task issue;
+- create and update its task branch and PR;
+- edit task-approved paths and run repository development tools;
+- respond to accepted review findings on the same PR.
 
-The agent is not allowed to:
+Copilot cannot merge, alter branch protection, manufacture required statuses,
+change task risk/acceptance policy, or approve its own result.
 
-- possess a GitHub write token, SSH key, Docker socket, or host credentials;
-- push, merge, close issues, approve a PR, or change branch protection;
+Local Sandcastle planning/review/fallback agents are allowed to read one clean
+worktree, run approved tools, and return structured output. They receive no
+GitHub write token, SSH key, Docker socket, or host credentials.
+
+No agent is allowed to:
+
 - access ignored vendor artifacts or the parent project directory;
 - edit policy, CI, package, lock, compiler, lint, or test configuration in a
   normal feature task;
@@ -69,7 +72,8 @@ branch before deciding that branch is safe.
 
 ### 1. Capability enforcement
 
-The sandbox limits what the worker can physically do:
+The local Sandcastle sandbox limits what its planner/reviewer/fallback worker can
+physically do:
 
 - separate worktree and container;
 - non-root user;
@@ -112,9 +116,12 @@ GitHub controls integration even if the local controller has a bug:
 - required checks cannot be skipped by the agent;
 - CODEOWNERS protects workflow and quality files;
 - PRs remain draft while any gate or finding is open;
-- human approval and merge are required throughout the experiment;
-- the controller's repository-scoped token has only the permissions needed to
-  push task branches and manage PR metadata;
+- R0-R2 auto-merge requires every deterministic and independent review status;
+- R3 and escalated work requires explicit user approval;
+- the controller uses a fine-grained repository-scoped user-to-server token
+  with only the permissions needed to dispatch Copilot tasks, manage PR
+  metadata/status, and enable eligible auto-merge; the current broad personal
+  `gh` token is never placed in the daemon or an agent;
 - deployment/release credentials are not available to PR CI.
 
 No agent output string can satisfy a GitHub required check by itself.
@@ -158,9 +165,9 @@ modern-app/tests/invariants/**
 security and quality rule configuration
 ```
 
-A dedicated R3 task with human approval is required to alter these files.
+A dedicated R3 task with explicit user approval is required to alter these files.
 
-## Concrete Sandcastle pipeline
+## Concrete Copilot and Sandcastle pipeline
 
 The eventual controller should follow this shape. This is illustrative
 pseudocode, not code to run yet:
@@ -170,65 +177,49 @@ const task = validateApprovedTask(await queue.lease());
 const policy = loadPolicyFromTrustedMain();
 const baseSha = await git.resolveProtectedMain();
 
-await using worktree = await sandcastle.createWorktree({
-  cwd: trustedRepository,
-  branchStrategy: {
-    type: "branch",
-    branch: task.branch,
-    baseBranch: baseSha,
-  },
-});
+const issue = await github.createOrReuseIssue(task);
+// Versioned adapter around GitHub's public-preview Copilot assignment API.
+await github.dispatchToCopilot(issue);
 
-await using worker = await worktree.createSandbox({
-  sandbox: hardenedDockerProvider({
-    egressAllowlist: [selectedModelApiHost],
-  }),
-});
+const pr = await github.waitForSingleCopilotPr({ issue, baseSha });
+await enforceRemoteDiffFromTrustedController({ task, policy, pr, baseSha });
+await github.waitForRequiredCi(pr);
 
-const implementation = await worker.run({
-  name: `implement-${task.id}`,
-  agent: selectedImplementer,
-  promptFile: ".agent-workflow/prompts/implement.md",
-  promptArgs: { TASK: serializeAsInertData(task) },
-  maxIterations: task.maxIterations,
-  idleTimeoutSeconds: task.idleTimeoutSeconds,
-  signal: taskAbortSignal,
-});
-
-// COMPLETE and commits are not acceptance.
-await enforceDiffFromTrustedController({ task, policy, baseSha });
-await runRequiredGates(worker, policy, task.riskClass);
-
-const reviews = await runReadOnlyStructuredReviews({ task, baseSha });
+const reviews = await runReadOnlySandcastleReviews({ task, pr, baseSha });
 const findings = validateAndDeduplicateFindings(reviews);
+await github.publishReviewStatuses(pr, findings);
 
 if (hasBlockingFindings(findings)) {
-  await runBoundedRemediation(task, findings);
-  await enforceDiffFromTrustedController({ task, policy, baseSha });
-  await runRequiredGates(worker, policy, task.riskClass);
-  await rerunReviews();
+  await github.requestCopilotRemediation({ pr, task, findings });
+  await enforceRemoteDiffFromTrustedController({ task, policy, pr, baseSha });
+  await github.waitForRequiredCi(pr);
+  await rerunReviews(pr);
 }
 
-await hostGitHubClient.openOrUpdateDraftPr(buildEvidenceBundle());
-// GitHub CI and a human decide whether it can merge.
+if (task.riskClass === "R3" || task.isEscalated) {
+  await github.requestUserApproval(pr);
+} else {
+  await github.enableAutoMerge(pr);
+}
 ```
 
 Important details:
 
-- Use an explicit branch and recorded base SHA, never Sandcastle's direct
-  `head` strategy for unattended work.
-- Do not use `merge-to-head` in this project.
-- Do not use Sandcastle's `noSandbox()` provider for unattended workers.
-- Do not copy `.env`, host `node_modules`, or authentication directories into
-  a worker merely for convenience.
-- The agent CLI needs its model endpoint, so a worker cannot normally use
-  completely disabled networking. Route it through an egress proxy that permits
-  only the selected model API; do not mistake attaching a Docker network for an
-  outbound allowlist.
-- The hardened provider may need to wrap/extend Sandcastle's Docker provider to
-  enforce every resource, mount, and egress requirement.
-- A reviewer should use a separate read-only mount/provider. At minimum, the
-  controller must reject any reviewer filesystem mutation.
+- Copilot owns its managed branch and PR; the controller does not force-push or
+  create a second PR for the same task.
+- Copilot PR creation, comments, or completion claims are not acceptance.
+- Sandcastle reviewers use an explicit read-only worktree at the recorded PR
+  SHA and cannot push, merge, or modify the PR branch.
+- Do not use Sandcastle's unattended `head`, `merge-to-head`, or `noSandbox()`
+  modes for local review/fallback agents.
+- Do not copy `.env`, host `node_modules`, or authentication directories into a
+  local worker merely for convenience.
+- The local reviewer CLI needs its model endpoint, so route it through an egress
+  proxy permitting only that API; a Docker network alone is not an allowlist.
+- The hardened provider may need to wrap/extend Sandcastle's provider to enforce
+  every resource, mount, and egress requirement.
+- Auto-merge is enabled only after required statuses reference the current PR
+  head SHA; a new Copilot commit invalidates prior evidence.
 
 ## Making policy context deterministic
 
@@ -305,8 +296,8 @@ Use several controls together:
 - run mutation testing on critical domain modules on schedule and for R2
   changes when practical;
 - have the QA reviewer map each acceptance criterion to test/runtime evidence;
-- require human review for domain money, clock, persistence, undo, and seating
-  changes.
+- require separate code, security, and QA review statuses for domain money,
+  clock, persistence, undo, and seating changes.
 
 A test written by the implementer is useful evidence, but not independent proof.
 
@@ -328,7 +319,9 @@ Reviewer prompts are also not sufficient. Review runs should:
 - rerun deterministic gates and reviews after repair;
 - quarantine after two non-converging repair cycles.
 
-During the pilot, human review remains the final independent check.
+For R0-R2, required independent review statuses and deterministic CI form the
+routine acceptance boundary. R3, ambiguous, non-converging, or incident work is
+escalated to the user.
 
 ## Adversarial acceptance tests
 
@@ -359,5 +352,5 @@ No automated process can prove that code is elegant, bug-free, or secure. A
 subtle semantic defect can pass types, lint, tests, scans, and model review.
 This design reduces dependence on luck by combining capability limits,
 deterministic checks, independent reviews, protected integration, bounded
-repair, and human approval. Critical domain invariants and small task sizes make
-the remaining risk inspectable.
+repair, and targeted user escalation. Critical domain invariants and small task
+sizes make the remaining risk inspectable.

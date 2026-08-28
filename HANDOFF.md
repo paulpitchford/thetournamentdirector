@@ -110,15 +110,17 @@ level-zero transition must be guarded by level ID/revision so it occurs once.
 
 The user wants to trial an always-on orchestrator that works from a detailed
 plan and manages isolated agents, builds, QA, reviews, branches, and PRs with
-strong guards. The proposed design uses Sandcastle as an agent/sandbox adapter,
+strong guards. The accepted design uses Copilot coding agent as the routine
+implementer and PR owner, with Sandcastle for independent planning/review roles,
 not as the durable authority. GitHub issues/PRs, deterministic CI, a thin local
-controller, bounded jobs, and human-only merge form the initial experiment.
+controller, bounded jobs, and policy-controlled auto-merge form the experiment.
 `docs/ENGINEERING_QUALITY_POLICY.md` defines mandatory compiler, lint,
 architecture, testing, security, independent-review, and remediation gates so
 agent-written code cannot progress merely because an agent claims it is done.
 `docs/POLICY_ENFORCEMENT.md` makes the trust boundary explicit: Sandcastle only
-runs bounded workers; trusted controller code checks the diff and executes
-gates, while GitHub branch protection and human review control integration.
+runs bounded independent reviewers/fallback workers; trusted controller code
+checks Copilot's PR diff and statuses, while GitHub branch protection controls
+policy auto-merge and routes only R3/escalated work to the user.
 `docs/AGENT_CAPACITY_POLICY.md` defines safe unattended behaviour when Codex or
 another provider hits a rate, account, context, or spend limit: preserve Git
 work, enter a durable cooldown, avoid blind retries, reserve review capacity,
@@ -132,7 +134,7 @@ container.
 
 ## Next concrete tasks
 
-1. Ask the user for the six pilot decisions listed at the end of
+1. Ask the user for the five remaining pilot choices listed at the end of
    `docs/AGENT_ORCHESTRATION_PLAN.md`.
 2. Complete the human-owned `HUM-001` and `HUM-002` backlog tasks.
 3. Run the read-only planning pilot before permitting an agent to modify code.
@@ -183,6 +185,8 @@ The next agent can use neutral product defaults without blocking implementation.
 Ask the user later for the product name/branding, preferred blind presets,
 default currency, and whether remote display should follow the MVP.
 
-The orchestration pilot does require explicit choices before mutation: private
-GitHub remote, initial agent/provider, credential and spend limits, local versus
-dedicated runner, human-only merge policy, and artifact/transcript retention.
+The orchestration pilot still requires explicit choices before mutation:
+private GitHub remote, Sandcastle review provider, credential and spend limits,
+local versus dedicated review runner, and artifact/transcript retention.
+Copilot coding agent PR ownership and R0-R2 policy auto-merge are accepted;
+R3/escalated work requires the user.

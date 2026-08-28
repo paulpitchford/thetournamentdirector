@@ -42,8 +42,9 @@ Every agent change passes through these stages:
    return structured findings with file/line evidence.
 7. **Remediation guard** — accepted findings go to a separate repair run, then
    every deterministic check is repeated.
-8. **PR guard** — protected `main`, required clean CI, current base branch,
-   CODEOWNERS, and human approval during the experiment.
+8. **PR guard** — protected `main`, required clean CI and independent review
+   statuses at the current head SHA, CODEOWNERS, and policy-controlled
+   auto-merge; R3/escalated work requires the user.
 
 An implementer cannot waive, reconfigure, or approve any of these stages.
 
@@ -186,7 +187,7 @@ comments, BroadcastChannel messages, and IndexedDB records as untrusted.
 
 ### Dependencies and secrets
 
-- A dependency addition is an R3 task requiring human approval, lockfile review,
+- A dependency addition is an R3 task requiring explicit user approval, lockfile review,
   license review, maintenance check, and vulnerability scan.
 - Prefer platform APIs and focused packages over broad utility/framework
   dependencies.
@@ -416,10 +417,10 @@ The controller maintains a PR section containing:
 - coverage delta and mutation result when applicable;
 - dependency, secret, and source-scan result;
 - code/security/QA review finding counts and remediation commits;
-- remaining exceptions and required human approvals.
+- remaining exceptions and required user escalations.
 
-Human reviewers should be able to determine why the change is considered safe
-without reading agent transcripts.
+The user or a later auditor should be able to determine why the change was
+considered safe without reading agent transcripts.
 
 ## Initial quality acceptance test
 
