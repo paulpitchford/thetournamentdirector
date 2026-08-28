@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import json
+import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from td_controller.codex_review import (
     CodexReviewError,
     CodexReviewProvider,
     ProcessOutput,
     ReviewRequest,
+    SubprocessExecutor,
 )
 
 BASE_SHA = "a" * 40
@@ -90,6 +94,33 @@ def event_stream(value: dict[str, object], *, tool: str | None = None) -> bytes:
         }
     )
     return ("\n".join(json.dumps(item) for item in events) + "\n").encode()
+
+
+class SubprocessExecutorTests(unittest.TestCase):
+    """Prove output floods and timeouts terminate the process boundary."""
+
+    def test_output_flood_is_killed_at_the_hard_limit(self) -> None:
+        executor = SubprocessExecutor()
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch("td_controller.codex_review.MAX_OUTPUT_BYTES", 1_024):
+                with self.assertRaisesRegex(CodexReviewError, "output limit"):
+                    executor.run(
+                        [sys.executable, "-c", "import os; os.write(1, b'x' * 2048)"],
+                        input_bytes=b"",
+                        cwd=Path(temporary),
+                        timeout_seconds=5,
+                    )
+
+    def test_timeout_kills_the_process_group(self) -> None:
+        executor = SubprocessExecutor()
+        with tempfile.TemporaryDirectory() as temporary:
+            with self.assertRaisesRegex(CodexReviewError, "timed out"):
+                executor.run(
+                    [sys.executable, "-c", "import time; time.sleep(10)"],
+                    input_bytes=b"",
+                    cwd=Path(temporary),
+                    timeout_seconds=0,
+                )
 
 
 class CodexReviewProviderTests(unittest.TestCase):

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import json
 import os
-import resource
 import signal
 import subprocess
 import tempfile
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -60,36 +60,86 @@ class SubprocessExecutor:
         timeout_seconds: int,
     ) -> ProcessOutput:
         """Run a command and return captured bytes or fail on timeout."""
-        def limit_output_files() -> None:
-            resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_OUTPUT_BYTES, MAX_OUTPUT_BYTES))
+        process = subprocess.Popen(
+            command,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=cwd,
+            start_new_session=True,
+        )
+        if process.stdin is None or process.stdout is None or process.stderr is None:
+            process.kill()
+            raise CodexReviewError("failed to create bounded process streams")
 
-        with tempfile.TemporaryFile() as stdout_file, tempfile.TemporaryFile() as stderr_file:
-            process = subprocess.Popen(
-                command,
-                stdin=subprocess.PIPE,
-                stdout=stdout_file,
-                stderr=stderr_file,
-                cwd=cwd,
-                start_new_session=True,
-                preexec_fn=limit_output_files,
-            )
+        stdout = bytearray()
+        stderr = bytearray()
+        overflow = threading.Event()
+        thread_errors: list[Exception] = []
+
+        def kill_process_group() -> None:
             try:
-                process.communicate(input=input_bytes, timeout=timeout_seconds)
-            except subprocess.TimeoutExpired as exc:
                 os.killpg(process.pid, signal.SIGKILL)
-                process.communicate()
-                raise CodexReviewError("local Codex review timed out") from exc
-            stdout_file.seek(0)
-            stderr_file.seek(0)
-            stdout = stdout_file.read(MAX_OUTPUT_BYTES + 1)
-            stderr = stderr_file.read(MAX_OUTPUT_BYTES + 1)
+            except ProcessLookupError:
+                pass
 
-        if len(stdout) > MAX_OUTPUT_BYTES or len(stderr) > MAX_OUTPUT_BYTES:
+        def read_bounded(stream: Any, buffer: bytearray) -> None:
+            try:
+                while chunk := stream.read(65_536):
+                    remaining = MAX_OUTPUT_BYTES - len(buffer)
+                    if len(chunk) > remaining:
+                        buffer.extend(chunk[:remaining])
+                        overflow.set()
+                        kill_process_group()
+                        return
+                    buffer.extend(chunk)
+            except Exception as exc:
+                thread_errors.append(exc)
+                kill_process_group()
+
+        def write_prompt() -> None:
+            try:
+                process.stdin.write(input_bytes)
+                process.stdin.close()
+            except BrokenPipeError:
+                pass
+            except Exception as exc:
+                thread_errors.append(exc)
+                kill_process_group()
+
+        threads = [
+            threading.Thread(target=read_bounded, args=(process.stdout, stdout)),
+            threading.Thread(target=read_bounded, args=(process.stderr, stderr)),
+            threading.Thread(target=write_prompt),
+        ]
+        for thread in threads:
+            thread.start()
+
+        timed_out = False
+        try:
+            process.wait(timeout=timeout_seconds)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            kill_process_group()
+            process.wait()
+        for thread in threads:
+            thread.join(timeout=5)
+        process.stdin.close()
+        process.stdout.close()
+        process.stderr.close()
+        if any(thread.is_alive() for thread in threads):
+            kill_process_group()
+            raise CodexReviewError("local Codex stream worker did not terminate")
+        if timed_out:
+            raise CodexReviewError("local Codex review timed out")
+        if thread_errors:
+            raise CodexReviewError("local Codex stream worker failed") from thread_errors[0]
+        if overflow.is_set():
             raise CodexReviewError("local Codex review exceeded the output limit")
         return ProcessOutput(
             returncode=process.returncode,
-            stdout=stdout,
-            stderr=stderr,
+            stdout=bytes(stdout),
+            stderr=bytes(stderr),
         )
 
 
@@ -182,7 +232,9 @@ class CodexReviewProvider:
 
         if output.returncode != 0:
             error_name = output.stderr.decode("utf-8", errors="replace")[:500]
-            raise CodexReviewError(f"local Codex review failed: {error_name}")
+            raise CodexReviewError(
+                f"local Codex review failed with exit {output.returncode}: {error_name}"
+            )
         session_id, message = _parse_event_stream(output.stdout)
         artifact = _parse_artifact(message, self.request)
         self.artifact = artifact
