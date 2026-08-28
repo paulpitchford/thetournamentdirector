@@ -1,0 +1,277 @@
+"""Tests for bounded and cgroup-contained Codex execution."""
+
+from __future__ import annotations
+
+import hashlib
+import io
+import json
+import os
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+import unittest
+from pathlib import Path
+from unittest.mock import Mock, patch
+
+from td_controller.review_contract import CodexReviewError
+from td_controller.review_runtime import (
+    ProcessOutput,
+    SubprocessExecutor,
+    SystemdCgroupExecutor,
+    _attest_codex_runtime,
+)
+
+class FakeExecutor:
+    """Return a configured Codex JSONL stream without model usage."""
+
+    def __init__(self, output: ProcessOutput) -> None:
+        self.output = output
+        self.commands: list[list[str]] = []
+
+    def run(
+        self,
+        command: list[str],
+        *,
+        input_bytes: bytes,
+        cwd: Path,
+        timeout_seconds: int,
+    ) -> ProcessOutput:
+        """Record safe invocation fields and return configured output."""
+        self.commands.append(command)
+        self.input_bytes = input_bytes
+        self.cwd = cwd
+        self.timeout_seconds = timeout_seconds
+        return self.output
+
+
+class SubprocessExecutorTests(unittest.TestCase):
+    """Prove output floods, environment leaks, and timeouts fail closed."""
+
+    def test_child_receives_only_minimal_environment(self) -> None:
+        executor = SubprocessExecutor()
+        script = (
+            "import json, os; "
+            "print(json.dumps({'sentinel': os.getenv('TD_SECRET_SENTINEL'), "
+            "'home': bool(os.getenv('HOME')), 'path': bool(os.getenv('PATH'))}))"
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch.dict(os.environ, {"TD_SECRET_SENTINEL": "must-not-leak"}):
+                output = executor.run(
+                    [sys.executable, "-c", script],
+                    input_bytes=b"",
+                    cwd=Path(temporary),
+                    timeout_seconds=5,
+                )
+        reported = json.loads(output.stdout)
+        self.assertIsNone(reported["sentinel"])
+        self.assertTrue(reported["home"])
+        self.assertTrue(reported["path"])
+
+    def test_pipe_holding_descendant_cannot_hang_cleanup(self) -> None:
+        executor = SubprocessExecutor()
+        with tempfile.TemporaryDirectory() as temporary:
+            pid_file = Path(temporary) / "child.pid"
+            child = "import time; time.sleep(30)"
+            parent = (
+                "import os, pathlib, subprocess, sys; "
+                f"p=subprocess.Popen([sys.executable, '-c', {child!r}], "
+                "start_new_session=True, stdout=sys.stdout, stderr=sys.stderr); "
+                f"pathlib.Path({str(pid_file)!r}).write_text(str(p.pid)); os._exit(0)"
+            )
+            started = time.monotonic()
+            try:
+                with self.assertRaisesRegex(CodexReviewError, "worker did not terminate"):
+                    executor.run(
+                        [sys.executable, "-c", parent],
+                        input_bytes=b"",
+                        cwd=Path(temporary),
+                        timeout_seconds=2,
+                    )
+                self.assertLess(time.monotonic() - started, 7)
+            finally:
+                if pid_file.exists():
+                    try:
+                        os.kill(int(pid_file.read_text()), signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    time.sleep(0.1)
+
+    def test_output_flood_is_killed_at_the_hard_limit(self) -> None:
+        executor = SubprocessExecutor()
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch("td_controller.review_runtime.MAX_OUTPUT_BYTES", 1_024):
+                with self.assertRaisesRegex(CodexReviewError, "output limit"):
+                    executor.run(
+                        [sys.executable, "-c", "import os; os.write(1, b'x' * 2048)"],
+                        input_bytes=b"",
+                        cwd=Path(temporary),
+                        timeout_seconds=5,
+                    )
+
+    def test_post_kill_wait_is_bounded(self) -> None:
+        process = Mock()
+        process.pid = 12345
+        process.stdin = io.BytesIO()
+        process.stdout = io.BytesIO()
+        process.stderr = io.BytesIO()
+        process.wait.side_effect = [
+            subprocess.TimeoutExpired(["codex"], timeout=1),
+            subprocess.TimeoutExpired(["codex"], timeout=5),
+        ]
+        executor = SubprocessExecutor()
+        with (
+            patch("td_controller.review_runtime.subprocess.Popen", return_value=process),
+            patch("td_controller.review_runtime.os.killpg"),
+        ):
+            with self.assertRaisesRegex(CodexReviewError, "could not be reaped"):
+                executor.run(
+                    ["/pinned/codex"],
+                    input_bytes=b"",
+                    cwd=Path("/tmp"),
+                    timeout_seconds=1,
+                )
+
+    def test_timeout_kills_the_process_group(self) -> None:
+        executor = SubprocessExecutor()
+        with tempfile.TemporaryDirectory() as temporary:
+            with self.assertRaisesRegex(CodexReviewError, "timed out"):
+                executor.run(
+                    [sys.executable, "-c", "import time; time.sleep(10)"],
+                    input_bytes=b"",
+                    cwd=Path(temporary),
+                    timeout_seconds=0,
+                )
+
+
+class SystemdCgroupExecutorTests(unittest.TestCase):
+    def test_wraps_review_in_killable_clean_environment_service(self) -> None:
+        delegate = FakeExecutor(ProcessOutput(returncode=0, stdout=b"ok", stderr=b""))
+        executor = SystemdCgroupExecutor(
+            delegate=delegate,
+            unit_name_factory=lambda: "td-codex-review-fixed123",
+        )
+        with (
+            patch.dict(os.environ, {"TD_SECRET_SENTINEL": "must-not-leak"}),
+            patch.object(SystemdCgroupExecutor, "_kill_transient_unit") as cleanup,
+        ):
+            result = executor.run(
+                ["/pinned/codex", "exec"],
+                input_bytes=b"prompt",
+                cwd=Path("/tmp"),
+                timeout_seconds=30,
+            )
+
+        command = delegate.commands[0]
+        self.assertEqual(command[0], "/usr/bin/systemd-run")
+        self.assertIn("--property=KillMode=control-group", command)
+        self.assertIn("--property=RuntimeMaxSec=30s", command)
+        self.assertIn("--property=TasksMax=64", command)
+        env_index = command.index("/usr/bin/env")
+        self.assertEqual(command[env_index + 1], "-i")
+        self.assertFalse(any("TD_SECRET_SENTINEL" in item for item in command))
+        self.assertEqual(command[-2:], ["/pinned/codex", "exec"])
+        self.assertEqual(delegate.timeout_seconds, 40)
+        cleanup.assert_called_once_with("td-codex-review-fixed123")
+        self.assertEqual(result.stdout, b"ok")
+
+    def test_cleanup_rejects_unit_that_remains_active(self) -> None:
+        completed = [
+            subprocess.CompletedProcess([], returncode=0),
+            subprocess.CompletedProcess([], returncode=0),
+            subprocess.CompletedProcess([], returncode=0),
+            subprocess.CompletedProcess([], returncode=0),
+        ]
+        with patch("td_controller.review_runtime.subprocess.run", side_effect=completed):
+            with self.assertRaisesRegex(CodexReviewError, "remained active"):
+                SystemdCgroupExecutor._kill_transient_unit("td-codex-review-fixed123")
+
+    def test_cleanup_attempts_kill_after_stop_timeout(self) -> None:
+        results = [
+            subprocess.TimeoutExpired(["systemctl", "stop"], timeout=5),
+            subprocess.CompletedProcess([], returncode=0),
+            subprocess.CompletedProcess([], returncode=0),
+            subprocess.CompletedProcess([], returncode=4),
+        ]
+        with patch("td_controller.review_runtime.subprocess.run", side_effect=results) as run:
+            SystemdCgroupExecutor._kill_transient_unit("td-codex-review-fixed123")
+
+        self.assertEqual(run.call_count, 4)
+        self.assertIn("kill", run.call_args_list[1].args[0])
+
+    def test_cleanup_rejects_manager_transport_failure(self) -> None:
+        completed = [
+            subprocess.CompletedProcess([], returncode=1),
+            subprocess.CompletedProcess([], returncode=1),
+            subprocess.CompletedProcess([], returncode=1),
+            subprocess.CompletedProcess([], returncode=1),
+        ]
+        with patch("td_controller.review_runtime.subprocess.run", side_effect=completed):
+            with self.assertRaisesRegex(CodexReviewError, "could not verify"):
+                SystemdCgroupExecutor._kill_transient_unit("td-codex-review-fixed123")
+
+    def test_invalid_unit_name_is_rejected_before_dispatch(self) -> None:
+        delegate = FakeExecutor(ProcessOutput(returncode=0, stdout=b"", stderr=b""))
+        executor = SystemdCgroupExecutor(
+            delegate=delegate,
+            unit_name_factory=lambda: "other-unit",
+        )
+
+        with self.assertRaisesRegex(CodexReviewError, "invalid transient"):
+            executor.run(
+                ["/pinned/codex"],
+                input_bytes=b"",
+                cwd=Path("/tmp"),
+                timeout_seconds=1,
+            )
+        self.assertEqual(delegate.commands, [])
+
+
+class RuntimeAttestationTests(unittest.TestCase):
+    def test_attested_copy_is_bound_after_source_replacement(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "codex"
+            original = b"#!/bin/sh\nprintf 'codex-cli test\\n'\n"
+            source.write_bytes(original)
+            source.chmod(0o700)
+            host = source.with_name("codex-code-mode-host")
+            host.write_bytes(b"host payload")
+            host.chmod(0o700)
+            destination = Path(temporary) / "staged"
+            with (
+                patch("td_controller.review_runtime.shutil.which", return_value=str(source)),
+                patch(
+                    "td_controller.review_runtime.PINNED_CODEX_SHA256",
+                    hashlib.sha256(original).hexdigest(),
+                ),
+                patch(
+                    "td_controller.review_runtime.PINNED_CODE_MODE_HOST_SHA256",
+                    hashlib.sha256(host.read_bytes()).hexdigest(),
+                ),
+                patch("td_controller.review_runtime.PINNED_CODEX_VERSION", "codex-cli test"),
+            ):
+                staged = Path(_attest_codex_runtime(destination))
+            source.write_bytes(b"#!/bin/sh\nprintf 'replacement ran\\n'\n")
+
+            output = subprocess.run(
+                [str(staged), "--version"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(output.stdout.strip(), "codex-cli test")
+
+    def test_unreviewed_codex_binary_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            executable = Path(temporary) / "codex"
+            executable.write_bytes(b"unreviewed runtime")
+            executable.chmod(0o700)
+            host = executable.with_name("codex-code-mode-host")
+            host.write_bytes(b"unreviewed host")
+            host.chmod(0o700)
+            destination = Path(temporary) / "staged"
+            with patch("td_controller.review_runtime.shutil.which", return_value=str(executable)):
+                with self.assertRaisesRegex(CodexReviewError, "hash does not match"):
+                    _attest_codex_runtime(destination)
