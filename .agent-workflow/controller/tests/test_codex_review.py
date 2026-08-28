@@ -171,7 +171,7 @@ class CodexReviewProviderTests(unittest.TestCase):
 
         self.assertEqual(provider.artifact.acceptance_evidence[0].status, "pass")
 
-    def test_error_item_is_bounded_and_secret_redacted(self) -> None:
+    def test_error_item_does_not_surface_provider_message(self) -> None:
         events = [
             {"type": "thread.started", "thread_id": "fresh-session"},
             {
@@ -186,10 +186,36 @@ class CodexReviewProviderTests(unittest.TestCase):
         executor = FakeExecutor(ProcessOutput(returncode=0, stdout=output, stderr=b""))
         provider = CodexReviewProvider(request(), executor=executor)
 
-        with self.assertRaisesRegex(
-            CodexReviewError,
-            r"error item: provider failed \[REDACTED\]",
-        ):
+        with self.assertRaisesRegex(CodexReviewError, "structured error") as raised:
+            provider.run(task_id="TASK-001", role="code_review")
+        self.assertNotIn("sk-example", str(raised.exception))
+
+    def test_unknown_event_without_item_is_rejected(self) -> None:
+        events = [
+            {"type": "thread.started", "thread_id": "fresh-session"},
+            {"type": "tool.completed", "tool": "mcp"},
+        ]
+        output = ("\n".join(json.dumps(item) for item in events) + "\n").encode()
+        provider = CodexReviewProvider(
+            request(),
+            executor=FakeExecutor(ProcessOutput(0, output, b"")),
+        )
+
+        with self.assertRaisesRegex(CodexReviewError, "unknown event shape"):
+            provider.run(task_id="TASK-001", role="code_review")
+
+    def test_duplicate_thread_identity_is_rejected(self) -> None:
+        events = [
+            {"type": "thread.started", "thread_id": "first"},
+            {"type": "thread.started", "thread_id": "second"},
+        ]
+        output = ("\n".join(json.dumps(item) for item in events) + "\n").encode()
+        provider = CodexReviewProvider(
+            request(),
+            executor=FakeExecutor(ProcessOutput(0, output, b"")),
+        )
+
+        with self.assertRaisesRegex(CodexReviewError, "duplicate thread"):
             provider.run(task_id="TASK-001", role="code_review")
 
     def test_forbidden_tool_event_is_rejected(self) -> None:
@@ -300,8 +326,9 @@ class CodexReviewProviderTests(unittest.TestCase):
         executor = FakeExecutor(ProcessOutput(returncode=1, stdout=output, stderr=b""))
         provider = CodexReviewProvider(request(), executor=executor)
 
-        with self.assertRaisesRegex(CodexReviewError, "model capacity unavailable"):
+        with self.assertRaisesRegex(CodexReviewError, "structured error") as raised:
             provider.run(task_id="TASK-001", role="code_review")
+        self.assertNotIn("model capacity", str(raised.exception))
 
     def test_nonzero_process_exit_is_redacted_and_rejected(self) -> None:
         executor = FakeExecutor(
@@ -313,11 +340,9 @@ class CodexReviewProviderTests(unittest.TestCase):
         )
         provider = CodexReviewProvider(request(), executor=executor)
 
-        with self.assertRaisesRegex(
-            CodexReviewError,
-            r"provider unavailable \[REDACTED\]",
-        ):
+        with self.assertRaisesRegex(CodexReviewError, "reported stderr") as raised:
             provider.run(task_id="TASK-001", role="code_review")
+        self.assertNotIn("secret-value", str(raised.exception))
 
 
 if __name__ == "__main__":

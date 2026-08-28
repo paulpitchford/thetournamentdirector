@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import signal
 import subprocess
 import tempfile
@@ -336,25 +335,39 @@ def _parse_event_stream(stdout: bytes) -> tuple[str, str]:
         raise CodexReviewError("event stream exceeds the output limit")
     session_id: str | None = None
     messages: list[str] = []
+    allowed_events = {
+        "thread.started",
+        "turn.started",
+        "item.started",
+        "item.completed",
+        "turn.completed",
+    }
     for raw_line in stdout.decode("utf-8", errors="strict").splitlines():
         try:
             event = json.loads(raw_line)
         except json.JSONDecodeError as exc:
             raise CodexReviewError("Codex emitted malformed JSONL") from exc
-        if event.get("type") == "thread.started":
+        if not isinstance(event, dict) or event.get("type") not in allowed_events:
+            raise CodexReviewError("Codex emitted an unknown event shape")
+        event_type = event["type"]
+        if event_type == "thread.started":
+            if session_id is not None:
+                raise CodexReviewError("Codex emitted duplicate thread identity")
             session_id = event.get("thread_id")
+            continue
+        if event_type in {"turn.started", "turn.completed"}:
+            if "item" in event:
+                raise CodexReviewError("Codex lifecycle event contained an item")
+            continue
+
         item = event.get("item")
-        if isinstance(item, dict) and item.get("type") == "error":
-            raise CodexReviewError(
-                f"Codex returned error item: {_redacted_error_message(item)}"
-            )
-        if isinstance(item, dict) and item.get("type") not in ALLOWED_ITEM_TYPES:
-            raise CodexReviewError(f"Codex attempted forbidden tool: {item.get('type')}")
-        if (
-            event.get("type") == "item.completed"
-            and isinstance(item, dict)
-            and item.get("type") == "agent_message"
-        ):
+        if not isinstance(item, dict) or not isinstance(item.get("type"), str):
+            raise CodexReviewError("Codex item event has an invalid shape")
+        if item["type"] == "error":
+            raise CodexReviewError("Codex returned a structured error")
+        if item["type"] not in ALLOWED_ITEM_TYPES:
+            raise CodexReviewError(f"Codex attempted forbidden tool: {item['type']}")
+        if event_type == "item.completed" and item["type"] == "agent_message":
             text = item.get("text")
             if isinstance(text, str):
                 messages.append(text)
@@ -366,9 +379,8 @@ def _parse_event_stream(stdout: bytes) -> tuple[str, str]:
 
 
 def _process_error_reason(output: ProcessOutput) -> str:
-    stderr = output.stderr.decode("utf-8", errors="replace")
-    if stderr.strip():
-        return _redacted_message(stderr)
+    if output.stderr.strip():
+        return "provider process reported stderr"
     for raw_line in output.stdout.decode("utf-8", errors="replace").splitlines():
         try:
             event = json.loads(raw_line)
@@ -376,25 +388,8 @@ def _process_error_reason(output: ProcessOutput) -> str:
             continue
         item = event.get("item")
         if isinstance(item, dict) and item.get("type") == "error":
-            return _redacted_error_message(item)
-    return "unspecified"
-
-
-def _redacted_error_message(item: dict[str, Any]) -> str:
-    value = item.get("message")
-    return _redacted_message(value if isinstance(value, str) else "unspecified")
-
-
-def _redacted_message(value: str) -> str:
-    message = " ".join(value.split())[:500]
-    patterns = (
-        r"(?i)bearer\s+[a-z0-9._-]+",
-        r"\b(?:sk|gh[pousr])[-_][a-zA-Z0-9_-]{16,}\b",
-        r"(?i)(?:api[_ -]?key|token|secret)\s*[:=]\s*\S+",
-    )
-    for pattern in patterns:
-        message = re.sub(pattern, "[REDACTED]", message)
-    return message or "unspecified"
+            return "provider returned a structured error"
+    return "provider failed without diagnostics"
 
 
 def _validate_trusted_evidence(evidence: tuple[TrustedEvidence, ...]) -> None:

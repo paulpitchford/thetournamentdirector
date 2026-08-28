@@ -51,6 +51,8 @@ class RunLedger:
         self._migrate()
 
     def _connect(self) -> sqlite3.Connection:
+        # Autocommit is intentional; reserve() opens its own BEGIN IMMEDIATE
+        # transaction, while one-statement terminal updates persist on return.
         connection = sqlite3.connect(self.path, timeout=5.0, isolation_level=None)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA busy_timeout = 5000")
