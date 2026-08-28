@@ -163,6 +163,35 @@ class ReviewContractTests(unittest.TestCase):
         self.assertEqual(artifact.verdict, "block")
         self.assertEqual(artifact.findings, ())
 
+    def test_duplicate_json_keys_are_rejected_at_every_depth(self) -> None:
+        top_level = json.dumps(qa_artifact()).replace(
+            '"verdict": "pass"',
+            '"verdict": "block", "verdict": "pass"',
+            1,
+        )
+        nested = json.dumps(qa_artifact()).replace(
+            '"criterion": "CI passes"',
+            '"criterion": "other", "criterion": "CI passes"',
+            1,
+        )
+
+        for message in (top_level, nested):
+            with self.subTest(message=message):
+                with self.assertRaisesRegex(CodexReviewError, "unambiguous JSON"):
+                    _parse_artifact(message, request())
+
+    def test_duplicate_finding_ids_are_rejected(self) -> None:
+        value = qa_artifact()
+        value.update(
+            reviewType="code_security",
+            verdict="block",
+            findings=[finding(), finding()],
+            acceptanceEvidence=[],
+        )
+
+        with self.assertRaisesRegex(CodexReviewError, "duplicate finding ID"):
+            self.parse(value, "code_review")
+
     def test_code_review_block_requires_a_finding(self) -> None:
         value = qa_artifact()
         value.update(
