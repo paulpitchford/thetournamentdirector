@@ -54,15 +54,15 @@ The diagram is a summary; each task's `Depends on` field is authoritative.
 
 ### HUM-001 — Establish the trusted repository boundary
 
-- **Status:** In progress — clean local baseline committed; private remote and
-  protections remain.
+- **Status:** Complete — public remote, clean baseline, protection, and baseline
+  CI verified on 2026-08-28.
 - **Risk:** R3
 - **Depends on:** none
 - **Owner:** human
-- **Objective:** initialize Git, create a private remote, and prove proprietary
-  artifacts cannot enter ordinary worktrees.
+- **Objective:** initialize Git, create a protected public remote, and prove
+  proprietary artifacts cannot enter ordinary worktrees.
 - **Required work:** confirm `.gitignore`; inspect the initial staged file list;
-  create `main`; push to a private remote; configure branch protection,
+  create `main`; push to the approved public remote; configure branch protection,
   CODEOWNERS, required CI, secret scanning where available, and guarded
   auto-merge that excludes R3/escalated work.
 - **Acceptance:** `git ls-files` contains none of `downloads/`, `extracted/`, or
@@ -72,6 +72,8 @@ The diagram is a summary; each task's `Depends on` field is authoritative.
 
 ### HUM-002 — Approve orchestration pilot settings
 
+- **Status:** In progress — operating limits approved; isolated runner,
+  controller credential, and kill-switch configuration remain to be proven.
 - **Risk:** R3
 - **Depends on:** `HUM-001`
 - **Owner:** human

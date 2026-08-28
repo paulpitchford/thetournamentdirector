@@ -139,6 +139,7 @@ For the pilot:
 
 - maximum one Codex/Sandcastle model run of any role at a time until usage is
   understood;
+- maximum 60 minutes per model run and eight model runs per calendar day;
 - track Codex runs by task and role in one shared capacity ledger;
 - reserve at least 30% of the configured Codex allowance for fresh-session
   code/security/QA review and remediation;
@@ -149,11 +150,13 @@ For the pilot:
 - stop all model dispatch at the hard threshold;
 - no automatic provider failover;
 - no blind provider-error retry;
-- no periodic planner call when the backlog has not changed.
+- no periodic planner call when the backlog has not changed;
+- retain failed worktrees, prompts, and transcripts for 14 days.
 
-The actual cash/request/token thresholds must be chosen by the user before the
-pilot. When subscription quotas are opaque, use observed local usage as a
-conservative signal and rely on provider errors as the hard stop.
+The ChatGPT-backed Codex subscription does not expose a reliable cash balance to
+the controller. The approved run-count, duration, concurrency, remediation, and
+review-reserve limits are therefore the initial hard controls. Use observed
+usage as a conservative signal and treat provider limit errors as a hard stop.
 
 ## Work preservation when a limit is hit
 

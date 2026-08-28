@@ -130,9 +130,11 @@ and resume only when policy permits.
 
 Do not start an unattended mutating loop yet. Complete Stage 0 in
 `docs/AGENT_ORCHESTRATION_PLAN.md` first. This workspace is now a local Git
-repository on `main` with a verified clean baseline commit, but it has no remote
-or branch protection and the current user cannot access the Docker daemon.
-Never pass the current broad personal `gh` token into an agent container.
+repository on `main` with a verified clean baseline. Its GitHub remote is public
+and `main` is protected by PR-only changes, baseline CI, CODEOWNERS, linear
+history, and force-push/deletion guards. The current user still cannot access a
+rootless container daemon. Never pass the current broad personal `gh` token into
+an agent container or the unattended controller.
 
 ## Next concrete tasks
 
@@ -168,7 +170,9 @@ Minimum tests for that milestone:
 ## Workspace and safety
 
 - Local Git was initialized on `main`; baseline commit `293886b` excludes all
-  prohibited vendor/recovered paths. No remote is configured yet.
+  prohibited vendor/recovered paths. The public remote is
+  <https://github.com/paulpitchford/thetournamentdirector>, and a direct-push
+  probe proved protected `main` rejects writes.
 - `downloads/`, `extracted/`, and `analysis/decrypted/` contain proprietary
   vendor material and are ignored by the workspace `.gitignore`.
 - Do not redistribute vendor binaries or recovered source.
@@ -187,8 +191,11 @@ The next agent can use neutral product defaults without blocking implementation.
 Ask the user later for the product name/branding, preferred blind presets,
 default currency, and whether remote display should follow the MVP.
 
-The orchestration pilot still requires explicit choices before mutation:
-private GitHub remote, Codex model/reasoning levels, credential and spend
-limits, local versus dedicated runner, and artifact/transcript retention.
-Controller-owned PR automation, Copilot comment-only review, and R0-R2 policy
-auto-merge are accepted; R3/escalated work requires the user.
+The orchestration pilot settings were approved on 2026-08-28: local rootless
+execution, one high-reasoning Codex run at a time, 60 minutes per run, eight runs
+per day, 30% review/remediation reserve, two remediation rounds, no provider
+fallback, 14-day failed-artifact retention, and a global pause file. The
+remaining bootstrap work is to install/prove the rootless runner and provision a
+repository-scoped controller identity. Controller-owned PR automation, Copilot
+comment-only review, and R0-R2 policy auto-merge are accepted; R3/escalated work
+requires the user.
