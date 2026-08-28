@@ -116,8 +116,8 @@ docs/
   DELIVERY_BACKLOG.md       approved task DAG
 ```
 
-Do not create this layout until the workspace has been made a Git repository
-and the pilot decisions at the end of this document are approved.
+Do not create this layout until the proposed ADRs and pilot decisions at the
+end of this document are approved and the private remote is protected.
 
 ## Durable task contract
 
@@ -443,8 +443,8 @@ shell `while true` around an agent prompt.
 
 ### Stage 0 — prerequisites and threat model
 
-- Initialize Git and create a private remote.
-- Confirm ignored proprietary files are absent from Git history.
+- Local Git and a clean baseline commit are complete; create a private remote.
+- Reconfirm ignored proprietary files are absent before the first push.
 - Establish `main`, branch protection, CODEOWNERS, and required checks.
 - Fix Docker access without weakening socket permissions broadly.
 - Choose agent provider/model routes, authentication, concurrency, review

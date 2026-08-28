@@ -54,6 +54,8 @@ The diagram is a summary; each task's `Depends on` field is authoritative.
 
 ### HUM-001 — Establish the trusted repository boundary
 
+- **Status:** In progress — clean local baseline committed; private remote and
+  protections remain.
 - **Risk:** R3
 - **Depends on:** none
 - **Owner:** human

@@ -125,9 +125,9 @@ work, enter a durable cooldown, avoid blind retries, reserve review capacity,
 and resume only when policy permits.
 
 Do not start an unattended mutating loop yet. Complete Stage 0 in
-`docs/AGENT_ORCHESTRATION_PLAN.md` first. This workspace is not a Git repository,
-has no remote or branch protection, and the current user cannot access the
-Docker daemon. Never pass the current broad personal `gh` token into an agent
+`docs/AGENT_ORCHESTRATION_PLAN.md` first. This workspace is now a local Git
+repository on `main` with a verified clean baseline commit, but it has no remote
+or branch protection and the current user cannot access the Docker daemon. Never pass the current broad personal `gh` token into an agent
 container.
 
 ## Next concrete tasks
@@ -163,7 +163,8 @@ Minimum tests for that milestone:
 
 ## Workspace and safety
 
-- This directory is not currently a Git repository.
+- Local Git was initialized on `main`; baseline commit `293886b` excludes all
+  prohibited vendor/recovered paths. No remote is configured yet.
 - `downloads/`, `extracted/`, and `analysis/decrypted/` contain proprietary
   vendor material and are ignored by the workspace `.gitignore`.
 - Do not redistribute vendor binaries or recovered source.

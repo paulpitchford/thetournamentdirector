@@ -137,7 +137,7 @@ place to quarantine failures without contaminating the integration branch.
 
 The present workspace cannot run the proposed PR workflow yet:
 
-- it is not a Git repository;
+- local Git now exists on `main` with a verified clean baseline commit;
 - there is no configured remote or branch protection;
 - `modern-app/` has not been scaffolded;
 - Docker CLI is installed, but the current user cannot access the Docker daemon;

@@ -6,8 +6,8 @@
 ## Context
 
 Agent work needs a visible approved queue, immutable integration record,
-independent CI, review evidence, and protected merge boundary. The current
-workspace has no Git repository or remote.
+independent CI, review evidence, and protected merge boundary. The workspace
+now has a clean local `main` baseline but no remote.
 
 ## Proposed decision
 
