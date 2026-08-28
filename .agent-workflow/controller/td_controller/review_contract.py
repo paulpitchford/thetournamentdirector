@@ -14,6 +14,19 @@ class CodexReviewError(RuntimeError):
     """Raised when local Codex review execution or evidence fails closed."""
 
 
+class _DuplicateJsonKey(ValueError):
+    """Internal marker for ambiguous JSON objects."""
+
+
+def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise _DuplicateJsonKey(key)
+        result[key] = value
+    return result
+
+
 @dataclass(frozen=True)
 class TrustedEvidence:
     """Controller-authenticated deterministic evidence supplied to QA."""
@@ -102,9 +115,9 @@ def _parse_artifact(message: str, request: ReviewRequest) -> ReviewArtifact:
     _validate_git_sha(request.base_sha, "request.baseSha")
     _validate_git_sha(request.head_sha, "request.headSha")
     try:
-        value = json.loads(message)
-    except json.JSONDecodeError as exc:
-        raise CodexReviewError("review artifact is not JSON") from exc
+        value = json.loads(message, object_pairs_hook=_unique_json_object)
+    except (json.JSONDecodeError, _DuplicateJsonKey) as exc:
+        raise CodexReviewError("review artifact is not unambiguous JSON") from exc
     if not isinstance(value, dict):
         raise CodexReviewError("review artifact must be an object")
     expected_keys = {
@@ -155,6 +168,7 @@ def _parse_findings(value: Any) -> tuple[Finding, ...]:
     if not isinstance(value, list):
         raise CodexReviewError("findings must be an array")
     findings: list[Finding] = []
+    finding_ids: set[str] = set()
     keys = {
         "id",
         "severity",
@@ -179,9 +193,13 @@ def _parse_findings(value: Any) -> tuple[Finding, ...]:
         line = item["line"]
         if line is not None and (isinstance(line, bool) or not isinstance(line, int) or line < 1):
             raise CodexReviewError("finding line must be null or a positive integer")
+        finding_id = _required_string(item["id"], "finding.id")
+        if finding_id in finding_ids:
+            raise CodexReviewError(f"duplicate finding ID: {finding_id}")
+        finding_ids.add(finding_id)
         findings.append(
             Finding(
-                finding_id=_required_string(item["id"], "finding.id"),
+                finding_id=finding_id,
                 severity=item["severity"],
                 path=_required_string(item["path"], "finding.path"),
                 line=line,
