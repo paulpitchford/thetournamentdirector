@@ -10,6 +10,7 @@ import signal
 import subprocess
 import tempfile
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -20,6 +21,9 @@ MAX_PROMPT_BYTES = 512_000
 MAX_OUTPUT_BYTES = 2_000_000
 PINNED_CODEX_VERSION = "codex-cli 0.150.1"
 PINNED_CODEX_SHA256 = "abf1bb1643a79f73aa78ee627e111e02d4f8c98f25813a0cf6ce277709664386"
+PINNED_CODE_MODE_HOST_SHA256 = (
+    "b3d633427c8c75057fba11dad6051714d44886440305e86ba9d2c0366f4dd63b"
+)
 ALLOWED_ROLES = frozenset({"code_review", "qa_review"})
 ALLOWED_ITEM_TYPES = frozenset({"agent_message", "reasoning"})
 
@@ -47,31 +51,47 @@ def _minimal_codex_environment(executable: str) -> dict[str, str]:
     }
 
 
-def _attest_codex_runtime() -> str:
+def _stage_file(source: Path, destination: Path, expected_sha256: str) -> None:
+    digest = hashlib.sha256()
+    with source.open("rb") as input_file, destination.open("xb") as output_file:
+        while chunk := input_file.read(1024 * 1024):
+            digest.update(chunk)
+            output_file.write(chunk)
+        output_file.flush()
+        os.fsync(output_file.fileno())
+    destination.chmod(0o500)
+    if digest.hexdigest() != expected_sha256:
+        raise CodexReviewError("Codex runtime hash does not match the reviewed pin")
+
+
+def _attest_codex_runtime(destination_dir: Path) -> str:
     executable = shutil.which("codex")
     if executable is None:
         raise CodexReviewError("pinned Codex runtime is unavailable")
-    resolved = str(Path(executable).resolve(strict=True))
-    digest = hashlib.sha256()
-    with Path(resolved).open("rb") as runtime:
-        for chunk in iter(lambda: runtime.read(1024 * 1024), b""):
-            digest.update(chunk)
-    if digest.hexdigest() != PINNED_CODEX_SHA256:
-        raise CodexReviewError("Codex runtime hash does not match the reviewed pin")
+    source = Path(executable).resolve(strict=True)
+    host_source = source.with_name("codex-code-mode-host").resolve(strict=True)
+    destination_dir.mkdir(mode=0o700)
+    staged = destination_dir / "codex"
+    _stage_file(source, staged, PINNED_CODEX_SHA256)
+    _stage_file(
+        host_source,
+        destination_dir / "codex-code-mode-host",
+        PINNED_CODE_MODE_HOST_SHA256,
+    )
     version = subprocess.run(
-        [resolved, "--version"],
+        [str(staged), "--version"],
         check=False,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         timeout=10,
-        env=_minimal_codex_environment(resolved),
+        env=_minimal_codex_environment(str(staged)),
     )
     if version.returncode != 0 or version.stdout.decode(errors="replace").strip() != (
         PINNED_CODEX_VERSION
     ):
         raise CodexReviewError("Codex runtime version does not match the reviewed pin")
-    return resolved
+    return str(staged)
 
 
 class CommandExecutor(Protocol):
@@ -138,6 +158,8 @@ class SubprocessExecutor:
             except Exception as exc:
                 thread_errors.append(exc)
                 kill_process_group()
+            finally:
+                stream.close()
 
         def write_prompt() -> None:
             try:
@@ -150,9 +172,17 @@ class SubprocessExecutor:
                 kill_process_group()
 
         threads = [
-            threading.Thread(target=read_bounded, args=(process.stdout, stdout)),
-            threading.Thread(target=read_bounded, args=(process.stderr, stderr)),
-            threading.Thread(target=write_prompt),
+            threading.Thread(
+                target=read_bounded,
+                args=(process.stdout, stdout),
+                daemon=True,
+            ),
+            threading.Thread(
+                target=read_bounded,
+                args=(process.stderr, stderr),
+                daemon=True,
+            ),
+            threading.Thread(target=write_prompt, daemon=True),
         ]
         for thread in threads:
             thread.start()
@@ -164,14 +194,18 @@ class SubprocessExecutor:
             timed_out = True
             kill_process_group()
             process.wait()
+        stream_deadline = time.monotonic() + 5
         for thread in threads:
-            thread.join(timeout=5)
+            thread.join(timeout=max(0.0, stream_deadline - time.monotonic()))
+        if any(thread.is_alive() for thread in threads):
+            kill_process_group()
+            for thread in threads:
+                thread.join(timeout=max(0.0, stream_deadline - time.monotonic()))
+        if any(thread.is_alive() for thread in threads):
+            raise CodexReviewError("local Codex stream worker did not terminate")
         process.stdin.close()
         process.stdout.close()
         process.stderr.close()
-        if any(thread.is_alive() for thread in threads):
-            kill_process_group()
-            raise CodexReviewError("local Codex stream worker did not terminate")
         if timed_out:
             raise CodexReviewError("local Codex review timed out")
         if thread_errors:
@@ -268,13 +302,13 @@ class CodexReviewProvider:
         if task_id != self.request.task_id or role != self.request.role:
             raise CodexReviewError("provider invocation does not match its review request")
 
-        codex_executable = _attest_codex_runtime()
         prompt = self._build_prompt().encode("utf-8")
         if len(prompt) > MAX_PROMPT_BYTES:
             raise CodexReviewError("review prompt exceeds the configured size limit")
 
         with tempfile.TemporaryDirectory(prefix="td-codex-review-") as temporary:
             root = Path(temporary)
+            codex_executable = _attest_codex_runtime(root / "runtime")
             schema_path = root / "review-schema.json"
             schema_path.write_text(json.dumps(REVIEW_OUTPUT_SCHEMA), encoding="utf-8")
             output = self.executor.run(
@@ -491,12 +525,15 @@ def _parse_artifact(message: str, request: ReviewRequest) -> ReviewArtifact:
     acceptance = _parse_acceptance(value["acceptanceEvidence"], request)
     if request.role == "qa_review":
         _validate_qa_acceptance(acceptance, request, verdict=value["verdict"])
-    elif acceptance:
-        raise CodexReviewError("code/security review returned QA acceptance evidence")
-    if value["verdict"] == "pass" and findings:
-        raise CodexReviewError("passing review cannot contain findings")
-    if value["verdict"] == "block" and not findings:
-        raise CodexReviewError("blocking review must contain findings")
+        if value["verdict"] == "pass" and findings:
+            raise CodexReviewError("passing QA review cannot contain findings")
+    else:
+        if acceptance:
+            raise CodexReviewError("code/security review returned QA acceptance evidence")
+        if value["verdict"] == "pass" and findings:
+            raise CodexReviewError("passing review cannot contain findings")
+        if value["verdict"] == "block" and not findings:
+            raise CodexReviewError("blocking code review must contain findings")
     return ReviewArtifact(
         review_type=expected_type,
         task_id=request.task_id,
@@ -637,8 +674,8 @@ def _validate_qa_acceptance(
             )
 
     has_non_passing = any(item.status != "pass" for item in evidence)
-    if verdict == "pass" and has_non_passing:
-        raise CodexReviewError("QA pass verdict requires every criterion to pass")
+    if (verdict == "pass") == has_non_passing:
+        raise CodexReviewError("QA verdict must match aggregate criterion status")
 
 
 def _required_string(value: Any, field: str) -> str:

@@ -19,7 +19,10 @@ test output, and runtime evidence.
 ## Decision
 
 Run the authenticated Codex provider process locally with effectful capabilities
-contained before execution. Attest the exact Codex binary version and SHA-256,
+contained before execution. Copy Codex and its code-mode host into a
+controller-owned temporary runtime directory while hashing both, verify the
+staged Codex version, and execute that same staged copy. This binds execution
+to the attested bytes rather than a replaceable source pathname. Then
 ignore user configuration and rules, disable shell, browser, computer-use, apps,
 MCP, and hosted web search, and select a named permission profile that grants
 only minimal runtime reads with no workspace reads, writes, or network access.

@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import signal
+import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from dataclasses import replace
 from pathlib import Path
@@ -134,6 +138,35 @@ class SubprocessExecutorTests(unittest.TestCase):
         self.assertTrue(reported["home"])
         self.assertTrue(reported["path"])
 
+    def test_pipe_holding_descendant_cannot_hang_cleanup(self) -> None:
+        executor = SubprocessExecutor()
+        with tempfile.TemporaryDirectory() as temporary:
+            pid_file = Path(temporary) / "child.pid"
+            child = "import time; time.sleep(30)"
+            parent = (
+                "import os, pathlib, subprocess, sys; "
+                f"p=subprocess.Popen([sys.executable, '-c', {child!r}], "
+                "start_new_session=True, stdout=sys.stdout, stderr=sys.stderr); "
+                f"pathlib.Path({str(pid_file)!r}).write_text(str(p.pid)); os._exit(0)"
+            )
+            started = time.monotonic()
+            try:
+                with self.assertRaisesRegex(CodexReviewError, "worker did not terminate"):
+                    executor.run(
+                        [sys.executable, "-c", parent],
+                        input_bytes=b"",
+                        cwd=Path(temporary),
+                        timeout_seconds=2,
+                    )
+                self.assertLess(time.monotonic() - started, 7)
+            finally:
+                if pid_file.exists():
+                    try:
+                        os.kill(int(pid_file.read_text()), signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    time.sleep(0.1)
+
     def test_output_flood_is_killed_at_the_hard_limit(self) -> None:
         executor = SubprocessExecutor()
         with tempfile.TemporaryDirectory() as temporary:
@@ -159,14 +192,52 @@ class SubprocessExecutorTests(unittest.TestCase):
 
 
 class RuntimeAttestationTests(unittest.TestCase):
+    def test_attested_copy_is_bound_after_source_replacement(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "codex"
+            original = b"#!/bin/sh\nprintf 'codex-cli test\\n'\n"
+            source.write_bytes(original)
+            source.chmod(0o700)
+            host = source.with_name("codex-code-mode-host")
+            host.write_bytes(b"host payload")
+            host.chmod(0o700)
+            destination = Path(temporary) / "staged"
+            with (
+                patch("td_controller.codex_review.shutil.which", return_value=str(source)),
+                patch(
+                    "td_controller.codex_review.PINNED_CODEX_SHA256",
+                    hashlib.sha256(original).hexdigest(),
+                ),
+                patch(
+                    "td_controller.codex_review.PINNED_CODE_MODE_HOST_SHA256",
+                    hashlib.sha256(host.read_bytes()).hexdigest(),
+                ),
+                patch("td_controller.codex_review.PINNED_CODEX_VERSION", "codex-cli test"),
+            ):
+                staged = Path(_attest_codex_runtime(destination))
+            source.write_bytes(b"#!/bin/sh\nprintf 'replacement ran\\n'\n")
+
+            output = subprocess.run(
+                [str(staged), "--version"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(output.stdout.strip(), "codex-cli test")
+
     def test_unreviewed_codex_binary_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             executable = Path(temporary) / "codex"
             executable.write_bytes(b"unreviewed runtime")
             executable.chmod(0o700)
+            host = executable.with_name("codex-code-mode-host")
+            host.write_bytes(b"unreviewed host")
+            host.chmod(0o700)
+            destination = Path(temporary) / "staged"
             with patch("td_controller.codex_review.shutil.which", return_value=str(executable)):
                 with self.assertRaisesRegex(CodexReviewError, "hash does not match"):
-                    _attest_codex_runtime()
+                    _attest_codex_runtime(destination)
 
 
 class CodexReviewProviderTests(unittest.TestCase):
@@ -347,7 +418,45 @@ class CodexReviewProviderTests(unittest.TestCase):
         )
         provider = CodexReviewProvider(request("qa_review"), executor=executor)
 
-        with self.assertRaisesRegex(CodexReviewError, "every criterion to pass"):
+        with self.assertRaisesRegex(CodexReviewError, "aggregate criterion"):
+            provider.run(task_id="TASK-001", role="qa_review")
+
+    def test_qa_block_with_failed_criterion_needs_no_separate_finding(self) -> None:
+        value = artifact("qa_review")
+        value["verdict"] = "block"
+        value["acceptanceEvidence"][0]["status"] = "fail"
+        executor = FakeExecutor(
+            ProcessOutput(returncode=0, stdout=event_stream(value), stderr=b"")
+        )
+        provider = CodexReviewProvider(request("qa_review"), executor=executor)
+
+        provider.run(task_id="TASK-001", role="qa_review")
+
+        self.assertEqual(provider.artifact.verdict, "block")
+        self.assertEqual(provider.artifact.findings, ())
+
+    def test_qa_block_with_all_criteria_passing_is_rejected(self) -> None:
+        value = artifact("qa_review")
+        value["verdict"] = "block"
+        value["findings"] = [
+            {
+                "id": "unrelated",
+                "severity": "medium",
+                "path": "README.md",
+                "line": 1,
+                "evidence": "unrelated",
+                "risk": "unrelated",
+                "requiredAction": "remove unrelated finding",
+                "suggestedTest": None,
+                "confidence": 0.9,
+            }
+        ]
+        executor = FakeExecutor(
+            ProcessOutput(returncode=0, stdout=event_stream(value), stderr=b"")
+        )
+        provider = CodexReviewProvider(request("qa_review"), executor=executor)
+
+        with self.assertRaisesRegex(CodexReviewError, "aggregate criterion"):
             provider.run(task_id="TASK-001", role="qa_review")
 
     def test_qa_duplicate_criterion_is_rejected(self) -> None:
