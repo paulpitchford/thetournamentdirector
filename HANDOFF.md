@@ -195,7 +195,8 @@ The orchestration pilot settings were approved on 2026-08-28: local rootless
 execution, one high-reasoning Codex run at a time, 60 minutes per run, eight runs
 per day, 30% review/remediation reserve, two remediation rounds, no provider
 fallback, 14-day retention for failed worktrees, prompts, and transcripts, and
-a global pause file plus hard budget stop. The remaining bootstrap work is to install/prove the rootless runner and provision a
-repository-scoped controller identity. Controller-owned PR automation, Copilot
+a global pause file plus hard budget stop. The remaining bootstrap work is to
+install and prove the rootless runner and provision a repository-scoped
+controller identity. Controller-owned PR automation, Copilot
 comment-only review, and R0-R2 policy auto-merge are accepted; R3/escalated work
 requires the user.
