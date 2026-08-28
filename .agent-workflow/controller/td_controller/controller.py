@@ -46,6 +46,12 @@ class Controller:
 
         run_id = self.ledger.reserve(task_id=task_id, role=role)
         try:
+            pause_status = self.pause_switch.status()
+            if pause_status.paused:
+                raise ControllerPausedError(
+                    f"controller paused during admission: "
+                    f"{pause_status.reason or 'unspecified'}"
+                )
             provider_result = self.provider.run(task_id=task_id, role=role)
         except Exception as exc:
             self.ledger.finish(run_id, status="FAILED", error=type(exc).__name__)

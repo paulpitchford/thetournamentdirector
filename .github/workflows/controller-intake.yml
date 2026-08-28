@@ -47,8 +47,17 @@ jobs:
             exit 0
           fi
 
-          objective=$(jq -r '.objective' "$task_file")
-          risk=$(jq -r '.riskClass' "$task_file")
+          objective=$(jq -er '
+            .objective
+            | select(type == "string")
+            | gsub("[[:space:]]+"; " ")
+            | sub("^ +"; "")
+            | sub(" +$"; "")
+            | select(length > 0 and length <= 120)
+          ' "$task_file")
+          risk=$(jq -er '
+            .riskClass | select(. == "R0" or . == "R1" or . == "R2" or . == "R3")
+          ' "$task_file")
           body_file=$(mktemp)
           trap 'rm -f "$body_file"' EXIT
           {

@@ -100,10 +100,10 @@ def _boolean(value: Any, field: str) -> bool:
     return value
 
 
-def _relative_path(value: Any, field: str) -> Path:
+def _approved_path(value: Any, field: str, approved: Path) -> Path:
     path = Path(_string(value, field))
-    if path.is_absolute() or ".." in path.parts:
-        raise ConfigError(f"{field} must be a repository-relative path")
+    if path != approved:
+        raise ConfigError(f"{field} must be {approved}")
     return path
 
 
@@ -116,6 +116,8 @@ def parse_config(value: Any) -> PilotConfig:
     _exact_keys(provider, {"name", "model", "reasoning", "fallback"}, "provider")
     if provider["name"] != "codex":
         raise ConfigError("provider.name must be codex")
+    if provider["model"] != "configured-default":
+        raise ConfigError("provider.model must be configured-default")
     if provider["reasoning"] != "high":
         raise ConfigError("provider.reasoning must be high")
     if provider["fallback"] is not None:
@@ -146,8 +148,8 @@ def parse_config(value: Any) -> PilotConfig:
     if _boolean(runner["rootlessRequired"], "runner.rootlessRequired") is not True:
         raise ConfigError("runner.rootlessRequired must be true")
     socket = Path(_string(runner["socket"], "runner.socket"))
-    if not socket.is_absolute() or socket.name != "podman.sock":
-        raise ConfigError("runner.socket must be an absolute podman.sock path")
+    if socket != Path("/run/user/1000/podman/podman.sock"):
+        raise ConfigError("runner.socket must match the approved user socket")
     if runner["networkDefault"] != "none":
         raise ConfigError("runner.networkDefault must be none")
 
@@ -168,7 +170,7 @@ def parse_config(value: Any) -> PilotConfig:
         version=version,
         provider=ProviderConfig(
             name="codex",
-            model=_string(provider["model"], "provider.model"),
+            model="configured-default",
             reasoning="high",
             fallback=None,
         ),
@@ -180,10 +182,16 @@ def parse_config(value: Any) -> PilotConfig:
                 maximum=1,
             ),
             max_run_minutes=_integer(
-                limits["maxRunMinutes"], "limits.maxRunMinutes", minimum=1, maximum=60
+                limits["maxRunMinutes"],
+                "limits.maxRunMinutes",
+                minimum=60,
+                maximum=60,
             ),
             max_runs_per_day=_integer(
-                limits["maxRunsPerDay"], "limits.maxRunsPerDay", minimum=1, maximum=8
+                limits["maxRunsPerDay"],
+                "limits.maxRunsPerDay",
+                minimum=8,
+                maximum=8,
             ),
             review_reserve_percent=_integer(
                 limits["reviewReservePercent"],
@@ -194,11 +202,14 @@ def parse_config(value: Any) -> PilotConfig:
             max_remediation_rounds=_integer(
                 limits["maxRemediationRounds"],
                 "limits.maxRemediationRounds",
-                minimum=0,
+                minimum=2,
                 maximum=2,
             ),
             retention_days=_integer(
-                limits["retentionDays"], "limits.retentionDays", minimum=1, maximum=14
+                limits["retentionDays"],
+                "limits.retentionDays",
+                minimum=14,
+                maximum=14,
             ),
         ),
         runner=RunnerConfig(
@@ -208,9 +219,21 @@ def parse_config(value: Any) -> PilotConfig:
             network_default="none",
         ),
         controller=ControllerConfig(
-            pause_file=_relative_path(controller["pauseFile"], "controller.pauseFile"),
-            database=_relative_path(controller["database"], "controller.database"),
-            credential=_relative_path(controller["credential"], "controller.credential"),
+            pause_file=_approved_path(
+                controller["pauseFile"],
+                "controller.pauseFile",
+                Path(".agent-workflow/state/PAUSED"),
+            ),
+            database=_approved_path(
+                controller["database"],
+                "controller.database",
+                Path(".agent-workflow/state/controller.sqlite3"),
+            ),
+            credential=_approved_path(
+                controller["credential"],
+                "controller.credential",
+                Path(".agent-workflow/state/credentials/controller_ed25519"),
+            ),
             pull_request_creation="github-actions-create-event",
         ),
     )

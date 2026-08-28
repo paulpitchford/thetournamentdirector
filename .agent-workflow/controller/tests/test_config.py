@@ -44,6 +44,15 @@ class ConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, "between 30 and 30"):
             parse_config(value)
 
+    def test_changed_approved_run_limit_is_rejected(self) -> None:
+        value = copy.deepcopy(valid_config())
+        limits = value["limits"]
+        self.assertIsInstance(limits, dict)
+        limits["maxRunMinutes"] = 30
+
+        with self.assertRaisesRegex(ConfigError, "between 60 and 60"):
+            parse_config(value)
+
     def test_fallback_provider_is_rejected(self) -> None:
         value = copy.deepcopy(valid_config())
         provider = value["provider"]
@@ -59,7 +68,7 @@ class ConfigTests(unittest.TestCase):
         self.assertIsInstance(controller, dict)
         controller["database"] = "../outside.sqlite3"
 
-        with self.assertRaisesRegex(ConfigError, "repository-relative"):
+        with self.assertRaisesRegex(ConfigError, "must be .agent-workflow/state"):
             parse_config(value)
 
 

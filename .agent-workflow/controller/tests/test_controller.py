@@ -28,6 +28,20 @@ def limits() -> LimitConfig:
     )
 
 
+class PausingLedger(RunLedger):
+    """Test boundary that activates the pause switch during reservation."""
+
+    def __init__(self, *args: object, pause_switch: PauseSwitch, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)
+        self.pause_switch = pause_switch
+
+    def reserve(self, *, task_id: str, role: str) -> str:
+        """Reserve, then simulate a concurrent operator pause."""
+        run_id = super().reserve(task_id=task_id, role=role)
+        self.pause_switch.pause("concurrent operator pause")
+        return run_id
+
+
 class ControllerTests(unittest.TestCase):
     """Prove provider calls cannot bypass pause or admission controls."""
 
@@ -72,6 +86,26 @@ class ControllerTests(unittest.TestCase):
 
         self.assertEqual(provider.calls, [])
         self.assertEqual(self.ledger.records(), [])
+
+    def test_pause_during_reservation_blocks_provider(self) -> None:
+        provider = FakeProvider()
+        ledger = PausingLedger(
+            self.root / "race.sqlite3",
+            limits(),
+            now=lambda: FIXED_NOW,
+            pause_switch=self.pause_switch,
+        )
+        controller = Controller(
+            ledger=ledger,
+            pause_switch=self.pause_switch,
+            provider=provider,
+        )
+
+        with self.assertRaisesRegex(ControllerPausedError, "during admission"):
+            controller.run(task_id="TASK-001", role="planning")
+
+        self.assertEqual(provider.calls, [])
+        self.assertEqual(ledger.records()[0].status, "FAILED")
 
     def test_provider_failure_is_recorded_and_reraised(self) -> None:
         provider = FakeProvider(error=RuntimeError("provider unavailable"))
