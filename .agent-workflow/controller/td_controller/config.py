@@ -45,6 +45,16 @@ class RunnerConfig:
 
 
 @dataclass(frozen=True)
+class ReviewConfig:
+    """Mandatory local model-review separation policy."""
+
+    model_reviews_on_github: bool
+    required_roles: tuple[str, str]
+    fresh_session_per_role: bool
+    distinct_sessions_required: bool
+
+
+@dataclass(frozen=True)
 class ControllerConfig:
     """Trusted host-controller paths and integration mode."""
 
@@ -62,6 +72,7 @@ class PilotConfig:
     provider: ProviderConfig
     limits: LimitConfig
     runner: RunnerConfig
+    reviews: ReviewConfig
     controller: ControllerConfig
 
 
@@ -110,7 +121,11 @@ def _approved_path(value: Any, field: str, approved: Path) -> Path:
 def parse_config(value: Any) -> PilotConfig:
     """Parse and validate an untrusted decoded JSON value."""
     root = _object(value, "config")
-    _exact_keys(root, {"version", "provider", "limits", "runner", "controller"}, "config")
+    _exact_keys(
+        root,
+        {"version", "provider", "limits", "runner", "reviews", "controller"},
+        "config",
+    )
 
     provider = _object(root["provider"], "provider")
     _exact_keys(provider, {"name", "model", "reasoning", "fallback"}, "provider")
@@ -152,6 +167,28 @@ def parse_config(value: Any) -> PilotConfig:
         raise ConfigError("runner.socket must match the approved user socket")
     if runner["networkDefault"] != "none":
         raise ConfigError("runner.networkDefault must be none")
+
+    reviews = _object(root["reviews"], "reviews")
+    _exact_keys(
+        reviews,
+        {
+            "modelReviewsOnGitHub",
+            "requiredRoles",
+            "freshSessionPerRole",
+            "distinctSessionsRequired",
+        },
+        "reviews",
+    )
+    if _boolean(reviews["modelReviewsOnGitHub"], "reviews.modelReviewsOnGitHub"):
+        raise ConfigError("reviews.modelReviewsOnGitHub must be false")
+    if reviews["requiredRoles"] != ["code_review", "qa_review"]:
+        raise ConfigError("reviews.requiredRoles must be code_review then qa_review")
+    if not _boolean(reviews["freshSessionPerRole"], "reviews.freshSessionPerRole"):
+        raise ConfigError("reviews.freshSessionPerRole must be true")
+    if not _boolean(
+        reviews["distinctSessionsRequired"], "reviews.distinctSessionsRequired"
+    ):
+        raise ConfigError("reviews.distinctSessionsRequired must be true")
 
     controller = _object(root["controller"], "controller")
     _exact_keys(
@@ -217,6 +254,12 @@ def parse_config(value: Any) -> PilotConfig:
             rootless_required=True,
             socket=socket,
             network_default="none",
+        ),
+        reviews=ReviewConfig(
+            model_reviews_on_github=False,
+            required_roles=("code_review", "qa_review"),
+            fresh_session_per_role=True,
+            distinct_sessions_required=True,
         ),
         controller=ControllerConfig(
             pause_file=_approved_path(

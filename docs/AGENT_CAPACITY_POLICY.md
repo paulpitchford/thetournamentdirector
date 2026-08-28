@@ -21,11 +21,9 @@ non-zero exit could hide a real error or waste more quota. A provider failure
 therefore ends that Sandcastle implementation/planning/review/remediation run
 and is returned to our harness.
 
-GitHub Copilot is used only for PR review, not implementation. Its review
-availability is observed through GitHub review requests/comments and tracked as
-an integration status, separate from Codex capacity. Codex is the only coding
-agent, so its allowance must cover implementation, remediation, planning, and
-fresh-session code/security/QA reviews.
+No model review runs on GitHub. Codex is the only agent, so its local allowance
+must cover implementation, remediation, planning, a fresh code/security review,
+and a separate fresh QA review.
 
 Sandcastle can expose raw token usage when the provider stream/session contains
 it. It does not know the user's total account allowance, reliable remaining
@@ -141,10 +139,10 @@ For the pilot:
   understood;
 - maximum 60 minutes per model run and eight model runs per calendar day;
 - track Codex runs by task and role in one shared capacity ledger;
-- reserve at least 30% of the configured Codex allowance for fresh-session
-  code/security/QA review and remediation;
-- track Copilot PR-review timeout/failure separately; it does not provide Codex
-  implementation capacity;
+- reserve at least 30% of the configured Codex allowance for fresh local
+  code/security review, separate QA, and remediation;
+- reject review evidence unless code/security and QA use distinct fresh local
+  sessions, also distinct from implementation/remediation;
 - stop new implementations at the soft budget threshold;
 - permit already-started verification/review to use only its reserved budget;
 - stop all model dispatch at the hard threshold;
@@ -254,11 +252,11 @@ controller still enforces them even when prompt context is compacted.
 
 ## Provider fallback
 
-There is currently no alternate coding-agent provider: Codex is the only agent
-available through Pi/Sandcastle/local runs, and Copilot provides PR review only.
-If Codex capacity is exhausted, coding, remediation, and Codex review waits.
-Copilot review and deterministic CI may continue for work already pushed, but
-they cannot replace the missing Codex implementation/review roles.
+There is currently no alternate agent provider: Codex is the only agent
+available through Pi/Sandcastle/local runs. If Codex capacity is exhausted,
+coding, remediation, code/security review, and QA wait. Deterministic CI may
+continue for work already pushed, but it cannot replace either local review
+role.
 
 Never treat another installed but unauthenticated/unfunded CLI as fallback.
 Adding a provider or alternate Codex model route requires an explicit ADR,

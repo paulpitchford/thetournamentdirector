@@ -9,8 +9,8 @@ Codex is the only coding agent and must cover implementation, remediation,
 planning, and fresh-session reviews. It can hit request, account, context,
 credit, or billing limits during any role. Sandcastle fails fast and
 deliberately does not retry provider errors. Subscription capacity may not
-expose a reliable remaining quota or reset API. Copilot is a separate PR-review
-integration, not fallback coding capacity.
+expose a reliable remaining quota or reset API. Code/security review and QA run
+as separate local Codex sessions and share this same capacity.
 
 ## Decision
 
@@ -23,8 +23,8 @@ allowance reserved for review/remediation, no more than two remediation rounds,
 A mid-task Sandcastle interruption preserves the named branch and dirty
 worktree, enters durable `WAITING_CAPACITY`, and resumes only after a reliable
 reset, conservative cooldown, or explicit operator action. Auth/billing
-failures never retry automatically. Copilot review timeout/failure pauses the PR
-review status but is not treated as Codex capacity.
+failures never retry automatically. Required local review or QA capacity pauses
+the PR in `WAITING_REVIEW_CAPACITY`.
 
 ## Consequences
 

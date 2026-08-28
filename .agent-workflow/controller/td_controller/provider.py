@@ -25,8 +25,14 @@ class Provider(Protocol):
 class FakeProvider:
     """Deterministic provider for controller and recovery tests."""
 
-    def __init__(self, *, error: Exception | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        error: Exception | None = None,
+        session_id: str | None = "fake-session",
+    ) -> None:
         self.error = error
+        self.session_id = session_id
         self.calls: list[tuple[str, str]] = []
 
     def run(self, *, task_id: str, role: str) -> ProviderResult:
@@ -34,4 +40,7 @@ class FakeProvider:
         self.calls.append((task_id, role))
         if self.error is not None:
             raise self.error
-        return ProviderResult(summary=f"fake:{task_id}:{role}")
+        return ProviderResult(
+            summary=f"fake:{task_id}:{role}",
+            session_id=self.session_id,
+        )

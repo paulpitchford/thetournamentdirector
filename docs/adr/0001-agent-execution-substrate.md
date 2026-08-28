@@ -1,6 +1,6 @@
 # ADR 0001: Use Codex through Sandcastle, with Copilot PR review
 
-- **Status:** Accepted
+- **Status:** Accepted; Copilot-review decision superseded by ADR 0007
 - **Date:** 2026-08-28
 
 ## Context

@@ -38,8 +38,8 @@ Every agent change passes through these stages:
    tests selected by the changed risk area.
 5. **Security guard** — secret, dependency, source, and dangerous-browser-API
    scans.
-6. **Independent review** — separate code-quality, security, and QA assessments
-   return structured findings with file/line evidence.
+6. **Independent review** — one fresh local code/security assessment and a
+   separate fresh local QA assessment return structured current-SHA evidence.
 7. **Remediation guard** — accepted findings go to a separate repair run, then
    every deterministic check is repeated.
 8. **PR guard** — protected `main`, required clean CI and independent review
@@ -351,9 +351,9 @@ confidence
 
 Critical/high findings always block. Medium findings block unless the user
 records a time-limited exception. Low/note findings cannot trigger unbounded
-polishing. Current Copilot PR-review comments are blocking by default because
-Copilot returns comment-only reviews rather than this structured severity
-schema; the controller routes them through bounded remediation/re-review.
+polishing. Both the local code/security reviewer and the separate local QA agent
+must emit this schema (plus QA acceptance evidence); absent or malformed output
+blocks progression.
 
 ## Remediation and rejection
 
@@ -418,7 +418,8 @@ The controller maintains a PR section containing:
 - unit/property/E2E tests added or changed;
 - coverage delta and mutation result when applicable;
 - dependency, secret, and source-scan result;
-- code/security/QA review finding counts and remediation commits;
+- local code/security and QA finding counts, session identities, and remediation
+  commits;
 - remaining exceptions and required user escalations.
 
 The user or a later auditor should be able to determine why the change was

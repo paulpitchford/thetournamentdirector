@@ -111,17 +111,19 @@ level-zero transition must be guarded by level ID/revision so it occurs once.
 The user wants to trial an always-on orchestrator that works from a detailed
 plan and manages isolated agents, builds, QA, reviews, branches, and PRs with
 strong guards. The accepted design uses Codex through Sandcastle for
-implementation, remediation, planning, and fresh-session reviews. The trusted
-controller pushes branches and creates PRs; GitHub Copilot supplies additional
-PR review only. GitHub issues/PRs, deterministic CI, bounded jobs, and
-policy-controlled auto-merge form the experiment.
+implementation, remediation, planning, and two mandatory local review roles.
+The trusted controller pushes branches and creates PRs. Fresh read-only Codex
+sessions perform code/security review and QA; no model review runs on GitHub.
+GitHub issues/PRs, deterministic CI, bounded jobs, and policy-controlled
+auto-merge form the experiment.
 `docs/ENGINEERING_QUALITY_POLICY.md` defines mandatory compiler, lint,
 architecture, testing, security, independent-review, and remediation gates so
 agent-written code cannot progress merely because an agent claims it is done.
 `docs/POLICY_ENFORCEMENT.md` makes the trust boundary explicit: Sandcastle only
 runs bounded Codex workers without GitHub credentials; trusted controller code
-checks diffs, pushes branches, opens PRs, requests/collects Copilot review, and
-publishes required statuses. GitHub branch protection controls policy auto-merge
+checks diffs, pushes branches, opens PRs, collects current-SHA local
+code/security and QA evidence, and publishes required statuses. GitHub branch
+protection controls policy auto-merge
 and routes only R3/escalated work to the user.
 `docs/AGENT_CAPACITY_POLICY.md` defines safe unattended behaviour when Codex or
 another provider hits a rate, account, context, or spend limit: preserve Git
@@ -201,5 +203,5 @@ fallback, 14-day retention for failed worktrees, prompts, and transcripts, and
 a global pause file plus hard budget stop. Rootless Podman, the pause switch,
 and a repository-scoped deploy key have been proven; the key can push task
 branches but protected `main` rejects it. Controller-owned PR automation,
-Copilot comment-only review, and R0-R2 policy auto-merge are accepted;
-R3/escalated work requires the user.
+separate local Codex code/security and QA reviews, and R0-R2 policy auto-merge
+are accepted; R3/escalated work requires the user.

@@ -27,6 +27,8 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.limits.max_runs_per_day, 8)
         self.assertEqual(config.limits.review_reserve_percent, 30)
         self.assertTrue(config.runner.rootless_required)
+        self.assertFalse(config.reviews.model_reviews_on_github)
+        self.assertEqual(config.reviews.required_roles, ("code_review", "qa_review"))
 
     def test_unknown_key_is_rejected(self) -> None:
         value = valid_config()
@@ -51,6 +53,15 @@ class ConfigTests(unittest.TestCase):
         limits["maxRunMinutes"] = 30
 
         with self.assertRaisesRegex(ConfigError, "between 60 and 60"):
+            parse_config(value)
+
+    def test_github_model_review_is_rejected(self) -> None:
+        value = copy.deepcopy(valid_config())
+        reviews = value["reviews"]
+        self.assertIsInstance(reviews, dict)
+        reviews["modelReviewsOnGitHub"] = True
+
+        with self.assertRaisesRegex(ConfigError, "must be false"):
             parse_config(value)
 
     def test_fallback_provider_is_rejected(self) -> None:

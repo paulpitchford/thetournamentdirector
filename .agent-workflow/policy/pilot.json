@@ -20,6 +20,15 @@
     "socket": "/run/user/1000/podman/podman.sock",
     "networkDefault": "none"
   },
+  "reviews": {
+    "modelReviewsOnGitHub": false,
+    "requiredRoles": [
+      "code_review",
+      "qa_review"
+    ],
+    "freshSessionPerRole": true,
+    "distinctSessionsRequired": true
+  },
   "controller": {
     "pauseFile": ".agent-workflow/state/PAUSED",
     "database": ".agent-workflow/state/controller.sqlite3",

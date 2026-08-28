@@ -11,7 +11,8 @@
   "acceptanceCriteria": [
     "One approved status sentence is added to the orchestration plan",
     "Repository policy CI passes",
-    "Copilot and fresh Codex review evidence references the current head SHA"
+    "Fresh local code/security and QA Codex evidence references the current head SHA",
+    "The two review roles use distinct sessions from implementation and each other"
   ],
   "requiredTests": [
     "python3 .agent-workflow/scripts/check_repository.py"

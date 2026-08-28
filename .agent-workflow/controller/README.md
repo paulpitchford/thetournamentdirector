@@ -6,10 +6,12 @@ This package is trusted deterministic host code. It currently provides:
 - an atomic global pause switch;
 - a durable SQLite run ledger;
 - concurrency, daily-run, and review-reserve admission controls;
+- mandatory fresh, distinct local sessions for code/security review and QA;
 - a fake provider used to prove control flow without model quota or mutation.
 
 It does **not** dispatch Codex, mutate a worktree, call GitHub, or run as a
-daemon yet.
+daemon yet. Model reviews will run locally in rootless sandboxes; GitHub receives
+only deterministic CI and controller-published status/evidence.
 
 Run verification from the repository root:
 
