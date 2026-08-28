@@ -1,0 +1,53 @@
+{
+  "id": "ORCH-001A",
+  "status": "APPROVED",
+  "parentEpic": "ORCHESTRATION-PILOT",
+  "objective": "Add structured contracts and fail-closed artifact validation for local code/security and QA reviews",
+  "nonGoals": [
+    "Launch Codex or any other model provider",
+    "Add subprocess, sandbox, cgroup, or runtime-attestation controls",
+    "Publish review statuses or auto-merge"
+  ],
+  "dependsOn": [],
+  "acceptanceCriteria": [
+    "Unknown review roles and invalid trusted evidence fail closed at the artifact boundary",
+    "QA maps every acceptance criterion exactly once to authenticated evidence and its verdict matches aggregate status",
+    "Review artifacts are schema, task, Git-SHA, finding, and role validated",
+    "No model or subprocess runs in automated contract tests"
+  ],
+  "acceptanceEvidenceIds": {
+    "Unknown review roles and invalid trusted evidence fail closed at the artifact boundary": [
+      "local-contract-tests"
+    ],
+    "QA maps every acceptance criterion exactly once to authenticated evidence and its verdict matches aggregate status": [
+      "local-contract-tests"
+    ],
+    "Review artifacts are schema, task, Git-SHA, finding, and role validated": [
+      "local-contract-tests"
+    ],
+    "No model or subprocess runs in automated contract tests": [
+      "no-model-in-tests"
+    ]
+  },
+  "acceptanceEvidenceRequirements": {},
+  "requiredTests": [
+    ".agent-workflow/scripts/verify_controller.sh",
+    "python3 .agent-workflow/scripts/check_repository.py"
+  ],
+  "allowedPaths": [
+    ".agent-workflow/controller/td_controller/review_contract.py",
+    ".agent-workflow/controller/tests/test_review_contract.py",
+    ".agent-workflow/tasks/ORCH-001.json",
+    "docs/adr/0008-tool-less-local-review-provider.md",
+    "docs/adr/README.md"
+  ],
+  "protectedPaths": [
+    ".github/**",
+    ".agent-workflow/policy/**",
+    ".agent-workflow/scripts/**"
+  ],
+  "riskClass": "R3",
+  "maxChangedLines": 900,
+  "maxAttempts": 2,
+  "humanApprovalRequired": true
+}
