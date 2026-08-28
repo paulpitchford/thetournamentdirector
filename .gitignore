@@ -6,6 +6,8 @@ analysis/electron-asar/
 analysis/signatures/
 
 # Local orchestration state and credentials.
+__pycache__/
+*.py[cod]
 .agent-workflow/state/
 .sandcastle/.env
 .sandcastle/logs/
