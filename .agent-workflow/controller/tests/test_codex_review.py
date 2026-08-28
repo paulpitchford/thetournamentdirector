@@ -155,6 +155,27 @@ class CodexReviewProviderTests(unittest.TestCase):
 
         self.assertEqual(provider.artifact.acceptance_evidence[0].status, "pass")
 
+    def test_error_item_is_bounded_and_secret_redacted(self) -> None:
+        events = [
+            {"type": "thread.started", "thread_id": "fresh-session"},
+            {
+                "type": "item.completed",
+                "item": {
+                    "type": "error",
+                    "message": "provider failed api_key=sk-exampleabcdefghijklmnop",
+                },
+            },
+        ]
+        output = ("\n".join(json.dumps(item) for item in events) + "\n").encode()
+        executor = FakeExecutor(ProcessOutput(returncode=0, stdout=output, stderr=b""))
+        provider = CodexReviewProvider(request(), executor=executor)
+
+        with self.assertRaisesRegex(
+            CodexReviewError,
+            r"error item: provider failed \[REDACTED\]",
+        ):
+            provider.run(task_id="TASK-001", role="code_review")
+
     def test_forbidden_tool_event_is_rejected(self) -> None:
         executor = FakeExecutor(
             ProcessOutput(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import signal
 import subprocess
 import tempfile
@@ -320,6 +321,10 @@ def _parse_event_stream(stdout: bytes) -> tuple[str, str]:
         if event.get("type") == "thread.started":
             session_id = event.get("thread_id")
         item = event.get("item")
+        if isinstance(item, dict) and item.get("type") == "error":
+            raise CodexReviewError(
+                f"Codex returned error item: {_redacted_error_message(item)}"
+            )
         if isinstance(item, dict) and item.get("type") not in ALLOWED_ITEM_TYPES:
             raise CodexReviewError(f"Codex attempted forbidden tool: {item.get('type')}")
         if (
@@ -335,6 +340,20 @@ def _parse_event_stream(stdout: bytes) -> tuple[str, str]:
     if len(messages) != 1:
         raise CodexReviewError("Codex must return exactly one final agent message")
     return session_id, messages[0]
+
+
+def _redacted_error_message(item: dict[str, Any]) -> str:
+    value = item.get("message")
+    message = value if isinstance(value, str) else "unspecified"
+    message = " ".join(message.split())[:500]
+    patterns = (
+        r"(?i)bearer\s+[a-z0-9._-]+",
+        r"\b(?:sk|gh[pousr])[-_][a-zA-Z0-9_-]{16,}\b",
+        r"(?i)(?:api[_ -]?key|token|secret)\s*[:=]\s*\S+",
+    )
+    for pattern in patterns:
+        message = re.sub(pattern, "[REDACTED]", message)
+    return message or "unspecified"
 
 
 def _parse_artifact(message: str, request: ReviewRequest) -> ReviewArtifact:
