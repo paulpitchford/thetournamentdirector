@@ -17,6 +17,7 @@ from td_controller.codex_review import (
     ReviewRequest,
     SubprocessExecutor,
     TrustedEvidence,
+    _attest_codex_runtime,
 )
 
 BASE_SHA = "a" * 40
@@ -136,8 +137,27 @@ class SubprocessExecutorTests(unittest.TestCase):
                 )
 
 
+class RuntimeAttestationTests(unittest.TestCase):
+    def test_unreviewed_codex_binary_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            executable = Path(temporary) / "codex"
+            executable.write_bytes(b"unreviewed runtime")
+            executable.chmod(0o700)
+            with patch("td_controller.codex_review.shutil.which", return_value=str(executable)):
+                with self.assertRaisesRegex(CodexReviewError, "hash does not match"):
+                    _attest_codex_runtime()
+
+
 class CodexReviewProviderTests(unittest.TestCase):
     """Prove tool attempts, stale evidence, and malformed QA fail closed."""
+
+    def setUp(self) -> None:
+        runtime = patch(
+            "td_controller.codex_review._attest_codex_runtime",
+            return_value="/pinned/codex",
+        )
+        runtime.start()
+        self.addCleanup(runtime.stop)
 
     def test_valid_code_review_returns_session_and_artifact(self) -> None:
         executor = FakeExecutor(
@@ -150,6 +170,11 @@ class CodexReviewProviderTests(unittest.TestCase):
         self.assertEqual(result.session_id, "fresh-session")
         self.assertEqual(provider.artifact.verdict, "pass")
         command = executor.commands[0]
+        self.assertEqual(command[:4], ["/pinned/codex", "-a", "never", "exec"])
+        self.assertNotIn("--sandbox", command)
+        self.assertIn('default_permissions="deny-all"', command)
+        self.assertIn('web_search="disabled"', command)
+        self.assertIn("permissions.deny-all.network.enabled=false", command)
         self.assertIn("shell_tool", command)
         self.assertIn("browser_use", command)
         self.assertIn("code_mode", command)
@@ -314,6 +339,20 @@ class CodexReviewProviderTests(unittest.TestCase):
 
         with self.assertRaisesRegex(CodexReviewError, "duplicate acceptance"):
             provider.run(task_id="TASK-001", role="qa_review")
+
+    def test_successful_process_with_stderr_is_rejected(self) -> None:
+        executor = FakeExecutor(
+            ProcessOutput(
+                returncode=0,
+                stdout=event_stream(artifact()),
+                stderr=b"hidden tool attempt",
+            )
+        )
+        provider = CodexReviewProvider(request(), executor=executor)
+
+        with self.assertRaisesRegex(CodexReviewError, "unexpected stderr") as raised:
+            provider.run(task_id="TASK-001", role="code_review")
+        self.assertNotIn("hidden tool", str(raised.exception))
 
     def test_nonzero_exit_uses_structured_stdout_error(self) -> None:
         events = [

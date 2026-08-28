@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import shutil
 import signal
 import subprocess
 import tempfile
@@ -16,6 +18,8 @@ from .provider import ProviderResult
 
 MAX_PROMPT_BYTES = 512_000
 MAX_OUTPUT_BYTES = 2_000_000
+PINNED_CODEX_VERSION = "codex-cli 0.150.1"
+PINNED_CODEX_SHA256 = "abf1bb1643a79f73aa78ee627e111e02d4f8c98f25813a0cf6ce277709664386"
 ALLOWED_ROLES = frozenset({"code_review", "qa_review"})
 ALLOWED_ITEM_TYPES = frozenset({"agent_message", "reasoning"})
 
@@ -31,6 +35,32 @@ class ProcessOutput:
     returncode: int
     stdout: bytes
     stderr: bytes
+
+
+def _attest_codex_runtime() -> str:
+    executable = shutil.which("codex")
+    if executable is None:
+        raise CodexReviewError("pinned Codex runtime is unavailable")
+    resolved = str(Path(executable).resolve(strict=True))
+    digest = hashlib.sha256()
+    with Path(resolved).open("rb") as runtime:
+        for chunk in iter(lambda: runtime.read(1024 * 1024), b""):
+            digest.update(chunk)
+    if digest.hexdigest() != PINNED_CODEX_SHA256:
+        raise CodexReviewError("Codex runtime hash does not match the reviewed pin")
+    version = subprocess.run(
+        [resolved, "--version"],
+        check=False,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        timeout=10,
+    )
+    if version.returncode != 0 or version.stdout.decode(errors="replace").strip() != (
+        PINNED_CODEX_VERSION
+    ):
+        raise CodexReviewError("Codex runtime version does not match the reviewed pin")
+    return resolved
 
 
 class CommandExecutor(Protocol):
@@ -226,6 +256,7 @@ class CodexReviewProvider:
         if task_id != self.request.task_id or role != self.request.role:
             raise CodexReviewError("provider invocation does not match its review request")
 
+        codex_executable = _attest_codex_runtime()
         prompt = self._build_prompt().encode("utf-8")
         if len(prompt) > MAX_PROMPT_BYTES:
             raise CodexReviewError("review prompt exceeds the configured size limit")
@@ -235,7 +266,7 @@ class CodexReviewProvider:
             schema_path = root / "review-schema.json"
             schema_path.write_text(json.dumps(REVIEW_OUTPUT_SCHEMA), encoding="utf-8")
             output = self.executor.run(
-                self._command(schema_path),
+                self._command(codex_executable, schema_path),
                 input_bytes=prompt,
                 cwd=root,
                 timeout_seconds=self.timeout_seconds,
@@ -246,6 +277,8 @@ class CodexReviewProvider:
             raise CodexReviewError(
                 f"local Codex review failed with exit {output.returncode}: {error_name}"
             )
+        if output.stderr.strip():
+            raise CodexReviewError("local Codex review emitted unexpected stderr")
         session_id, message = _parse_event_stream(output.stdout)
         artifact = _parse_artifact(message, self.request)
         self.artifact = artifact
@@ -255,15 +288,15 @@ class CodexReviewProvider:
         )
 
     @staticmethod
-    def _command(schema_path: Path) -> list[str]:
+    def _command(codex_executable: str, schema_path: Path) -> list[str]:
         return [
-            "codex",
+            codex_executable,
+            "-a",
+            "never",
             "exec",
             "--ignore-user-config",
             "--ignore-rules",
             "--strict-config",
-            "--sandbox",
-            "read-only",
             "--skip-git-repo-check",
             "--ephemeral",
             "--json",
@@ -290,7 +323,17 @@ class CodexReviewProvider:
             "--disable",
             "standalone_web_search",
             "-c",
+            'default_permissions="deny-all"',
+            "-c",
+            'permissions.deny-all.filesystem={":root"="none",":minimal"="read"}',
+            "-c",
+            "permissions.deny-all.network.enabled=false",
+            "-c",
             'shell_environment_policy.inherit="none"',
+            "-c",
+            'shell_environment_policy.set={PATH="/usr/bin:/bin"}',
+            "-c",
+            'web_search="disabled"',
             "-c",
             'model_reasoning_effort="high"',
             "-",

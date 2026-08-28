@@ -2,7 +2,7 @@
   "id": "ORCH-001",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Implement a tool-less local Codex adapter for code/security review and QA",
+  "objective": "Implement an effect-contained local Codex adapter for code/security review and QA",
   "nonGoals": [
     "Enable implementation or remediation agents",
     "Publish review statuses or auto-merge",
@@ -10,7 +10,7 @@
   ],
   "dependsOn": [],
   "acceptanceCriteria": [
-    "Every model tool is disabled and any tool event fails closed",
+    "Effectful tools are unavailable or denied before execution, and tool events or process diagnostics fail closed",
     "Review output is size, timeout, schema, session, task, and current-SHA validated",
     "QA requires acceptance evidence produced from trusted rootless test output",
     "No real model run occurs in automated tests"

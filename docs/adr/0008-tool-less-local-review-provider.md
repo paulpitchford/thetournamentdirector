@@ -18,12 +18,20 @@ test output, and runtime evidence.
 
 ## Decision
 
-Run the authenticated Codex provider process locally but expose **no model
-tools**. Disable shell, browser, computer-use, search, apps, MCP/rules, and user
-configuration for each ephemeral review invocation. Run from an empty temporary
-directory and pass only size-bounded inert JSON evidence through standard input.
-Reject any tool event, malformed JSONL, missing/distinct session identity, stale
-SHA, malformed structured artifact, timeout, non-zero exit, or output overflow.
+Run the authenticated Codex provider process locally with effectful capabilities
+contained before execution. Attest the exact Codex binary version and SHA-256,
+ignore user configuration and rules, disable shell, browser, computer-use, apps,
+MCP, and hosted web search, and select a named permission profile that grants
+only minimal runtime reads with no workspace reads, writes, or network access.
+Inherit no host shell environment and disable approvals. Run from an empty
+temporary directory and pass only size-bounded inert JSON evidence through
+standard input.
+
+Reject any tool event, any process stderr, malformed JSONL, missing/distinct
+session identity, stale SHA, malformed structured artifact, timeout, non-zero
+exit, runtime attestation mismatch, or output overflow. An exposed patch tool is
+therefore denied by the permission profile before execution, and its diagnostic
+also invalidates the review artifact.
 
 The trusted controller runs deterministic QA/build commands separately inside
 rootless Podman and supplies their bounded output to the tool-less QA agent.
@@ -34,9 +42,15 @@ boundary before they may run.
 
 - The host Codex process can use the existing authenticated provider without
   copying its credential into a worker container.
-- Untrusted diff/task text cannot cause filesystem or network tool use because
-  no model tool is available; event-stream validation is an additional
-  fail-closed check.
+- Untrusted diff/task text cannot cause filesystem or network effects because
+  the pinned runtime enforces an empty workspace/network permission profile;
+  event-stream and stderr validation are additional fail-closed checks.
+- A live probe found that the permission profile alone does not contain hosted
+  web search. Setting `web_search="disabled"` is therefore a mandatory,
+  separately tested control.
+- The final pinned-runtime probe exposed only patching, denied it before a write,
+  exposed no filesystem-read or network tool, made no model network request,
+  leaked no sentinel, and created no file.
 - QA assesses controller-produced evidence rather than invoking commands itself.
 - Review prompts and outputs remain subject to run, size, timeout, retention,
   session-separation, and current-SHA controls.
@@ -45,7 +59,8 @@ boundary before they may run.
 
 ## Alternatives considered
 
-- Codex native sandbox alone: rejected after the adjacent-file read probe.
+- Codex legacy `read-only` sandbox alone: rejected after the adjacent-file read
+  probe because it permits broad filesystem reads.
 - Mount host Codex authentication into a rootless container: rejected because a
   model-generated command could read the mounted credential.
 - Give QA a host shell: rejected; deterministic commands belong in the rootless
