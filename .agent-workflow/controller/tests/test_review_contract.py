@@ -27,6 +27,7 @@ def request(role: str = "qa_review") -> ReviewRequest:
         task_contract={
             "id": "TASK-001",
             "acceptanceCriteria": ["CI passes"],
+            "acceptanceEvidenceIds": {"CI passes": ["ci-controller-tests"]},
             "acceptanceEvidenceRequirements": {"CI passes": ["github_actions"]},
         },
         diff="diff --git a/a.py b/a.py\n+value = 1\n",
@@ -116,12 +117,29 @@ class ReviewContractTests(unittest.TestCase):
             task_contract={
                 "id": "TASK-001",
                 "acceptanceCriteria": ["CI passes"],
+                "acceptanceEvidenceIds": {"CI passes": ["ci-controller-tests"]},
                 "acceptanceEvidenceRequirements": {"CI passes": ["local_rootless"]},
             },
         )
 
         with self.assertRaisesRegex(CodexReviewError, "required evidence sources"):
             _parse_artifact(json.dumps(qa_artifact()), qa_request)
+
+    def test_qa_rejects_evidence_not_selected_for_criterion(self) -> None:
+        unrelated = TrustedEvidence(
+            evidence_id="scope-line-count",
+            source="local_controller",
+            description="722 lines",
+        )
+        qa_request = replace(
+            request(),
+            deterministic_evidence=(*request().deterministic_evidence, unrelated),
+        )
+        value = qa_artifact()
+        value["acceptanceEvidence"][0]["evidenceRefs"] = ["scope-line-count"]
+
+        with self.assertRaisesRegex(CodexReviewError, "controller selection"):
+            _parse_artifact(json.dumps(value), qa_request)
 
     def test_qa_verdict_exactly_matches_aggregate_status(self) -> None:
         failed_pass = qa_artifact()
@@ -162,6 +180,20 @@ class ReviewContractTests(unittest.TestCase):
 
         with self.assertRaisesRegex(CodexReviewError, "unsupported local review role"):
             _parse_artifact(json.dumps(qa_artifact()), unknown)
+
+    def test_matching_malformed_git_shas_are_rejected(self) -> None:
+        for malformed in (None, "", "g" * 40):
+            malformed_request = replace(
+                request(),
+                base_sha=malformed,  # type: ignore[arg-type]
+                head_sha=malformed,  # type: ignore[arg-type]
+            )
+            value = qa_artifact()
+            value["baseSha"] = malformed
+            value["headSha"] = malformed
+            with self.subTest(malformed=malformed):
+                with self.assertRaisesRegex(CodexReviewError, "Git object ID"):
+                    _parse_artifact(json.dumps(value), malformed_request)
 
     def test_task_contract_id_is_bound_to_review_task(self) -> None:
         mismatched = replace(request(), task_contract={"id": "OTHER"})

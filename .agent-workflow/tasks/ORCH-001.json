@@ -15,6 +15,20 @@
     "Review artifacts are schema, task, Git-SHA, finding, and role validated",
     "No model or subprocess runs in automated contract tests"
   ],
+  "acceptanceEvidenceIds": {
+    "Unknown review roles and invalid trusted evidence fail closed at the artifact boundary": [
+      "local-contract-tests"
+    ],
+    "QA maps every acceptance criterion exactly once to authenticated evidence and its verdict matches aggregate status": [
+      "local-contract-tests"
+    ],
+    "Review artifacts are schema, task, Git-SHA, finding, and role validated": [
+      "local-contract-tests"
+    ],
+    "No model or subprocess runs in automated contract tests": [
+      "no-model-in-tests"
+    ]
+  },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [
     ".agent-workflow/scripts/verify_controller.sh",

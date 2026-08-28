@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -98,6 +99,8 @@ def _parse_artifact(message: str, request: ReviewRequest) -> ReviewArtifact:
     if contract_id != request.task_id:
         raise CodexReviewError("task contract ID does not match review task")
     _validate_trusted_evidence(request.deterministic_evidence)
+    _validate_git_sha(request.base_sha, "request.baseSha")
+    _validate_git_sha(request.head_sha, "request.headSha")
     try:
         value = json.loads(message)
     except json.JSONDecodeError as exc:
@@ -253,6 +256,23 @@ def _validate_qa_acceptance(
     if set(observed) != set(configured):
         raise CodexReviewError("QA must map every acceptance criterion exactly once")
 
+    id_requirements = request.task_contract.get("acceptanceEvidenceIds")
+    if not isinstance(id_requirements, dict) or set(id_requirements) != set(configured):
+        raise CodexReviewError("every criterion requires controller-selected evidence IDs")
+    trusted_ids = {item.evidence_id for item in request.deterministic_evidence}
+    for criterion, required_ids in id_requirements.items():
+        if (
+            not isinstance(required_ids, list)
+            or not required_ids
+            or not all(isinstance(evidence_id, str) for evidence_id in required_ids)
+            or len(required_ids) != len(set(required_ids))
+            or not set(required_ids).issubset(trusted_ids)
+        ):
+            raise CodexReviewError("criterion has invalid controller-selected evidence IDs")
+    for item in evidence:
+        if set(item.evidence_refs) != set(id_requirements[item.criterion]):
+            raise CodexReviewError("criterion evidence refs do not match controller selection")
+
     source_requirements = request.task_contract.get("acceptanceEvidenceRequirements", {})
     if not isinstance(source_requirements, dict):
         raise CodexReviewError("acceptance evidence requirements must be an object")
@@ -279,6 +299,14 @@ def _validate_qa_acceptance(
     has_non_passing = any(item.status != "pass" for item in evidence)
     if (verdict == "pass") == has_non_passing:
         raise CodexReviewError("QA verdict must match aggregate criterion status")
+
+
+def _validate_git_sha(value: Any, field: str) -> None:
+    valid = isinstance(value, str) and re.fullmatch(
+        r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})", value
+    )
+    if not valid:
+        raise CodexReviewError(f"{field} must be a hexadecimal Git object ID")
 
 
 def _required_string(value: Any, field: str) -> str:
