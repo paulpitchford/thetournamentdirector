@@ -1,0 +1,8 @@
+version: 3.7.2
+files:
+  - url: The_Tournament_Director_Setup_3.7.2.exe
+    sha512: KJYB3UWLPMSPMwgXF20viFQldZ4wd2JEH5a3cBmP0ek8wwIVcKSR7yeKvhfYOGCUfLxVatnvH5AZu/OQjISFTw==
+    size: 110285576
+path: The_Tournament_Director_Setup_3.7.2.exe
+sha512: KJYB3UWLPMSPMwgXF20viFQldZ4wd2JEH5a3cBmP0ek8wwIVcKSR7yeKvhfYOGCUfLxVatnvH5AZu/OQjISFTw==
+releaseDate: '2020-10-09T16:49:13.432Z'

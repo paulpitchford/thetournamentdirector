@@ -1,0 +1,19 @@
+# Vendor-owned binaries and recovered source are intentionally kept local.
+downloads/
+extracted/
+analysis/decrypted/
+analysis/electron-asar/
+analysis/signatures/
+
+# Local orchestration state and credentials.
+.agent-workflow/state/
+.sandcastle/.env
+.sandcastle/logs/
+.sandcastle/worktrees/
+
+# Modern application build and test output.
+modern-app/node_modules/
+modern-app/dist/
+modern-app/coverage/
+modern-app/playwright-report/
+modern-app/test-results/
