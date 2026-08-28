@@ -1,0 +1,37 @@
+{
+  "id": "ORCH-001",
+  "status": "APPROVED",
+  "parentEpic": "ORCHESTRATION-PILOT",
+  "objective": "Implement a tool-less local Codex adapter for code/security review and QA",
+  "nonGoals": [
+    "Enable implementation or remediation agents",
+    "Publish review statuses or auto-merge",
+    "Expose host credentials or repository tools to a model"
+  ],
+  "dependsOn": [],
+  "acceptanceCriteria": [
+    "Every model tool is disabled and any tool event fails closed",
+    "Review output is size, timeout, schema, session, task, and current-SHA validated",
+    "QA requires acceptance evidence produced from trusted rootless test output",
+    "No real model run occurs in automated tests"
+  ],
+  "requiredTests": [
+    ".agent-workflow/scripts/verify_controller.sh",
+    "python3 .agent-workflow/scripts/check_repository.py"
+  ],
+  "allowedPaths": [
+    ".agent-workflow/controller/**",
+    ".agent-workflow/tasks/ORCH-001.json",
+    "docs/adr/0008-tool-less-local-review-provider.md",
+    "docs/adr/README.md"
+  ],
+  "protectedPaths": [
+    ".github/**",
+    ".agent-workflow/policy/**",
+    ".agent-workflow/scripts/**"
+  ],
+  "riskClass": "R3",
+  "maxChangedLines": 900,
+  "maxAttempts": 2,
+  "humanApprovalRequired": true
+}

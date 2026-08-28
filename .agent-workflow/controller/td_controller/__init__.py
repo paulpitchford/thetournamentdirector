@@ -1,5 +1,6 @@
 """Trusted tournament-director orchestration controller."""
 
+from .codex_review import CodexReviewError, CodexReviewProvider, ReviewArtifact, ReviewRequest
 from .config import ConfigError, PilotConfig, load_config
 from .controller import Controller, RunResult
 from .provider import FakeProvider, Provider
@@ -8,13 +9,17 @@ from .state import AdmissionError, RunLedger
 
 __all__ = [
     "AdmissionError",
+    "CodexReviewError",
+    "CodexReviewProvider",
     "ConfigError",
     "Controller",
     "FakeProvider",
     "PilotConfig",
     "Provider",
     "RequiredReviewEvidence",
+    "ReviewArtifact",
     "ReviewCoordinator",
+    "ReviewRequest",
     "ReviewSeparationError",
     "RunLedger",
     "RunResult",

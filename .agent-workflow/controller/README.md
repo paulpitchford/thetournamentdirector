@@ -7,11 +7,13 @@ This package is trusted deterministic host code. It currently provides:
 - a durable SQLite run ledger;
 - concurrency, daily-run, and review-reserve admission controls;
 - mandatory fresh, distinct local sessions for code/security review and QA;
+- a tool-less local Codex review adapter with strict JSONL/artifact validation;
 - a fake provider used to prove control flow without model quota or mutation.
 
-It does **not** dispatch Codex, mutate a worktree, call GitHub, or run as a
-daemon yet. Model reviews will run locally in rootless sandboxes; GitHub receives
-only deterministic CI and controller-published status/evidence.
+It does **not** yet enable model dispatch, mutate a worktree, call GitHub, or run
+as a daemon. Review models run locally without repository tools; deterministic
+commands run separately in rootless Podman. GitHub receives only deterministic
+CI and controller-published status/evidence.
 
 Run verification from the repository root:
 
