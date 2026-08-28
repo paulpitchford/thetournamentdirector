@@ -132,17 +132,18 @@ Do not start an unattended mutating loop yet. Complete Stage 0 in
 `docs/AGENT_ORCHESTRATION_PLAN.md` first. This workspace is now a local Git
 repository on `main` with a verified clean baseline. Its GitHub remote is public
 and `main` is protected by PR-only changes, baseline CI, CODEOWNERS, linear
-history, and force-push/deletion guards. The current user still cannot access a
-rootless container daemon. Never pass the current broad personal `gh` token into
-an agent container or the unattended controller.
+history, and force-push/deletion guards. Rootless Podman, its user-scoped
+Docker-compatible socket, and a hardened no-op container have been verified.
+Never pass the current broad personal `gh` token into an agent container or the
+unattended controller.
 
 ## Next concrete tasks
 
-1. Install and prove the approved local rootless runner.
-2. Provision the repository-scoped controller identity and implement the global
-   pause file without exposing the current broad personal `gh` token.
-3. Complete `HUM-002`, then run the read-only planning pilot before permitting
-   an agent to modify code.
+1. Merge the controller-foundation bootstrap, restore CODEOWNER enforcement,
+   and require its CI status.
+2. Implement strict task/plan schemas and deliberately bad policy fixtures
+   against the fake provider.
+3. Run ten read-only planning trials before permitting an agent to modify code.
 4. After the guarded documentation/code pilots pass, create the application
    under:
 
@@ -197,8 +198,8 @@ The orchestration pilot settings were approved on 2026-08-28: local rootless
 execution, one high-reasoning Codex run at a time, 60 minutes per run, eight runs
 per day, 30% review/remediation reserve, two remediation rounds, no provider
 fallback, 14-day retention for failed worktrees, prompts, and transcripts, and
-a global pause file plus hard budget stop. The remaining bootstrap work is to
-install and prove the rootless runner and provision a repository-scoped
-controller identity. Controller-owned PR automation, Copilot
-comment-only review, and R0-R2 policy auto-merge are accepted; R3/escalated work
-requires the user.
+a global pause file plus hard budget stop. Rootless Podman, the pause switch,
+and a repository-scoped deploy key have been proven; the key can push task
+branches but protected `main` rejects it. Controller-owned PR automation,
+Copilot comment-only review, and R0-R2 policy auto-merge are accepted;
+R3/escalated work requires the user.

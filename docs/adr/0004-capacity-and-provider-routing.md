@@ -1,6 +1,6 @@
 # ADR 0004: Use conservative provider capacity and routing
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-08-28
 
 ## Context
@@ -12,12 +12,13 @@ deliberately does not retry provider errors. Subscription capacity may not
 expose a reliable remaining quota or reset API. Copilot is a separate PR-review
 integration, not fallback coding capacity.
 
-## Proposed decision
+## Decision
 
 The durable controller owns provider state, admission, cooldowns, budgets, and
-recovery. Start with one Codex/Sandcastle run at a time, 30% of the shared Codex
-allowance reserved for review/remediation, no blind retries, and no automatic
-provider fallback.
+recovery. Start with one high-reasoning Codex/Sandcastle run at a time, no more
+than 60 minutes per run or eight model runs per day, 30% of the shared Codex
+allowance reserved for review/remediation, no more than two remediation rounds,
+14-day failed-artifact retention, no blind retries, and no provider fallback.
 
 A mid-task Sandcastle interruption preserves the named branch and dirty
 worktree, enters durable `WAITING_CAPACITY`, and resumes only after a reliable
@@ -44,7 +45,7 @@ review status but is not treated as Codex capacity.
 - Unlimited concurrency: can consume Codex implementation quota before the
   required review/remediation work completes.
 
-## Approval needed
-
-Confirm the Codex model/reasoning levels by role, hard run/spend limits, 30%
-review reserve, fallback policy, and local versus dedicated execution.
+The user approved these limits and local execution on 2026-08-28. The
+ChatGPT-backed Codex subscription exposes no reliable monetary balance, so the
+run count, duration, concurrency, remediation, and reserve limits are the
+initial enforceable hard budget.

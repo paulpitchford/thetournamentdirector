@@ -1,6 +1,6 @@
 # ADR 0003: Treat coding agents as untrusted workers
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-08-28
 
 ## Context
@@ -9,7 +9,7 @@ Agents can misunderstand instructions, follow prompt injection, weaken tests,
 change unrelated files, leak available credentials, or produce plausible but
 unsafe code. Reading policy documentation cannot be the security boundary.
 
-## Proposed decision
+## Decision
 
 Treat every worker as an unreliable external contributor with shell access only
 inside one disposable task worktree and hardened container.
@@ -20,9 +20,16 @@ receive only a dedicated model credential and model-API egress required to run.
 Trusted controller code enforces paths, protected files, budgets, gates, and PR
 state from trusted `main`.
 
-Prefer rootless Podman or a dedicated isolated runner. Do not solve local Docker
-socket denial by making the socket broadly writable; Docker daemon access is
-effectively host-root authority.
+Use rootless Podman on the local pilot machine through its user-scoped,
+Docker-compatible socket. Require no network by default, a read-only root
+filesystem, dropped capabilities, `no-new-privileges`, a non-root container
+user, and explicit process/memory/CPU limits. Do not solve local Docker socket
+denial by making the host socket broadly writable; host Docker daemon access is
+effectively root authority.
+
+The reviewed verification script must prove the rootless socket and an isolated
+no-op container before model dispatch. Moving to a dedicated runner requires a
+later R3 decision.
 
 ## Consequences
 
@@ -41,6 +48,5 @@ effectively host-root authority.
   host compromise impact.
 - No sandbox for speed: rejected for unattended work.
 
-## Approval needed
-
-Choose local rootless Podman/rootless Docker versus a dedicated runner or VM.
+The user approved local rootless execution on 2026-08-28. Rootless Podman and
+its Docker-compatible user socket were then verified on the pilot host.

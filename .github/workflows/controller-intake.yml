@@ -1,0 +1,68 @@
+name: controller-intake
+
+on:
+  create:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  open-draft-pr:
+    if: github.event.ref_type == 'branch' && startsWith(github.event.ref, 'agent/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out trusted main
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: main
+      - name: Validate task and open one draft PR
+        env:
+          BRANCH: ${{ github.event.ref }}
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ ! "$BRANCH" =~ ^agent/([A-Z][A-Z0-9-]{2,63})$ ]]; then
+            echo "Rejected controller branch: $BRANCH" >&2
+            exit 1
+          fi
+
+          task_id=${BASH_REMATCH[1]}
+          task_file=".agent-workflow/tasks/${task_id}.json"
+          test -f "$task_file"
+          test "$(jq -r '.id' "$task_file")" = "$task_id"
+          test "$(jq -r '.status' "$task_file")" = "APPROVED"
+
+          existing=$(gh pr list \
+            --repo "$REPOSITORY" \
+            --state open \
+            --head "$BRANCH" \
+            --json number \
+            --jq 'length')
+          if [[ "$existing" != 0 ]]; then
+            echo "An open PR already exists for $BRANCH"
+            exit 0
+          fi
+
+          objective=$(jq -r '.objective' "$task_file")
+          risk=$(jq -r '.riskClass' "$task_file")
+          body_file=$(mktemp)
+          trap 'rm -f "$body_file"' EXIT
+          {
+            printf 'Controller-created draft for approved task `%s`.\n\n' "$task_id"
+            printf -- '- Risk: `%s`\n' "$risk"
+            printf -- '- Contract: `%s` on protected `main`\n' "$task_file"
+            printf -- '- Branch: `%s`\n\n' "$BRANCH"
+            printf 'Agent completion is not acceptance. Current-SHA CI and review evidence remain required.\n'
+          } >"$body_file"
+
+          gh pr create \
+            --repo "$REPOSITORY" \
+            --base main \
+            --head "$BRANCH" \
+            --title "$task_id: $objective" \
+            --body-file "$body_file" \
+            --draft
