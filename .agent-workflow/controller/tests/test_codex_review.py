@@ -289,6 +289,20 @@ class CodexReviewProviderTests(unittest.TestCase):
         with self.assertRaisesRegex(CodexReviewError, "duplicate acceptance"):
             provider.run(task_id="TASK-001", role="qa_review")
 
+    def test_nonzero_exit_uses_structured_stdout_error(self) -> None:
+        events = [
+            {
+                "type": "item.completed",
+                "item": {"type": "error", "message": "model capacity unavailable"},
+            }
+        ]
+        output = ("\n".join(json.dumps(item) for item in events) + "\n").encode()
+        executor = FakeExecutor(ProcessOutput(returncode=1, stdout=output, stderr=b""))
+        provider = CodexReviewProvider(request(), executor=executor)
+
+        with self.assertRaisesRegex(CodexReviewError, "model capacity unavailable"):
+            provider.run(task_id="TASK-001", role="code_review")
+
     def test_nonzero_process_exit_is_redacted_and_rejected(self) -> None:
         executor = FakeExecutor(
             ProcessOutput(

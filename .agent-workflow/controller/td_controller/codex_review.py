@@ -243,9 +243,7 @@ class CodexReviewProvider:
             )
 
         if output.returncode != 0:
-            error_name = _redacted_message(
-                output.stderr.decode("utf-8", errors="replace")
-            )
+            error_name = _process_error_reason(output)
             raise CodexReviewError(
                 f"local Codex review failed with exit {output.returncode}: {error_name}"
             )
@@ -365,6 +363,21 @@ def _parse_event_stream(stdout: bytes) -> tuple[str, str]:
     if len(messages) != 1:
         raise CodexReviewError("Codex must return exactly one final agent message")
     return session_id, messages[0]
+
+
+def _process_error_reason(output: ProcessOutput) -> str:
+    stderr = output.stderr.decode("utf-8", errors="replace")
+    if stderr.strip():
+        return _redacted_message(stderr)
+    for raw_line in output.stdout.decode("utf-8", errors="replace").splitlines():
+        try:
+            event = json.loads(raw_line)
+        except json.JSONDecodeError:
+            continue
+        item = event.get("item")
+        if isinstance(item, dict) and item.get("type") == "error":
+            return _redacted_error_message(item)
+    return "unspecified"
 
 
 def _redacted_error_message(item: dict[str, Any]) -> str:
