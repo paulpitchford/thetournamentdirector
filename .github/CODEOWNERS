@@ -1,0 +1,11 @@
+# Routine product source intentionally has no human code owner. Sensitive
+# workflow, policy, and build-control changes are R3 and require the owner.
+/.github/ @paulpitchford
+/.agent-workflow/ @paulpitchford
+/docs/adr/ @paulpitchford
+/docs/ENGINEERING_QUALITY_POLICY.md @paulpitchford
+/docs/POLICY_ENFORCEMENT.md @paulpitchford
+/modern-app/package.json @paulpitchford
+/modern-app/package-lock.json @paulpitchford
+/modern-app/tsconfig*.json @paulpitchford
+/modern-app/*config.* @paulpitchford
