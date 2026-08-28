@@ -138,11 +138,13 @@ an agent container or the unattended controller.
 
 ## Next concrete tasks
 
-1. Ask the user for the five remaining pilot choices listed at the end of
-   `docs/AGENT_ORCHESTRATION_PLAN.md`.
-2. Complete the human-owned `HUM-001` and `HUM-002` backlog tasks.
-3. Run the read-only planning pilot before permitting an agent to modify code.
-4. Then create the application under:
+1. Install and prove the approved local rootless runner.
+2. Provision the repository-scoped controller identity and implement the global
+   pause file without exposing the current broad personal `gh` token.
+3. Complete `HUM-002`, then run the read-only planning pilot before permitting
+   an agent to modify code.
+4. After the guarded documentation/code pilots pass, create the application
+   under:
 
 ```text
 /home/paul/projects/thetournamentdirector/modern-app

@@ -470,10 +470,12 @@ shell `while true` around an agent prompt.
   before changing repository visibility to public.
 - Protected `main`, CODEOWNERS, baseline CI, secret scanning, push protection,
   and guarded auto-merge are enabled.
-- Fix Docker access without weakening socket permissions broadly.
-- Choose agent provider/model routes, authentication, concurrency, review
-  reserve, hard run/spend budgets, fallback policy, and log retention.
-- Approve this threat model and the kill-switch procedure.
+- Install and prove the approved local rootless container runner without
+  weakening the host Docker socket.
+- Provision a repository-scoped controller identity and enforce the approved
+  Codex model, concurrency, run-count, duration, review-reserve, remediation,
+  fallback, and retention limits.
+- Implement and test the approved global pause file and hard budget stop.
 
 Exit: a human can run clean CI and an isolated no-op worker without exposing
 host credentials or vendor artifacts.
