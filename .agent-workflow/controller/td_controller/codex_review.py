@@ -691,8 +691,6 @@ REVIEW_OUTPUT_SCHEMA: dict[str, Any] = {
                     "evidence": {"type": "string", "minLength": 1},
                     "evidenceRefs": {
                         "type": "array",
-                        "minItems": 1,
-                        "uniqueItems": True,
                         "items": {"type": "string", "minLength": 1},
                     },
                 },
