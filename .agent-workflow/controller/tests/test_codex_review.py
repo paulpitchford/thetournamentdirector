@@ -6,6 +6,7 @@ import json
 import sys
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -15,6 +16,7 @@ from td_controller.codex_review import (
     ProcessOutput,
     ReviewRequest,
     SubprocessExecutor,
+    TrustedEvidence,
 )
 
 BASE_SHA = "a" * 40
@@ -51,9 +53,19 @@ def request(role: str = "code_review") -> ReviewRequest:
         role=role,
         base_sha=BASE_SHA,
         head_sha=HEAD_SHA,
-        task_contract={"id": "TASK-001", "acceptanceCriteria": ["CI passes"]},
+        task_contract={
+            "id": "TASK-001",
+            "acceptanceCriteria": ["CI passes"],
+            "acceptanceEvidenceRequirements": {"CI passes": ["github_actions"]},
+        },
         diff="diff --git a/a.py b/a.py\n+value = 1\n",
-        deterministic_evidence=("controller-tests: pass",),
+        deterministic_evidence=(
+            TrustedEvidence(
+                evidence_id="ci-controller-tests",
+                source="github_actions",
+                description="controller-tests: pass",
+            ),
+        ),
     )
 
 
@@ -74,6 +86,7 @@ def artifact(role: str = "code_review") -> dict[str, object]:
                     "criterion": "CI passes",
                     "status": "pass",
                     "evidence": "controller-tests: pass",
+                    "evidenceRefs": ["ci-controller-tests"],
                 }
             ]
         ),
@@ -211,16 +224,85 @@ class CodexReviewProviderTests(unittest.TestCase):
         )
         provider = CodexReviewProvider(request("qa_review"), executor=executor)
 
-        with self.assertRaisesRegex(CodexReviewError, "no acceptance evidence"):
+        with self.assertRaisesRegex(CodexReviewError, "map every acceptance"):
+            provider.run(task_id="TASK-001", role="qa_review")
+
+    def test_qa_unknown_criterion_is_rejected(self) -> None:
+        value = artifact("qa_review")
+        value["acceptanceEvidence"][0]["criterion"] = "Invented criterion"
+        executor = FakeExecutor(
+            ProcessOutput(returncode=0, stdout=event_stream(value), stderr=b"")
+        )
+        provider = CodexReviewProvider(request("qa_review"), executor=executor)
+
+        with self.assertRaisesRegex(CodexReviewError, "map every acceptance"):
+            provider.run(task_id="TASK-001", role="qa_review")
+
+    def test_qa_unknown_evidence_reference_is_rejected(self) -> None:
+        value = artifact("qa_review")
+        value["acceptanceEvidence"][0]["evidenceRefs"] = ["invented"]
+        executor = FakeExecutor(
+            ProcessOutput(returncode=0, stdout=event_stream(value), stderr=b"")
+        )
+        provider = CodexReviewProvider(request("qa_review"), executor=executor)
+
+        with self.assertRaisesRegex(CodexReviewError, "unknown refs"):
+            provider.run(task_id="TASK-001", role="qa_review")
+
+    def test_qa_missing_required_evidence_source_is_rejected(self) -> None:
+        value = artifact("qa_review")
+        qa_request = replace(
+            request("qa_review"),
+            task_contract={
+                "id": "TASK-001",
+                "acceptanceCriteria": ["CI passes"],
+                "acceptanceEvidenceRequirements": {"CI passes": ["local_rootless"]},
+            },
+        )
+        executor = FakeExecutor(
+            ProcessOutput(returncode=0, stdout=event_stream(value), stderr=b"")
+        )
+        provider = CodexReviewProvider(qa_request, executor=executor)
+
+        with self.assertRaisesRegex(CodexReviewError, "required evidence sources"):
+            provider.run(task_id="TASK-001", role="qa_review")
+
+    def test_qa_pass_with_failed_criterion_is_rejected(self) -> None:
+        value = artifact("qa_review")
+        value["acceptanceEvidence"][0]["status"] = "fail"
+        executor = FakeExecutor(
+            ProcessOutput(returncode=0, stdout=event_stream(value), stderr=b"")
+        )
+        provider = CodexReviewProvider(request("qa_review"), executor=executor)
+
+        with self.assertRaisesRegex(CodexReviewError, "every criterion to pass"):
+            provider.run(task_id="TASK-001", role="qa_review")
+
+    def test_qa_duplicate_criterion_is_rejected(self) -> None:
+        value = artifact("qa_review")
+        value["acceptanceEvidence"].append(value["acceptanceEvidence"][0].copy())
+        executor = FakeExecutor(
+            ProcessOutput(returncode=0, stdout=event_stream(value), stderr=b"")
+        )
+        provider = CodexReviewProvider(request("qa_review"), executor=executor)
+
+        with self.assertRaisesRegex(CodexReviewError, "duplicate acceptance"):
             provider.run(task_id="TASK-001", role="qa_review")
 
     def test_nonzero_process_exit_is_redacted_and_rejected(self) -> None:
         executor = FakeExecutor(
-            ProcessOutput(returncode=1, stdout=b"", stderr=b"provider unavailable")
+            ProcessOutput(
+                returncode=1,
+                stdout=b"",
+                stderr=b"provider unavailable token=secret-value",
+            )
         )
         provider = CodexReviewProvider(request(), executor=executor)
 
-        with self.assertRaisesRegex(CodexReviewError, "provider unavailable"):
+        with self.assertRaisesRegex(
+            CodexReviewError,
+            r"provider unavailable \[REDACTED\]",
+        ):
             provider.run(task_id="TASK-001", role="code_review")
 
 

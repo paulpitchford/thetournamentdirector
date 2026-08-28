@@ -145,6 +145,15 @@ class SubprocessExecutor:
 
 
 @dataclass(frozen=True)
+class TrustedEvidence:
+    """Controller-authenticated deterministic evidence supplied to QA."""
+
+    evidence_id: str
+    source: str
+    description: str
+
+
+@dataclass(frozen=True)
 class ReviewRequest:
     """Trusted, current-SHA material supplied to a tool-less reviewer."""
 
@@ -154,7 +163,7 @@ class ReviewRequest:
     head_sha: str
     task_contract: dict[str, Any]
     diff: str
-    deterministic_evidence: tuple[str, ...]
+    deterministic_evidence: tuple[TrustedEvidence, ...]
 
 
 @dataclass(frozen=True)
@@ -174,11 +183,12 @@ class Finding:
 
 @dataclass(frozen=True)
 class AcceptanceEvidence:
-    """QA mapping from one acceptance criterion to observed evidence."""
+    """QA mapping from one acceptance criterion to trusted evidence."""
 
     criterion: str
     status: str
     evidence: str
+    evidence_refs: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -206,6 +216,7 @@ class CodexReviewProvider:
     ) -> None:
         if request.role not in ALLOWED_ROLES:
             raise CodexReviewError(f"unsupported local review role: {request.role}")
+        _validate_trusted_evidence(request.deterministic_evidence)
         self.request = request
         self.executor = executor or SubprocessExecutor()
         self.timeout_seconds = timeout_seconds
@@ -232,7 +243,9 @@ class CodexReviewProvider:
             )
 
         if output.returncode != 0:
-            error_name = output.stderr.decode("utf-8", errors="replace")[:500]
+            error_name = _redacted_message(
+                output.stderr.decode("utf-8", errors="replace")
+            )
             raise CodexReviewError(
                 f"local Codex review failed with exit {output.returncode}: {error_name}"
             )
@@ -290,7 +303,10 @@ class CodexReviewProvider:
         role_instruction = (
             "Review code quality and security. Return findings grounded in the supplied diff."
             if self.request.role == "code_review"
-            else "Assess every acceptance criterion against supplied deterministic evidence."
+            else (
+                "Map every acceptance criterion exactly once to one or more supplied "
+                "trusted evidence IDs. A pass verdict requires every criterion to pass."
+            )
         )
         payload = {
             "taskId": self.request.task_id,
@@ -299,7 +315,14 @@ class CodexReviewProvider:
             "headSha": self.request.head_sha,
             "taskContract": self.request.task_contract,
             "diff": self.request.diff,
-            "deterministicEvidence": self.request.deterministic_evidence,
+            "deterministicEvidence": [
+                {
+                    "id": item.evidence_id,
+                    "source": item.source,
+                    "description": item.description,
+                }
+                for item in self.request.deterministic_evidence
+            ],
         }
         return (
             "You are a local, tool-less review agent. You have no shell, browser, MCP, or "
@@ -346,8 +369,11 @@ def _parse_event_stream(stdout: bytes) -> tuple[str, str]:
 
 def _redacted_error_message(item: dict[str, Any]) -> str:
     value = item.get("message")
-    message = value if isinstance(value, str) else "unspecified"
-    message = " ".join(message.split())[:500]
+    return _redacted_message(value if isinstance(value, str) else "unspecified")
+
+
+def _redacted_message(value: str) -> str:
+    message = " ".join(value.split())[:500]
     patterns = (
         r"(?i)bearer\s+[a-z0-9._-]+",
         r"\b(?:sk|gh[pousr])[-_][a-zA-Z0-9_-]{16,}\b",
@@ -356,6 +382,19 @@ def _redacted_error_message(item: dict[str, Any]) -> str:
     for pattern in patterns:
         message = re.sub(pattern, "[REDACTED]", message)
     return message or "unspecified"
+
+
+def _validate_trusted_evidence(evidence: tuple[TrustedEvidence, ...]) -> None:
+    allowed_sources = {"github_actions", "local_controller", "local_rootless"}
+    identifiers: set[str] = set()
+    for item in evidence:
+        evidence_id = _required_string(item.evidence_id, "evidence.id")
+        _required_string(item.description, "evidence.description")
+        if evidence_id in identifiers:
+            raise CodexReviewError(f"duplicate trusted evidence ID: {evidence_id}")
+        if item.source not in allowed_sources:
+            raise CodexReviewError(f"unapproved trusted evidence source: {item.source}")
+        identifiers.add(evidence_id)
 
 
 def _parse_artifact(message: str, request: ReviewRequest) -> ReviewArtifact:
@@ -386,9 +425,11 @@ def _parse_artifact(message: str, request: ReviewRequest) -> ReviewArtifact:
     if value["verdict"] not in {"pass", "block"}:
         raise CodexReviewError("review artifact has an invalid verdict")
     findings = _parse_findings(value["findings"])
-    acceptance = _parse_acceptance(value["acceptanceEvidence"])
-    if request.role == "qa_review" and not acceptance:
-        raise CodexReviewError("QA returned no acceptance evidence")
+    acceptance = _parse_acceptance(value["acceptanceEvidence"], request)
+    if request.role == "qa_review":
+        _validate_qa_acceptance(acceptance, request, verdict=value["verdict"])
+    elif acceptance:
+        raise CodexReviewError("code/security review returned QA acceptance evidence")
     if value["verdict"] == "pass" and findings:
         raise CodexReviewError("passing review cannot contain findings")
     if value["verdict"] == "block" and not findings:
@@ -454,23 +495,87 @@ def _parse_findings(value: Any) -> tuple[Finding, ...]:
     return tuple(findings)
 
 
-def _parse_acceptance(value: Any) -> tuple[AcceptanceEvidence, ...]:
+def _parse_acceptance(
+    value: Any, request: ReviewRequest
+) -> tuple[AcceptanceEvidence, ...]:
     if not isinstance(value, list):
         raise CodexReviewError("acceptanceEvidence must be an array")
+    trusted_ids = {item.evidence_id for item in request.deterministic_evidence}
     evidence: list[AcceptanceEvidence] = []
     for item in value:
-        if not isinstance(item, dict) or set(item) != {"criterion", "status", "evidence"}:
+        keys = {"criterion", "status", "evidence", "evidenceRefs"}
+        if not isinstance(item, dict) or set(item) != keys:
             raise CodexReviewError("acceptance evidence has missing or unknown fields")
         if item["status"] not in {"pass", "fail", "not_tested"}:
             raise CodexReviewError("acceptance evidence has invalid status")
+        references = item["evidenceRefs"]
+        if not isinstance(references, list) or not references:
+            raise CodexReviewError("acceptance evidence requires trusted evidence refs")
+        if not all(isinstance(reference, str) for reference in references):
+            raise CodexReviewError("acceptance evidence refs must be strings")
+        if len(references) != len(set(references)):
+            raise CodexReviewError("acceptance evidence has duplicate evidence refs")
+        unknown_references = set(references) - trusted_ids
+        if unknown_references:
+            raise CodexReviewError(
+                f"acceptance evidence has unknown refs: {sorted(unknown_references)}"
+            )
         evidence.append(
             AcceptanceEvidence(
                 criterion=_required_string(item["criterion"], "acceptance.criterion"),
                 status=item["status"],
                 evidence=_required_string(item["evidence"], "acceptance.evidence"),
+                evidence_refs=tuple(references),
             )
         )
     return tuple(evidence)
+
+
+def _validate_qa_acceptance(
+    evidence: tuple[AcceptanceEvidence, ...],
+    request: ReviewRequest,
+    *,
+    verdict: str,
+) -> None:
+    configured = request.task_contract.get("acceptanceCriteria")
+    if not isinstance(configured, list) or not configured:
+        raise CodexReviewError("task contract has no acceptance criteria")
+    if not all(isinstance(item, str) and item.strip() for item in configured):
+        raise CodexReviewError("task acceptance criteria must be non-empty strings")
+    if len(configured) != len(set(configured)):
+        raise CodexReviewError("task acceptance criteria must be unique")
+    observed = [item.criterion for item in evidence]
+    if len(observed) != len(set(observed)):
+        raise CodexReviewError("QA returned duplicate acceptance criteria")
+    if set(observed) != set(configured):
+        raise CodexReviewError("QA must map every acceptance criterion exactly once")
+
+    source_requirements = request.task_contract.get("acceptanceEvidenceRequirements", {})
+    if not isinstance(source_requirements, dict):
+        raise CodexReviewError("acceptance evidence requirements must be an object")
+    if not set(source_requirements).issubset(configured):
+        raise CodexReviewError("evidence requirements reference unknown criteria")
+    evidence_sources = {
+        item.evidence_id: item.source for item in request.deterministic_evidence
+    }
+    allowed_sources = {"github_actions", "local_controller", "local_rootless"}
+    for item in evidence:
+        required_sources = source_requirements.get(item.criterion, [])
+        if not isinstance(required_sources, list) or not all(
+            isinstance(source, str) and source in allowed_sources
+            for source in required_sources
+        ):
+            raise CodexReviewError("criterion has invalid evidence source requirements")
+        observed_sources = {evidence_sources[reference] for reference in item.evidence_refs}
+        missing_sources = set(required_sources) - observed_sources
+        if missing_sources:
+            raise CodexReviewError(
+                f"criterion lacks required evidence sources: {sorted(missing_sources)}"
+            )
+
+    has_non_passing = any(item.status != "pass" for item in evidence)
+    if verdict == "pass" and has_non_passing:
+        raise CodexReviewError("QA pass verdict requires every criterion to pass")
 
 
 def _required_string(value: Any, field: str) -> str:
@@ -505,6 +610,7 @@ def _artifact_to_dict(artifact: ReviewArtifact) -> dict[str, Any]:
                 "criterion": item.criterion,
                 "status": item.status,
                 "evidence": item.evidence,
+                "evidenceRefs": list(item.evidence_refs),
             }
             for item in artifact.acceptance_evidence
         ],
@@ -565,11 +671,17 @@ REVIEW_OUTPUT_SCHEMA: dict[str, Any] = {
             "items": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": ["criterion", "status", "evidence"],
+                "required": ["criterion", "status", "evidence", "evidenceRefs"],
                 "properties": {
                     "criterion": {"type": "string", "minLength": 1},
                     "status": {"enum": ["pass", "fail", "not_tested"]},
                     "evidence": {"type": "string", "minLength": 1},
+                    "evidenceRefs": {
+                        "type": "array",
+                        "minItems": 1,
+                        "uniqueItems": True,
+                        "items": {"type": "string", "minLength": 1},
+                    },
                 },
             },
         },

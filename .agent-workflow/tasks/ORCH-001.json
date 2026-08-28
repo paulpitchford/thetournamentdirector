@@ -15,6 +15,11 @@
     "QA requires acceptance evidence produced from trusted rootless test output",
     "No real model run occurs in automated tests"
   ],
+  "acceptanceEvidenceRequirements": {
+    "QA requires acceptance evidence produced from trusted rootless test output": [
+      "local_rootless"
+    ]
+  },
   "requiredTests": [
     ".agent-workflow/scripts/verify_controller.sh",
     "python3 .agent-workflow/scripts/check_repository.py"
