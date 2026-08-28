@@ -5,6 +5,7 @@ from .codex_review import (
     CodexReviewProvider,
     ReviewArtifact,
     ReviewRequest,
+    SystemdCgroupExecutor,
     TrustedEvidence,
 )
 from .config import ConfigError, PilotConfig, load_config
@@ -28,6 +29,7 @@ __all__ = [
     "ReviewRequest",
     "ReviewSeparationError",
     "RunLedger",
+    "SystemdCgroupExecutor",
     "TrustedEvidence",
     "RunResult",
     "load_config",

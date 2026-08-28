@@ -21,6 +21,7 @@ from td_controller.codex_review import (
     ProcessOutput,
     ReviewRequest,
     SubprocessExecutor,
+    SystemdCgroupExecutor,
     TrustedEvidence,
     _attest_codex_runtime,
 )
@@ -191,6 +192,65 @@ class SubprocessExecutorTests(unittest.TestCase):
                 )
 
 
+class SystemdCgroupExecutorTests(unittest.TestCase):
+    def test_wraps_review_in_killable_clean_environment_service(self) -> None:
+        delegate = FakeExecutor(ProcessOutput(returncode=0, stdout=b"ok", stderr=b""))
+        executor = SystemdCgroupExecutor(
+            delegate=delegate,
+            unit_name_factory=lambda: "td-codex-review-fixed123",
+        )
+        with (
+            patch.dict(os.environ, {"TD_SECRET_SENTINEL": "must-not-leak"}),
+            patch.object(SystemdCgroupExecutor, "_kill_transient_unit") as cleanup,
+        ):
+            result = executor.run(
+                ["/pinned/codex", "exec"],
+                input_bytes=b"prompt",
+                cwd=Path("/tmp"),
+                timeout_seconds=30,
+            )
+
+        command = delegate.commands[0]
+        self.assertEqual(command[0], "/usr/bin/systemd-run")
+        self.assertIn("--property=KillMode=control-group", command)
+        self.assertIn("--property=RuntimeMaxSec=30s", command)
+        self.assertIn("--property=TasksMax=64", command)
+        env_index = command.index("/usr/bin/env")
+        self.assertEqual(command[env_index + 1], "-i")
+        self.assertFalse(any("TD_SECRET_SENTINEL" in item for item in command))
+        self.assertEqual(command[-2:], ["/pinned/codex", "exec"])
+        self.assertEqual(delegate.timeout_seconds, 40)
+        cleanup.assert_called_once_with("td-codex-review-fixed123")
+        self.assertEqual(result.stdout, b"ok")
+
+    def test_cleanup_rejects_unit_that_remains_active(self) -> None:
+        completed = [
+            subprocess.CompletedProcess([], returncode=0),
+            subprocess.CompletedProcess([], returncode=0),
+            subprocess.CompletedProcess([], returncode=0),
+            subprocess.CompletedProcess([], returncode=0),
+        ]
+        with patch("td_controller.codex_review.subprocess.run", side_effect=completed):
+            with self.assertRaisesRegex(CodexReviewError, "remained active"):
+                SystemdCgroupExecutor._kill_transient_unit("td-codex-review-fixed123")
+
+    def test_invalid_unit_name_is_rejected_before_dispatch(self) -> None:
+        delegate = FakeExecutor(ProcessOutput(returncode=0, stdout=b"", stderr=b""))
+        executor = SystemdCgroupExecutor(
+            delegate=delegate,
+            unit_name_factory=lambda: "other-unit",
+        )
+
+        with self.assertRaisesRegex(CodexReviewError, "invalid transient"):
+            executor.run(
+                ["/pinned/codex"],
+                input_bytes=b"",
+                cwd=Path("/tmp"),
+                timeout_seconds=1,
+            )
+        self.assertEqual(delegate.commands, [])
+
+
 class RuntimeAttestationTests(unittest.TestCase):
     def test_attested_copy_is_bound_after_source_replacement(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -250,6 +310,11 @@ class CodexReviewProviderTests(unittest.TestCase):
         )
         runtime.start()
         self.addCleanup(runtime.stop)
+
+    def test_production_provider_uses_systemd_cgroup_executor(self) -> None:
+        provider = CodexReviewProvider(request())
+
+        self.assertIsInstance(provider.executor, SystemdCgroupExecutor)
 
     def test_valid_code_review_returns_session_and_artifact(self) -> None:
         executor = FakeExecutor(

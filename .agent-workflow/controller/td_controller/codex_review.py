@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import secrets
 import shutil
 import signal
 import subprocess
@@ -13,7 +14,7 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 from .provider import ProviderResult
 
@@ -64,6 +65,18 @@ def _stage_file(source: Path, destination: Path, expected_sha256: str) -> None:
         raise CodexReviewError("Codex runtime hash does not match the reviewed pin")
 
 
+def _minimal_systemd_environment() -> dict[str, str]:
+    runtime_dir = f"/run/user/{os.getuid()}"
+    return {
+        "DBUS_SESSION_BUS_ADDRESS": f"unix:path={runtime_dir}/bus",
+        "HOME": str(Path.home().resolve(strict=True)),
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "PATH": "/usr/bin:/bin",
+        "XDG_RUNTIME_DIR": runtime_dir,
+    }
+
+
 def _attest_codex_runtime(destination_dir: Path) -> str:
     executable = shutil.which("codex")
     if executable is None:
@@ -110,7 +123,13 @@ class CommandExecutor(Protocol):
 
 
 class SubprocessExecutor:
-    """Execute Codex with no shell interpolation and bounded captured output."""
+    """Execute one process group with bounded captured output."""
+
+    def __init__(
+        self,
+        environment_factory: Callable[[str], dict[str, str]] | None = None,
+    ) -> None:
+        self._environment_factory = environment_factory or _minimal_codex_environment
 
     def run(
         self,
@@ -127,7 +146,7 @@ class SubprocessExecutor:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             cwd=cwd,
-            env=_minimal_codex_environment(command[0]),
+            env=self._environment_factory(command[0]),
             start_new_session=True,
         )
         if process.stdin is None or process.stdout is None or process.stderr is None:
@@ -219,6 +238,107 @@ class SubprocessExecutor:
         )
 
 
+class SystemdCgroupExecutor:
+    """Run Codex in a transient user service that owns every descendant."""
+
+    def __init__(
+        self,
+        *,
+        delegate: CommandExecutor | None = None,
+        unit_name_factory: Callable[[], str] | None = None,
+    ) -> None:
+        self._delegate = delegate or SubprocessExecutor(
+            environment_factory=lambda _: _minimal_systemd_environment()
+        )
+        self._unit_name_factory = unit_name_factory or (
+            lambda: f"td-codex-review-{secrets.token_hex(8)}"
+        )
+
+    def run(
+        self,
+        command: list[str],
+        *,
+        input_bytes: bytes,
+        cwd: Path,
+        timeout_seconds: int,
+    ) -> ProcessOutput:
+        unit = self._unit_name_factory()
+        if not unit.startswith("td-codex-review-") or not unit.removeprefix(
+            "td-codex-review-"
+        ).isalnum():
+            raise CodexReviewError("invalid transient review unit name")
+        service_environment = _minimal_codex_environment(command[0])
+        wrapped = [
+            "/usr/bin/systemd-run",
+            "--user",
+            "--pipe",
+            "--wait",
+            "--collect",
+            "--quiet",
+            "--service-type=exec",
+            "--unit",
+            unit,
+            "--working-directory",
+            str(cwd),
+            "--property=KillMode=control-group",
+            "--property=SendSIGKILL=yes",
+            "--property=FinalKillSignal=SIGKILL",
+            "--property=TimeoutStopSec=2s",
+            f"--property=RuntimeMaxSec={max(1, timeout_seconds)}s",
+            "--property=TasksMax=64",
+            "--property=NoNewPrivileges=yes",
+            "--property=UMask=0077",
+            "/usr/bin/env",
+            "-i",
+            *(f"{key}={value}" for key, value in sorted(service_environment.items())),
+            *command,
+        ]
+        try:
+            return self._delegate.run(
+                wrapped,
+                input_bytes=input_bytes,
+                cwd=cwd,
+                timeout_seconds=timeout_seconds + 10,
+            )
+        finally:
+            self._kill_transient_unit(unit)
+
+    @staticmethod
+    def _kill_transient_unit(unit: str) -> None:
+        environment = _minimal_systemd_environment()
+        for action in (
+            ["stop", f"{unit}.service"],
+            ["kill", "--kill-whom=all", "--signal=SIGKILL", f"{unit}.service"],
+            ["reset-failed", f"{unit}.service"],
+        ):
+            try:
+                subprocess.run(
+                    ["/usr/bin/systemctl", "--user", *action],
+                    check=False,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=5,
+                    env=environment,
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise CodexReviewError("transient review unit cleanup timed out") from exc
+        try:
+            status = subprocess.run(
+                ["/usr/bin/systemctl", "--user", "is-active", f"{unit}.service"],
+                check=False,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+                env=environment,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise CodexReviewError("transient review unit verification timed out") from exc
+        if status.returncode == 0:
+            raise CodexReviewError("transient review unit remained active after cleanup")
+
+
 @dataclass(frozen=True)
 class TrustedEvidence:
     """Controller-authenticated deterministic evidence supplied to QA."""
@@ -293,7 +413,7 @@ class CodexReviewProvider:
             raise CodexReviewError(f"unsupported local review role: {request.role}")
         _validate_trusted_evidence(request.deterministic_evidence)
         self.request = request
-        self.executor = executor or SubprocessExecutor()
+        self.executor = executor or SystemdCgroupExecutor()
         self.timeout_seconds = timeout_seconds
         self.artifact: ReviewArtifact | None = None
 

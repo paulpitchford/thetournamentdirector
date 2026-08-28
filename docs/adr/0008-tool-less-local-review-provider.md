@@ -22,8 +22,14 @@ Run the authenticated Codex provider process locally with effectful capabilities
 contained before execution. Copy Codex and its code-mode host into a
 controller-owned temporary runtime directory while hashing both, verify the
 staged Codex version, and execute that same staged copy. This binds execution
-to the attested bytes rather than a replaceable source pathname. Then
-ignore user configuration and rules, disable shell, browser, computer-use, apps,
+to the attested bytes rather than a replaceable source pathname.
+
+Run the staged process as a transient systemd user service with
+`KillMode=control-group`, a finite `RuntimeMaxSec`, forced final `SIGKILL`, and a
+task limit. Systemd owns the service cgroup, so descendants remain in the
+cleanup boundary even after `setsid()`. The controller stops and kills the unit
+on every exit path. Then ignore user configuration and rules, disable shell,
+browser, computer-use, apps,
 MCP, and hosted web search, and select a named permission profile that grants
 only minimal runtime reads with no workspace reads, writes, or network access.
 Launch Codex with a minimal parent environment containing only `HOME`, locale,
@@ -36,7 +42,8 @@ standard input.
 
 Reject any tool event, any process stderr, malformed JSONL, missing/distinct
 session identity, stale SHA, malformed structured artifact, timeout, non-zero
-exit, runtime attestation mismatch, or output overflow. An exposed patch tool is
+exit, runtime attestation mismatch, cgroup setup/cleanup failure, or output
+overflow. An exposed patch tool is
 therefore denied by the permission profile before execution, and its diagnostic
 also invalidates the review artifact.
 

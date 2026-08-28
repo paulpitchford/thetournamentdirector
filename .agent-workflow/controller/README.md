@@ -14,7 +14,9 @@ It does **not** yet enable model dispatch, mutate a worktree, call GitHub, or ru
 as a daemon. Review models run locally with a hash-pinned Codex runtime, an
 empty filesystem/network permission profile, a minimal allowlisted parent
 process environment, no inherited tool environment, and hosted web search
-disabled. Any exposed patch operation is denied before
+disabled. Each invocation runs in a transient systemd user-service cgroup with
+a finite runtime and control-group cleanup so session-changing descendants
+cannot escape termination. Any exposed patch operation is denied before
 execution; tool events and unexpected process diagnostics fail closed.
 Deterministic commands run separately in rootless Podman. GitHub receives only
 deterministic CI and controller-published status/evidence.
