@@ -321,8 +321,9 @@ class SystemdCgroupExecutor:
                     timeout=5,
                     env=environment,
                 )
-            except subprocess.TimeoutExpired as exc:
-                raise CodexReviewError("transient review unit cleanup timed out") from exc
+            except subprocess.TimeoutExpired:
+                # Continue through the forced kill and positive state check.
+                continue
         try:
             status = subprocess.run(
                 ["/usr/bin/systemctl", "--user", "is-active", f"{unit}.service"],
@@ -337,6 +338,8 @@ class SystemdCgroupExecutor:
             raise CodexReviewError("transient review unit verification timed out") from exc
         if status.returncode == 0:
             raise CodexReviewError("transient review unit remained active after cleanup")
+        if status.returncode not in {3, 4}:
+            raise CodexReviewError("could not verify transient review unit cleanup")
 
 
 @dataclass(frozen=True)

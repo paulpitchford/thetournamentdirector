@@ -234,6 +234,30 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
             with self.assertRaisesRegex(CodexReviewError, "remained active"):
                 SystemdCgroupExecutor._kill_transient_unit("td-codex-review-fixed123")
 
+    def test_cleanup_attempts_kill_after_stop_timeout(self) -> None:
+        results = [
+            subprocess.TimeoutExpired(["systemctl", "stop"], timeout=5),
+            subprocess.CompletedProcess([], returncode=0),
+            subprocess.CompletedProcess([], returncode=0),
+            subprocess.CompletedProcess([], returncode=4),
+        ]
+        with patch("td_controller.codex_review.subprocess.run", side_effect=results) as run:
+            SystemdCgroupExecutor._kill_transient_unit("td-codex-review-fixed123")
+
+        self.assertEqual(run.call_count, 4)
+        self.assertIn("kill", run.call_args_list[1].args[0])
+
+    def test_cleanup_rejects_manager_transport_failure(self) -> None:
+        completed = [
+            subprocess.CompletedProcess([], returncode=1),
+            subprocess.CompletedProcess([], returncode=1),
+            subprocess.CompletedProcess([], returncode=1),
+            subprocess.CompletedProcess([], returncode=1),
+        ]
+        with patch("td_controller.codex_review.subprocess.run", side_effect=completed):
+            with self.assertRaisesRegex(CodexReviewError, "could not verify"):
+                SystemdCgroupExecutor._kill_transient_unit("td-codex-review-fixed123")
+
     def test_invalid_unit_name_is_rejected_before_dispatch(self) -> None:
         delegate = FakeExecutor(ProcessOutput(returncode=0, stdout=b"", stderr=b""))
         executor = SystemdCgroupExecutor(
