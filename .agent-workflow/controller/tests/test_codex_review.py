@@ -274,6 +274,7 @@ class CodexReviewProviderTests(unittest.TestCase):
             task_contract={
                 "id": "TASK-001",
                 "acceptanceCriteria": ["CI passes"],
+                "acceptanceEvidenceIds": {"CI passes": ["ci-controller-tests"]},
                 "acceptanceEvidenceRequirements": {"CI passes": ["local_rootless"]},
             },
         )
