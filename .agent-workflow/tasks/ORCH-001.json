@@ -1,31 +1,28 @@
 {
-  "id": "ORCH-001",
+  "id": "ORCH-001A",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Implement an effect-contained local Codex adapter for code/security review and QA",
+  "objective": "Add structured contracts and fail-closed artifact validation for local code/security and QA reviews",
   "nonGoals": [
-    "Enable implementation or remediation agents",
-    "Publish review statuses or auto-merge",
-    "Expose host credentials or repository tools to a model"
+    "Launch Codex or any other model provider",
+    "Add subprocess, sandbox, cgroup, or runtime-attestation controls",
+    "Publish review statuses or auto-merge"
   ],
   "dependsOn": [],
   "acceptanceCriteria": [
-    "Effectful tools are unavailable or denied before execution, and tool events or process diagnostics fail closed",
-    "Review output is size, timeout, schema, session, task, and current-SHA validated",
-    "QA requires acceptance evidence produced from trusted rootless test output",
-    "No real model run occurs in automated tests"
+    "Unknown review roles and invalid trusted evidence fail closed at the artifact boundary",
+    "QA maps every acceptance criterion exactly once to authenticated evidence and its verdict matches aggregate status",
+    "Review artifacts are schema, task, Git-SHA, finding, and role validated",
+    "No model or subprocess runs in automated contract tests"
   ],
-  "acceptanceEvidenceRequirements": {
-    "QA requires acceptance evidence produced from trusted rootless test output": [
-      "local_rootless"
-    ]
-  },
+  "acceptanceEvidenceRequirements": {},
   "requiredTests": [
     ".agent-workflow/scripts/verify_controller.sh",
     "python3 .agent-workflow/scripts/check_repository.py"
   ],
   "allowedPaths": [
-    ".agent-workflow/controller/**",
+    ".agent-workflow/controller/td_controller/review_contract.py",
+    ".agent-workflow/controller/tests/test_review_contract.py",
     ".agent-workflow/tasks/ORCH-001.json",
     "docs/adr/0008-tool-less-local-review-provider.md",
     "docs/adr/README.md"

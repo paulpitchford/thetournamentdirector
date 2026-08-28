@@ -87,6 +87,10 @@ def _validate_trusted_evidence(evidence: tuple[TrustedEvidence, ...]) -> None:
 
 
 def _parse_artifact(message: str, request: ReviewRequest) -> ReviewArtifact:
+    role_types = {"code_review": "code_security", "qa_review": "qa"}
+    if request.role not in ALLOWED_ROLES:
+        raise CodexReviewError(f"unsupported local review role: {request.role}")
+    _validate_trusted_evidence(request.deterministic_evidence)
     try:
         value = json.loads(message)
     except json.JSONDecodeError as exc:
@@ -104,7 +108,7 @@ def _parse_artifact(message: str, request: ReviewRequest) -> ReviewArtifact:
     }
     if set(value) != expected_keys:
         raise CodexReviewError("review artifact has missing or unknown fields")
-    expected_type = "code_security" if request.role == "code_review" else "qa"
+    expected_type = role_types[request.role]
     if value["reviewType"] != expected_type:
         raise CodexReviewError("review artifact has the wrong review type")
     if value["taskId"] != request.task_id:

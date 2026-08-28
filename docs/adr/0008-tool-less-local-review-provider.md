@@ -1,6 +1,6 @@
 # ADR 0008: Run local review models without repository tools
 
-- **Status:** Accepted
+- **Status:** Proposed (staged implementation in progress)
 - **Date:** 2026-08-28
 - **Clarifies:** ADR 0003 and ADR 0007
 
@@ -17,6 +17,10 @@ controller supplies the exact task contract, current-SHA diff, deterministic
 test output, and runtime evidence.
 
 ## Decision
+
+Deliver this boundary in policy-sized stages: structured review contracts first,
+then runtime/cgroup containment, then provider integration. No stage claims the
+full adapter is enabled until all stages are accepted.
 
 Run the authenticated Codex provider process locally with effectful capabilities
 contained before execution. Copy Codex and its code-mode host into a

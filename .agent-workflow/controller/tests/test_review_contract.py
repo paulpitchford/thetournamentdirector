@@ -157,6 +157,30 @@ class ReviewContractTests(unittest.TestCase):
         with self.assertRaisesRegex(CodexReviewError, "must contain findings"):
             self.parse(value, "code_review")
 
+    def test_unknown_review_role_is_rejected(self) -> None:
+        unknown = replace(request(), role="qa-reveiw")
+
+        with self.assertRaisesRegex(CodexReviewError, "unsupported local review role"):
+            _parse_artifact(json.dumps(qa_artifact()), unknown)
+
+    def test_artifact_boundary_validates_trusted_evidence(self) -> None:
+        duplicate = replace(
+            request(),
+            deterministic_evidence=(
+                TrustedEvidence("same", "github_actions", "first"),
+                TrustedEvidence("same", "local_controller", "second"),
+            ),
+        )
+        with self.assertRaisesRegex(CodexReviewError, "duplicate trusted evidence"):
+            _parse_artifact(json.dumps(qa_artifact()), duplicate)
+
+        unapproved = replace(
+            request(),
+            deterministic_evidence=(TrustedEvidence("one", "model", "result"),),
+        )
+        with self.assertRaisesRegex(CodexReviewError, "unapproved trusted evidence"):
+            _parse_artifact(json.dumps(qa_artifact()), unapproved)
+
     def test_trusted_evidence_ids_and_sources_are_validated(self) -> None:
         duplicate = (
             TrustedEvidence("same", "github_actions", "first"),
