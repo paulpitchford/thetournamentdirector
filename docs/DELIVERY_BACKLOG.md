@@ -72,11 +72,9 @@ The diagram is a summary; each task's `Depends on` field is authoritative.
 
 ### HUM-002 — Approve orchestration pilot settings
 
-- **Status:** In progress — Codex/high reasoning, local rootless execution, one
-  run at a time, eight runs/day, 60 minutes/run, 30% review reserve, two repair
-  rounds, no fallback, 14-day retention, and the pause/hard-stop policy are
-  approved. The isolated runner, controller credential, and kill switch remain
-  to be proven.
+- **Status:** Complete — approved controls are recorded in reviewed config;
+  rootless isolation, the repository-scoped deploy key, and the global pause
+  switch were proven on 2026-08-28.
 - **Risk:** R3
 - **Depends on:** `HUM-001`
 - **Owner:** human

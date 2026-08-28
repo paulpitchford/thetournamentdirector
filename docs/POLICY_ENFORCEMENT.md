@@ -48,10 +48,10 @@ commit locally, and return structured output. They receive no GitHub write
 token, SSH key, Docker socket, or host credentials. Fresh reviewer sessions are
 read-only.
 
-GitHub Copilot is used only for PR code review. It can read the PR and add
-comment-only findings through its managed GitHub integration. It cannot edit the
-branch, remediate code, approve/request changes, satisfy required approvals, or
-block merge by itself.
+Model review runs only in local rootless sandboxes. One fresh Codex session
+performs read-only code/security review and a second fresh Codex session performs
+QA. Neither receives GitHub credentials, modifies the branch, or publishes its
+own passing status.
 
 No agent is allowed to:
 
@@ -114,10 +114,10 @@ GitHub controls integration even if the local controller has a bug:
 - PRs remain draft while any gate or finding is open;
 - R0-R2 auto-merge requires every deterministic and independent review status;
 - R3 and escalated work requires explicit user approval;
-- the controller uses a fine-grained repository-scoped token with only the
-  permissions needed to push task branches, create/manage PRs, request Copilot
-  review, publish statuses, and enable eligible auto-merge; the current broad
-  personal `gh` token is never placed in the daemon or an agent;
+- the controller uses a repository-scoped deploy key for task-branch pushes and
+  a separately scoped integration path for PR metadata/status; neither can alter
+  branch protection, and the current broad personal `gh` token is never placed
+  in the daemon or an agent;
 - deployment/release credentials are not available to PR CI.
 
 No agent output string can satisfy a GitHub required check by itself.
@@ -163,7 +163,7 @@ security and quality rule configuration
 
 A dedicated R3 task with explicit user approval is required to alter these files.
 
-## Concrete Codex, controller, and Copilot-review pipeline
+## Concrete local Codex review pipeline
 
 The eventual controller should follow this shape. This is illustrative
 pseudocode, not code to run yet:
@@ -180,24 +180,35 @@ await runRequiredLocalGates(worktree, policy, task.riskClass);
 
 const branch = await controllerPushWithLease(worktree, task.expectedRemoteSha);
 const pr = await github.createOrUpdateDraftPr({ task, branch, baseSha });
-await github.requestCopilotReview(pr);
 await github.waitForRequiredCi(pr);
 
-const codexReviews = await runFreshReadOnlyCodexReviews({ task, pr, baseSha });
-const copilotReview = await github.collectCopilotCommentReview(pr);
-const findings = validateAndDeduplicateFindings([
-  ...codexReviews,
-  copilotReview,
-]);
-await github.publishReviewStatuses(pr, findings);
+const codeSecurity = await runFreshLocalCodexReview({
+  role: "code-security",
+  readOnly: true,
+  task,
+  pr,
+  baseSha,
+});
+const qa = await runFreshLocalCodexReview({
+  role: "qa",
+  readOnly: true,
+  task,
+  pr,
+  baseSha,
+});
+assertDistinctSessions([implementation, codeSecurity, qa]);
+const findings = validateAndDeduplicateFindings([codeSecurity, qa]);
+await github.publishReviewStatuses(pr, {
+  "review/code-security": codeSecurity,
+  "review/qa": qa,
+});
 
 if (hasBlockingFindings(findings)) {
   await runFreshCodexRemediation({ worktree, task, findings });
   await enforceLocalDiffFromTrustedController({ task, policy, baseSha });
   await runRequiredLocalGates(worktree, policy, task.riskClass);
   await controllerPushWithLease(worktree, pr.headSha);
-  await github.requestCopilotRereview(pr);
-  await rerunCodexReviews(pr);
+  await rerunFreshLocalCodexReviews(pr);
 }
 
 if (task.riskClass === "R3" || task.isEscalated) {
@@ -211,10 +222,9 @@ Important details:
 
 - The controller owns branch push and PR creation; Codex containers have no
   GitHub credential.
-- Copilot is requested only as a reviewer. GitHub documents that it always
-  leaves a `Comment` review, so a controller status—not a required approval—must
-  represent review completion and unresolved findings.
-- Every Codex reviewer uses a fresh read-only session at the recorded PR SHA.
+- No model runs in GitHub Actions or GitHub's review service.
+- Code/security and QA each use a fresh local read-only session at the recorded
+  PR SHA, distinct from implementation, remediation, and each other.
 - Do not use Sandcastle's unattended `head`, `merge-to-head`, or `noSandbox()`
   modes.
 - Do not copy `.env`, host `node_modules`, or authentication directories into a
@@ -279,8 +289,7 @@ security/source
 security/dependencies
 quality/build
 quality/e2e
-review/code
-review/security
+review/code-security
 review/qa
 ```
 
@@ -301,7 +310,7 @@ Use several controls together:
 - run mutation testing on critical domain modules on schedule and for R2
   changes when practical;
 - have the QA reviewer map each acceptance criterion to test/runtime evidence;
-- require separate code, security, and QA review statuses for domain money,
+- require separate local code/security and QA review statuses for domain money,
   clock, persistence, undo, and seating changes.
 
 A test written by the implementer is useful evidence, but not independent proof.
@@ -317,20 +326,18 @@ Reviewer prompts are also not sufficient. Codex review runs should:
 - emit JSON matching the reviewed finding schema;
 - fail if output is absent, malformed, lacks evidence, or references a path not
   in the diff without explanation;
-- run separate code-quality, security, and QA roles for R2/R3 work;
-- require Copilot PR review plus separate fresh Codex code/security/QA sessions
-  for critical work;
+- run one combined code/security role and one separate QA role for every PR;
+- require fresh local Codex sessions, distinct from implementation,
+  remediation, and each other;
 - block critical/high findings automatically;
 - send accepted findings to a separate remediation run;
 - rerun deterministic gates and reviews after repair;
 - quarantine after two non-converging repair cycles.
 
-Copilot review is collected separately because GitHub returns ordinary comment
-reviews rather than our schema. Every current, non-outdated Copilot finding is
-blocking by default. The controller records its path, line, body, review ID, and
-head SHA, sends it to remediation, and requests re-review after a push. It does
-not silently classify or dismiss Copilot comments. Repeated/ambiguous comments
-that do not converge within two rounds quarantine the PR.
+The controller rejects a missing/reused session identity, malformed finding,
+missing QA acceptance mapping, or evidence for a stale head SHA. A remediation
+push invalidates both local reviews. Repeated or ambiguous findings that do not
+converge within two rounds quarantine the PR.
 
 For R0-R2, required independent review statuses and deterministic CI form the
 routine acceptance boundary. R3, ambiguous, non-converging, or incident work is

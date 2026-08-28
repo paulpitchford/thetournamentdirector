@@ -2,6 +2,7 @@
 # workflow, policy, and build-control changes are R3 and require the owner.
 /.github/ @paulpitchford
 /.agent-workflow/ @paulpitchford
+/AGENTS.md @paulpitchford
 /docs/adr/ @paulpitchford
 /docs/ENGINEERING_QUALITY_POLICY.md @paulpitchford
 /docs/POLICY_ENFORCEMENT.md @paulpitchford

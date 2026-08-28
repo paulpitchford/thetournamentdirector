@@ -82,27 +82,27 @@ source of truth for workflow state or merge approval.
 
 ## Recommendation
 
-Run a staged experiment with a **thin repository-specific controller**, Codex
-through Sandcastle for all coding-agent roles, and GitHub Copilot as an
-additional PR reviewer.
+Run a staged experiment with a **thin repository-specific controller** and
+Codex through Sandcastle for every local coding-agent role. Do not run model
+review on GitHub.
 
 - GitHub Issues/Projects: approved work queue and visible status.
 - Sandcastle with a hardened local sandbox: Codex implementation, planning,
   remediation, and fresh-session code/security/QA reviews.
 - Local SQLite plus append-only run records: leases, attempts, budgets,
   heartbeats, and recovery.
-- Host-side controller: branch push, PR creation, Copilot review request,
-  reconciliation, policy statuses, evidence, and auto-merge eligibility.
-- GitHub Copilot code review: additional provider review comments on every PR
-  and remediation push.
+- Host-side controller: branch push, PR creation, reconciliation, local-review
+  dispatch, policy statuses, evidence, and auto-merge eligibility.
+- Separate fresh local Codex sessions for read-only code/security review and QA;
+  session identity and current-SHA evidence are mandatory.
 - GitHub Actions: independent, deterministic CI on every PR.
 - Branch protection: authoritative required checks; R0-R2 may auto-merge after
   staged qualification, while R3/escalated work requires the user.
 - Optional `gh-aw`: later for read-only triage, CI-failure summaries, or safe
   repository reporting.
 
-This automates routine PR mechanics without assuming unavailable Copilot coding
-agent access and avoids a direct merge loop whose safety depends on prompts.
+This automates routine PR mechanics without model execution on GitHub and avoids
+a direct merge loop whose safety depends on prompts.
 
 Gas Town is worth a separate spike if maintaining our own scheduler and
 watchdogs becomes the dominant work. It should not be adopted before a small

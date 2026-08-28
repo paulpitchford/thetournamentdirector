@@ -1,6 +1,6 @@
 # ADR 0002: Automate PR creation and use Copilot as an additional reviewer
 
-- **Status:** Accepted
+- **Status:** Accepted; Copilot-review decision superseded by ADR 0007
 - **Date:** 2026-08-28
 
 ## Context

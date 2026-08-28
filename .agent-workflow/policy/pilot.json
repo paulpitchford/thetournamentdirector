@@ -1,0 +1,38 @@
+{
+  "version": "1",
+  "provider": {
+    "name": "codex",
+    "model": "configured-default",
+    "reasoning": "high",
+    "fallback": null
+  },
+  "limits": {
+    "maxConcurrentRuns": 1,
+    "maxRunMinutes": 60,
+    "maxRunsPerDay": 8,
+    "reviewReservePercent": 30,
+    "maxRemediationRounds": 2,
+    "retentionDays": 14
+  },
+  "runner": {
+    "runtime": "podman",
+    "rootlessRequired": true,
+    "socket": "/run/user/1000/podman/podman.sock",
+    "networkDefault": "none"
+  },
+  "reviews": {
+    "modelReviewsOnGitHub": false,
+    "requiredRoles": [
+      "code_review",
+      "qa_review"
+    ],
+    "freshSessionPerRole": true,
+    "distinctSessionsRequired": true
+  },
+  "controller": {
+    "pauseFile": ".agent-workflow/state/PAUSED",
+    "database": ".agent-workflow/state/controller.sqlite3",
+    "credential": ".agent-workflow/state/credentials/controller_ed25519",
+    "pullRequestCreation": "github-actions-create-event"
+  }
+}

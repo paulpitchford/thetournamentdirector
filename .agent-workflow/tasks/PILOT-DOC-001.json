@@ -1,0 +1,34 @@
+{
+  "id": "PILOT-DOC-001",
+  "status": "APPROVED",
+  "parentEpic": "ORCHESTRATION-PILOT",
+  "objective": "Exercise the guarded documentation-only pull request path",
+  "nonGoals": [
+    "Change application code",
+    "Change workflow, policy, dependency, or quality configuration"
+  ],
+  "dependsOn": [],
+  "acceptanceCriteria": [
+    "One approved status sentence is added to the orchestration plan",
+    "Repository policy CI passes",
+    "Fresh local code/security and QA Codex evidence references the current head SHA",
+    "The two review roles use distinct sessions from implementation and each other"
+  ],
+  "requiredTests": [
+    "python3 .agent-workflow/scripts/check_repository.py"
+  ],
+  "allowedPaths": [
+    "docs/AGENT_ORCHESTRATION_PLAN.md"
+  ],
+  "protectedPaths": [
+    ".agent-workflow/**",
+    ".github/**",
+    "docs/adr/**",
+    "docs/ENGINEERING_QUALITY_POLICY.md",
+    "docs/POLICY_ENFORCEMENT.md"
+  ],
+  "riskClass": "R0",
+  "maxChangedLines": 8,
+  "maxAttempts": 2,
+  "humanApprovalRequired": false
+}
