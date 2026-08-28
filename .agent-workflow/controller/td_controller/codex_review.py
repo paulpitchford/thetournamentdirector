@@ -140,7 +140,8 @@ class CodexReviewProvider:
 
     def _build_prompt(self) -> str:
         role_instruction = (
-            "Review code quality and security. Return findings grounded in the supplied diff."
+            "Review code quality and security. Return findings grounded in the supplied "
+            "diff. For this code review, acceptanceEvidence must be an empty array."
             if self.request.role == "code_review"
             else (
                 "Map every acceptance criterion exactly once to one or more supplied "

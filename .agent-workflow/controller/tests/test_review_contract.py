@@ -27,6 +27,7 @@ def request(role: str = "qa_review") -> ReviewRequest:
         task_contract={
             "id": "TASK-001",
             "acceptanceCriteria": ["CI passes"],
+            "acceptanceEvidenceIds": {"CI passes": ["ci-controller-tests"]},
             "acceptanceEvidenceRequirements": {"CI passes": ["github_actions"]},
         },
         diff="diff --git a/a.py b/a.py\n+value = 1\n",
@@ -116,12 +117,29 @@ class ReviewContractTests(unittest.TestCase):
             task_contract={
                 "id": "TASK-001",
                 "acceptanceCriteria": ["CI passes"],
+                "acceptanceEvidenceIds": {"CI passes": ["ci-controller-tests"]},
                 "acceptanceEvidenceRequirements": {"CI passes": ["local_rootless"]},
             },
         )
 
         with self.assertRaisesRegex(CodexReviewError, "required evidence sources"):
             _parse_artifact(json.dumps(qa_artifact()), qa_request)
+
+    def test_qa_rejects_evidence_not_selected_for_criterion(self) -> None:
+        unrelated = TrustedEvidence(
+            evidence_id="scope-line-count",
+            source="local_controller",
+            description="722 lines",
+        )
+        qa_request = replace(
+            request(),
+            deterministic_evidence=(*request().deterministic_evidence, unrelated),
+        )
+        value = qa_artifact()
+        value["acceptanceEvidence"][0]["evidenceRefs"] = ["scope-line-count"]
+
+        with self.assertRaisesRegex(CodexReviewError, "controller selection"):
+            _parse_artifact(json.dumps(value), qa_request)
 
     def test_qa_verdict_exactly_matches_aggregate_status(self) -> None:
         failed_pass = qa_artifact()
@@ -145,6 +163,60 @@ class ReviewContractTests(unittest.TestCase):
         self.assertEqual(artifact.verdict, "block")
         self.assertEqual(artifact.findings, ())
 
+    def test_unhashable_enum_values_raise_contract_errors(self) -> None:
+        invalid_values = []
+
+        invalid_verdict = qa_artifact()
+        invalid_verdict["verdict"] = []
+        invalid_values.append((invalid_verdict, "qa_review"))
+
+        invalid_severity = qa_artifact()
+        invalid_severity.update(
+            reviewType="code_security",
+            verdict="block",
+            findings=[{**finding(), "severity": {}}],
+            acceptanceEvidence=[],
+        )
+        invalid_values.append((invalid_severity, "code_review"))
+
+        invalid_status = qa_artifact()
+        invalid_status["acceptanceEvidence"][0]["status"] = []
+        invalid_values.append((invalid_status, "qa_review"))
+
+        for value, role in invalid_values:
+            with self.subTest(role=role, value=value):
+                with self.assertRaises(CodexReviewError):
+                    self.parse(value, role)
+
+    def test_duplicate_json_keys_are_rejected_at_every_depth(self) -> None:
+        top_level = json.dumps(qa_artifact()).replace(
+            '"verdict": "pass"',
+            '"verdict": "block", "verdict": "pass"',
+            1,
+        )
+        nested = json.dumps(qa_artifact()).replace(
+            '"criterion": "CI passes"',
+            '"criterion": "other", "criterion": "CI passes"',
+            1,
+        )
+
+        for message in (top_level, nested):
+            with self.subTest(message=message):
+                with self.assertRaisesRegex(CodexReviewError, "unambiguous JSON"):
+                    _parse_artifact(message, request())
+
+    def test_duplicate_finding_ids_are_rejected(self) -> None:
+        value = qa_artifact()
+        value.update(
+            reviewType="code_security",
+            verdict="block",
+            findings=[finding(), finding()],
+            acceptanceEvidence=[],
+        )
+
+        with self.assertRaisesRegex(CodexReviewError, "duplicate finding ID"):
+            self.parse(value, "code_review")
+
     def test_code_review_block_requires_a_finding(self) -> None:
         value = qa_artifact()
         value.update(
@@ -156,6 +228,53 @@ class ReviewContractTests(unittest.TestCase):
 
         with self.assertRaisesRegex(CodexReviewError, "must contain findings"):
             self.parse(value, "code_review")
+
+    def test_unknown_review_role_is_rejected(self) -> None:
+        unknown = replace(request(), role="qa-reveiw")
+
+        with self.assertRaisesRegex(CodexReviewError, "unsupported local review role"):
+            _parse_artifact(json.dumps(qa_artifact()), unknown)
+
+    def test_matching_malformed_git_shas_are_rejected(self) -> None:
+        for malformed in (None, "", "g" * 40):
+            malformed_request = replace(
+                request(),
+                base_sha=malformed,  # type: ignore[arg-type]
+                head_sha=malformed,  # type: ignore[arg-type]
+            )
+            value = qa_artifact()
+            value["baseSha"] = malformed
+            value["headSha"] = malformed
+            with self.subTest(malformed=malformed):
+                with self.assertRaisesRegex(CodexReviewError, "Git object ID"):
+                    _parse_artifact(json.dumps(value), malformed_request)
+
+    def test_task_contract_id_is_bound_to_review_task(self) -> None:
+        mismatched = replace(request(), task_contract={"id": "OTHER"})
+        with self.assertRaisesRegex(CodexReviewError, "does not match"):
+            _parse_artifact(json.dumps(qa_artifact()), mismatched)
+
+        malformed = replace(request(), task_contract=[])  # type: ignore[arg-type]
+        with self.assertRaisesRegex(CodexReviewError, "must be an object"):
+            _parse_artifact(json.dumps(qa_artifact()), malformed)
+
+    def test_artifact_boundary_validates_trusted_evidence(self) -> None:
+        duplicate = replace(
+            request(),
+            deterministic_evidence=(
+                TrustedEvidence("same", "github_actions", "first"),
+                TrustedEvidence("same", "local_controller", "second"),
+            ),
+        )
+        with self.assertRaisesRegex(CodexReviewError, "duplicate trusted evidence"):
+            _parse_artifact(json.dumps(qa_artifact()), duplicate)
+
+        unapproved = replace(
+            request(),
+            deterministic_evidence=(TrustedEvidence("one", "model", "result"),),
+        )
+        with self.assertRaisesRegex(CodexReviewError, "unapproved trusted evidence"):
+            _parse_artifact(json.dumps(qa_artifact()), unapproved)
 
     def test_trusted_evidence_ids_and_sources_are_validated(self) -> None:
         duplicate = (
