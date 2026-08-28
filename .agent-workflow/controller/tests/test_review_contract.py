@@ -163,6 +163,15 @@ class ReviewContractTests(unittest.TestCase):
         with self.assertRaisesRegex(CodexReviewError, "unsupported local review role"):
             _parse_artifact(json.dumps(qa_artifact()), unknown)
 
+    def test_task_contract_id_is_bound_to_review_task(self) -> None:
+        mismatched = replace(request(), task_contract={"id": "OTHER"})
+        with self.assertRaisesRegex(CodexReviewError, "does not match"):
+            _parse_artifact(json.dumps(qa_artifact()), mismatched)
+
+        malformed = replace(request(), task_contract=[])  # type: ignore[arg-type]
+        with self.assertRaisesRegex(CodexReviewError, "must be an object"):
+            _parse_artifact(json.dumps(qa_artifact()), malformed)
+
     def test_artifact_boundary_validates_trusted_evidence(self) -> None:
         duplicate = replace(
             request(),

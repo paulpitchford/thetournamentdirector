@@ -90,6 +90,13 @@ def _parse_artifact(message: str, request: ReviewRequest) -> ReviewArtifact:
     role_types = {"code_review": "code_security", "qa_review": "qa"}
     if request.role not in ALLOWED_ROLES:
         raise CodexReviewError(f"unsupported local review role: {request.role}")
+    if not isinstance(request.task_contract, dict):
+        raise CodexReviewError("task contract must be an object")
+    contract_id = request.task_contract.get("id")
+    if not isinstance(contract_id, str) or not contract_id.strip():
+        raise CodexReviewError("task contract requires a non-empty ID")
+    if contract_id != request.task_id:
+        raise CodexReviewError("task contract ID does not match review task")
     _validate_trusted_evidence(request.deterministic_evidence)
     try:
         value = json.loads(message)
