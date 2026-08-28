@@ -163,6 +163,31 @@ class ReviewContractTests(unittest.TestCase):
         self.assertEqual(artifact.verdict, "block")
         self.assertEqual(artifact.findings, ())
 
+    def test_unhashable_enum_values_raise_contract_errors(self) -> None:
+        invalid_values = []
+
+        invalid_verdict = qa_artifact()
+        invalid_verdict["verdict"] = []
+        invalid_values.append((invalid_verdict, "qa_review"))
+
+        invalid_severity = qa_artifact()
+        invalid_severity.update(
+            reviewType="code_security",
+            verdict="block",
+            findings=[{**finding(), "severity": {}}],
+            acceptanceEvidence=[],
+        )
+        invalid_values.append((invalid_severity, "code_review"))
+
+        invalid_status = qa_artifact()
+        invalid_status["acceptanceEvidence"][0]["status"] = []
+        invalid_values.append((invalid_status, "qa_review"))
+
+        for value, role in invalid_values:
+            with self.subTest(role=role, value=value):
+                with self.assertRaises(CodexReviewError):
+                    self.parse(value, role)
+
     def test_duplicate_json_keys_are_rejected_at_every_depth(self) -> None:
         top_level = json.dumps(qa_artifact()).replace(
             '"verdict": "pass"',
