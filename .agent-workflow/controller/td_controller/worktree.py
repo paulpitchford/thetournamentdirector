@@ -10,7 +10,8 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from .lease import TaskLease
+from .lease import LeaseError, TaskLease, TaskLeaseLedger
+from .workflow_state import TaskStateLedger, WorkflowStateError
 
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 
@@ -32,7 +33,14 @@ class WorktreeReservation:
 class MetadataWorktreeManager:
     """Create branch-bound worktrees without running checkout filters or hooks."""
 
-    def __init__(self, repository_root: Path, worktree_root: Path) -> None:
+    def __init__(
+        self,
+        repository_root: Path,
+        worktree_root: Path,
+        *,
+        lease_ledger: TaskLeaseLedger,
+        state_ledger: TaskStateLedger,
+    ) -> None:
         try:
             self.repository_root = repository_root.resolve(strict=True)
             git_marker = self.repository_root / ".git"
@@ -52,6 +60,8 @@ class MetadataWorktreeManager:
         ):
             raise WorktreeError("worktree root name is invalid")
         self.worktree_root = parent / worktree_root.name
+        self.lease_ledger = lease_ledger
+        self.state_ledger = state_ledger
         if (
             self.worktree_root == self.repository_root
             or self.worktree_root.is_relative_to(self.repository_root)
@@ -59,6 +69,8 @@ class MetadataWorktreeManager:
         ):
             raise WorktreeError("worktree root overlaps the repository")
         self._prepare_root()
+        self._parent_identity = self._directory_identity(parent, allow_sticky=True)
+        self._root_identity = self._directory_identity(self.worktree_root)
 
     def reserve(
         self,
@@ -68,6 +80,7 @@ class MetadataWorktreeManager:
         base_sha: str,
     ) -> WorktreeReservation:
         """Reserve one empty no-checkout worktree from an active exact lease."""
+        self._assert_storage_identity()
         if lease.state != "ACTIVE":
             raise WorktreeError("an active task lease is required")
         if isinstance(attempt, bool) or not isinstance(attempt, int) or not 1 <= attempt <= 5:
@@ -77,6 +90,22 @@ class MetadataWorktreeManager:
             raise WorktreeError("lease branch does not match the task attempt")
         if not isinstance(base_sha, str) or not SHA_PATTERN.fullmatch(base_sha):
             raise WorktreeError("worktree base Git identity is invalid")
+        try:
+            authoritative_lease = self.lease_ledger.heartbeat(
+                lease.lease_id, owner=lease.owner, ttl_seconds=300
+            )
+            task_state = self.state_ledger.current(lease.task_id)
+        except (LeaseError, WorkflowStateError) as exc:
+            raise WorktreeError("authoritative dispatch state is unavailable") from exc
+        if (
+            authoritative_lease.task_id != lease.task_id
+            or authoritative_lease.branch != lease.branch
+            or task_state.attempt != attempt
+            or task_state.base_sha != base_sha
+            or task_state.state not in {"QUEUED", "LEASED"}
+        ):
+            raise WorktreeError("lease or task state does not authorize worktree")
+        expected_revision = task_state.revision
         target = self.worktree_root / f"{lease.task_id.lower()}-attempt-{attempt}"
         if target.exists() or target.is_symlink():
             raise WorktreeError("task worktree path is already reserved")
@@ -92,11 +121,21 @@ class MetadataWorktreeManager:
             marker = target / ".git"
             if entries != (marker,) or not marker.is_file() or marker.is_symlink():
                 raise WorktreeError("reserved worktree is not metadata-only")
-        except (OSError, WorktreeError) as exc:
+            refreshed = self.lease_ledger.heartbeat(
+                lease.lease_id, owner=lease.owner, ttl_seconds=300
+            )
+            refreshed_state = self.state_ledger.current(lease.task_id)
+            if (
+                refreshed.lease_id != authoritative_lease.lease_id
+                or refreshed_state.revision != expected_revision
+                or refreshed_state.base_sha != base_sha
+            ):
+                raise WorktreeError("dispatch authority changed during reservation")
+        except (OSError, WorktreeError, LeaseError, WorkflowStateError) as exc:
             self._rollback(target, reference, base_sha)
             if isinstance(exc, WorktreeError):
                 raise
-            raise WorktreeError("reserved worktree cannot be inspected") from exc
+            raise WorktreeError("reservation authority or inspection failed") from exc
         return WorktreeReservation(
             task_id=lease.task_id,
             attempt=attempt,
@@ -105,6 +144,27 @@ class MetadataWorktreeManager:
             path=target,
             lease_id=lease.lease_id,
         )
+
+    def _assert_storage_identity(self) -> None:
+        parent = self.worktree_root.parent
+        if (
+            self._directory_identity(parent, allow_sticky=True) != self._parent_identity
+            or self._directory_identity(self.worktree_root) != self._root_identity
+        ):
+            raise WorktreeError("worktree storage identity changed")
+
+    @staticmethod
+    def _directory_identity(path: Path, *, allow_sticky: bool = False) -> tuple[int, int]:
+        try:
+            metadata = path.lstat()
+        except OSError as exc:
+            raise WorktreeError("worktree storage cannot be inspected") from exc
+        mode = stat.S_IMODE(metadata.st_mode)
+        private = metadata.st_uid == os.getuid() and not mode & 0o077
+        sticky = allow_sticky and bool(mode & stat.S_ISVTX)
+        if not stat.S_ISDIR(metadata.st_mode) or path.is_symlink() or not (private or sticky):
+            raise WorktreeError("worktree storage permissions are unsafe")
+        return metadata.st_dev, metadata.st_ino
 
     def _prepare_root(self) -> None:
         try:
@@ -126,6 +186,7 @@ class MetadataWorktreeManager:
             raise WorktreeError("worktree root permissions are unsafe")
 
     def _rollback(self, target: Path, reference: str, base_sha: str) -> None:
+        self._assert_storage_identity()
         self._run_git("worktree", "remove", "--force", str(target))
         if target.exists() or target.is_symlink():
             try:
