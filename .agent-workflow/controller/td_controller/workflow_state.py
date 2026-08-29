@@ -285,8 +285,6 @@ class TaskStateLedger:
                 new_attempt=attempt,
                 max_attempts=row["max_attempts"],
                 head_changed=head_sha != expected_head_sha,
-                result=result,
-                has_artifacts=bool(artifacts),
             )
             cursor = connection.execute(
                 """
@@ -450,8 +448,6 @@ def _validate_transition(
     new_attempt: int,
     max_attempts: int,
     head_changed: bool,
-    result: str,
-    has_artifacts: bool,
 ) -> None:
     allowed = set(NORMAL_TRANSITIONS.get(prior, ()))
     if prior in INTERRUPTIBLE_STATES:
@@ -462,8 +458,8 @@ def _validate_transition(
     edge = (prior, new)
     if head_changed and edge not in HEAD_CHANGE_TRANSITIONS:
         raise WorkflowStateError("task head change is not allowed")
-    if edge in EVIDENCE_GATE_TRANSITIONS and (result != "PASS" or not has_artifacts):
-        raise WorkflowStateError("task gate evidence is incomplete")
+    if edge in EVIDENCE_GATE_TRANSITIONS:
+        raise WorkflowStateError("authoritative gate evidence is unavailable")
     retrying = prior == "FAILED_RETRYABLE" and new == "QUEUED"
     expected_attempt = current_attempt + 1 if retrying else current_attempt
     if new_attempt != expected_attempt or not 1 <= new_attempt <= max_attempts:

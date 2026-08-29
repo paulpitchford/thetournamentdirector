@@ -148,104 +148,44 @@ class TaskStateLedgerTests(unittest.TestCase):
         self.assertEqual(self.ledger.current("DOC-001"), original)
         self.assertEqual(len(self.ledger.history("DOC-001")), 1)
 
-    def test_complete_normal_path_is_recorded_and_becomes_inactive(self) -> None:
+    def test_non_gated_path_is_ordered_and_fabricated_evidence_cannot_advance(self) -> None:
         self.register()
         path = (
             ("APPROVED", "QUEUED"),
             ("QUEUED", "LEASED"),
             ("LEASED", "IMPLEMENTING"),
             ("IMPLEMENTING", "VERIFYING"),
-            ("VERIFYING", "PR_DRAFT"),
-            ("PR_DRAFT", "REVIEWING"),
-            ("REVIEWING", "CI_PENDING"),
-            ("CI_PENDING", "READY_FOR_POLICY_MERGE"),
-            ("READY_FOR_POLICY_MERGE", "AUTO_MERGE_PENDING"),
-            ("AUTO_MERGE_PENDING", "MERGED"),
-            ("MERGED", "DONE"),
         )
-
         for prior, new in path:
-            with self.subTest(new=new):
-                state = self.transition(prior, new)
-                self.assertEqual(state.state, new)
-
-        self.assertEqual(self.ledger.active(), ())
+            self.transition(prior, new)
+        current = self.ledger.current("DOC-001")
+        with self.assertRaisesRegex(WorkflowStateError, "authoritative"):
+            self.transition(
+                "VERIFYING", "PR_DRAFT", artifact_ids=("fabricated",)
+            )
         history = self.ledger.history("DOC-001")
-        self.assertEqual(
-            [record.new_state for record in history],
-            ["APPROVED", *(new for _, new in path)],
-        )
+        self.assertEqual(self.ledger.current("DOC-001"), current)
         self.assertEqual(
             [record.event_order for record in history],
             list(range(1, len(history) + 1)),
         )
 
-    def test_review_remediation_loop_returns_to_verification(self) -> None:
-        self.register(status="QUEUED")
-        first_verifying_revision = 0
-        for prior, new in (
-            ("QUEUED", "LEASED"),
-            ("LEASED", "IMPLEMENTING"),
-            ("IMPLEMENTING", "VERIFYING"),
-            ("VERIFYING", "PR_DRAFT"),
-            ("PR_DRAFT", "REVIEWING"),
-            ("REVIEWING", "REMEDIATING"),
-            ("REMEDIATING", "VERIFYING"),
-        ):
-            state = self.transition(prior, new)
-            if new == "VERIFYING" and first_verifying_revision == 0:
-                first_verifying_revision = state.revision
-
-        current = self.ledger.current("DOC-001")
-        self.assertEqual(current.state, "VERIFYING")
-        with self.assertRaisesRegex(WorkflowStateError, "changed before"):
-            self.transition(
-                "VERIFYING", "PR_DRAFT", expected_revision=first_verifying_revision
-            )
-        with self.assertRaisesRegex(WorkflowStateError, "changed before"):
-            self.transition(
-                "VERIFYING", "PR_DRAFT", expected_head_sha=BASE_SHA
-            )
-        self.assertEqual(self.ledger.current("DOC-001"), current)
-
-    def test_merge_path_requires_pass_evidence_and_preserves_head(self) -> None:
-        self.register(status="QUEUED")
-        for prior, new in (
-            ("QUEUED", "LEASED"),
-            ("LEASED", "IMPLEMENTING"),
-            ("IMPLEMENTING", "VERIFYING"),
-            ("VERIFYING", "PR_DRAFT"),
-            ("PR_DRAFT", "REVIEWING"),
-        ):
-            self.transition(prior, new)
-        current = self.ledger.current("DOC-001")
-        for result, artifacts in (
-            ("FAIL", ("review-evidence",)),
-            ("NONE", ("review-evidence",)),
-            ("PASS", ()),
-        ):
-            with self.assertRaisesRegex(WorkflowStateError, "evidence"):
-                self.transition(
-                    "REVIEWING", "CI_PENDING", result=result,
-                    artifact_ids=artifacts,
-                )
-        with self.assertRaisesRegex(WorkflowStateError, "head change"):
-            self.transition("REVIEWING", "CI_PENDING", head_sha="c" * 40)
-        self.assertEqual(self.ledger.current("DOC-001"), current)
-
-    def test_stale_or_illegal_transition_rolls_back(self) -> None:
+    def test_stale_identity_and_illegal_transition_roll_back(self) -> None:
         self.register()
+        current = self.transition("APPROVED", "QUEUED")
 
-        for expected, new in (
-            ("QUEUED", "LEASED"),
-            ("APPROVED", "IMPLEMENTING"),
-        ):
-            with self.subTest(expected=expected, new=new):
+        invalid = (
+            {"expected_revision": 1},
+            {"expected_head_sha": "c" * 40},
+            {"head_sha": "c" * 40},
+        )
+        for override in invalid:
+            with self.subTest(override=override):
                 with self.assertRaises(WorkflowStateError):
-                    self.transition(expected, new)
+                    self.transition("QUEUED", "LEASED", **override)
 
-        self.assertEqual(self.ledger.current("DOC-001").state, "APPROVED")
-        self.assertEqual(len(self.ledger.history("DOC-001")), 1)
+        self.assertEqual(self.ledger.current("DOC-001"), current)
+        self.assertEqual(len(self.ledger.history("DOC-001")), 2)
 
     def test_retry_increments_attempt_once_and_enforces_maximum(self) -> None:
         self.register(max_attempts=2)

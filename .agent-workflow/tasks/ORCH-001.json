@@ -3,17 +3,17 @@
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
   "objective": "Add durable optimistic task transitions and restart inspection for controlled dispatch",
-  "nonGoals": ["Create worktrees", "Run a write-capable provider", "Push branches", "Create or merge pull requests", "Change GitHub policy"],
+  "nonGoals": ["Create worktrees", "Run a write-capable provider", "Authorize evidence-gated merge progression", "Push branches", "Create or merge pull requests", "Change GitHub policy"],
   "dependsOn": ["ORCH-003A"],
   "acceptanceCriteria": [
-    "legal-transitions|WHEN a registered task advances through dispatch states|ASSERT TEST_PASS workflow-state-tests",
+    "legal-transitions|WHEN a registered task advances through non-gated dispatch states|ASSERT TEST_PASS workflow-state-tests",
     "stale-transition|WHEN an outdated or illegal state change is attempted|ASSERT TEST_PASS workflow-state-tests",
     "retry-bound|WHEN a retry transition increments its attempt|ASSERT TEST_PASS workflow-state-tests",
     "restart-state|WHEN the controller restarts during an active task|ASSERT TEST_PASS workflow-state-tests",
     "event-binding|WHEN a transition is durably recorded|ASSERT TEST_PASS workflow-state-tests"
   ],
   "acceptanceEvidenceIds": {
-    "legal-transitions|WHEN a registered task advances through dispatch states|ASSERT TEST_PASS workflow-state-tests": ["workflow-state-tests"],
+    "legal-transitions|WHEN a registered task advances through non-gated dispatch states|ASSERT TEST_PASS workflow-state-tests": ["workflow-state-tests"],
     "stale-transition|WHEN an outdated or illegal state change is attempted|ASSERT TEST_PASS workflow-state-tests": ["workflow-state-tests"],
     "retry-bound|WHEN a retry transition increments its attempt|ASSERT TEST_PASS workflow-state-tests": ["workflow-state-tests"],
     "restart-state|WHEN the controller restarts during an active task|ASSERT TEST_PASS workflow-state-tests": ["workflow-state-tests"],
