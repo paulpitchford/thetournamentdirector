@@ -189,6 +189,15 @@ def _schema_for_role(role: str) -> dict[str, object]:
     return schema
 
 
+def _unique_event_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    value: dict[str, object] = {}
+    for key, item in pairs:
+        if key in value:
+            raise CodexReviewError("Codex emitted ambiguous JSONL")
+        value[key] = item
+    return value
+
+
 def _parse_event_stream(stdout: bytes) -> tuple[str, str]:
     if len(stdout) > MAX_OUTPUT_BYTES:
         raise CodexReviewError("event stream exceeds the output limit")
@@ -207,7 +216,7 @@ def _parse_event_stream(stdout: bytes) -> tuple[str, str]:
         raise CodexReviewError("Codex emitted invalid UTF-8 JSONL") from exc
     for raw_line in lines:
         try:
-            event = json.loads(raw_line)
+            event = json.loads(raw_line, object_pairs_hook=_unique_event_object)
         except json.JSONDecodeError as exc:
             raise CodexReviewError("Codex emitted malformed JSONL") from exc
         if not isinstance(event, dict) or event.get("type") not in allowed_events:

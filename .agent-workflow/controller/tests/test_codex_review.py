@@ -219,6 +219,20 @@ class CodexReviewProviderTests(unittest.TestCase):
         with self.assertRaisesRegex(CodexReviewError, "duplicate thread"):
             provider.run(task_id="TASK-001", role="code_review")
 
+    def test_duplicate_event_keys_are_rejected_recursively(self) -> None:
+        output = (
+            b'{"type":"thread.started","thread_id":"fresh-session"}\n'
+            b'{"type":"item.completed","item":{"type":"agent_message",'
+            b'"type":"reasoning","text":"ambiguous"}}\n'
+        )
+        provider = CodexReviewProvider(
+            request(),
+            executor=FakeExecutor(ProcessOutput(0, output, b"")),
+        )
+
+        with self.assertRaisesRegex(CodexReviewError, "ambiguous JSONL"):
+            provider.run(task_id="TASK-001", role="code_review")
+
     def test_forbidden_tool_event_is_rejected(self) -> None:
         executor = FakeExecutor(
             ProcessOutput(
