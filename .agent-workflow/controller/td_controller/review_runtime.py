@@ -6,8 +6,8 @@ import hashlib
 import os
 import pwd
 import secrets
-import shutil
 import signal
+import stat
 import subprocess
 import threading
 import time
@@ -21,6 +21,9 @@ CGROUP_ROOT = Path("/sys/fs/cgroup")
 MAX_INPUT_BYTES = 512_000
 MAX_OUTPUT_BYTES = 2_000_000
 PINNED_CODEX_VERSION = "codex-cli 0.150.1"
+PINNED_CODEX_SIZE = 268_330_432
+PINNED_CODE_MODE_HOST_SIZE = 57_886_648
+PINNED_RUNTIME_RELATIVE_DIR = Path(".local/share/mise/installs/codex/0.150.1/bin")
 PINNED_CODEX_SHA256 = "abf1bb1643a79f73aa78ee627e111e02d4f8c98f25813a0cf6ce277709664386"
 PINNED_CODE_MODE_HOST_SHA256 = (
     "b3d633427c8c75057fba11dad6051714d44886440305e86ba9d2c0366f4dd63b"
@@ -55,17 +58,39 @@ def _minimal_codex_environment(executable: str) -> dict[str, str]:
     }
 
 
-def _stage_file(source: Path, destination: Path, expected_sha256: str) -> None:
-    digest = hashlib.sha256()
-    with source.open("rb") as input_file, destination.open("xb") as output_file:
-        while chunk := input_file.read(1024 * 1024):
-            digest.update(chunk)
-            output_file.write(chunk)
-        output_file.flush()
-        os.fsync(output_file.fileno())
-    destination.chmod(0o500)
-    if digest.hexdigest() != expected_sha256:
-        raise CodexReviewError("Codex runtime hash does not match the reviewed pin")
+def _stage_file(
+    source: Path, destination: Path, expected_sha256: str, expected_size: int
+) -> None:
+    temporary = destination.with_name(f".{destination.name}.partial")
+    try:
+        source_fd = os.open(source, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+        with os.fdopen(source_fd, "rb") as input_file:
+            source_stat = os.fstat(input_file.fileno())
+            if not stat.S_ISREG(source_stat.st_mode) or source_stat.st_size != expected_size:
+                raise CodexReviewError("Codex runtime size does not match the reviewed pin")
+            digest = hashlib.sha256()
+            with temporary.open("xb") as output_file:
+                copied = 0
+                while chunk := input_file.read(min(1024 * 1024, expected_size - copied)):
+                    copied += len(chunk)
+                    if copied > expected_size:
+                        raise CodexReviewError("Codex runtime exceeded its size bound")
+                    digest.update(chunk)
+                    output_file.write(chunk)
+                if input_file.read(1) or copied != expected_size:
+                    raise CodexReviewError("Codex runtime exceeded its size bound")
+                if digest.hexdigest() != expected_sha256:
+                    raise CodexReviewError("Codex runtime hash does not match the reviewed pin")
+                output_file.flush()
+                os.fsync(output_file.fileno())
+            temporary.chmod(0o500)
+            os.replace(temporary, destination)
+    except CodexReviewError:
+        temporary.unlink(missing_ok=True)
+        raise
+    except OSError as exc:
+        temporary.unlink(missing_ok=True)
+        raise CodexReviewError("Codex runtime staging failed") from exc
 
 
 def _minimal_systemd_environment() -> dict[str, str]:
@@ -80,19 +105,21 @@ def _minimal_systemd_environment() -> dict[str, str]:
     }
 
 
+def _pinned_runtime_sources() -> tuple[Path, Path]:
+    runtime_dir = _trusted_home() / PINNED_RUNTIME_RELATIVE_DIR
+    return runtime_dir / "codex", runtime_dir / "codex-code-mode-host"
+
+
 def _attest_codex_runtime(destination_dir: Path) -> str:
-    executable = shutil.which("codex")
-    if executable is None:
-        raise CodexReviewError("pinned Codex runtime is unavailable")
-    source = Path(executable).resolve(strict=True)
-    host_source = source.with_name("codex-code-mode-host").resolve(strict=True)
+    source, host_source = _pinned_runtime_sources()
     destination_dir.mkdir(mode=0o700)
     staged = destination_dir / "codex"
-    _stage_file(source, staged, PINNED_CODEX_SHA256)
+    _stage_file(source, staged, PINNED_CODEX_SHA256, PINNED_CODEX_SIZE)
     _stage_file(
         host_source,
         destination_dir / "codex-code-mode-host",
         PINNED_CODE_MODE_HOST_SHA256,
+        PINNED_CODE_MODE_HOST_SIZE,
     )
     version = subprocess.run(
         [str(staged), "--version"],
@@ -161,6 +188,8 @@ class SubprocessExecutor:
         stdout = bytearray()
         stderr = bytearray()
         overflow = threading.Event()
+        output_lock = threading.Lock()
+        captured_bytes = 0
         thread_errors: list[Exception] = []
 
         def kill_process_group() -> None:
@@ -170,15 +199,19 @@ class SubprocessExecutor:
                 pass
 
         def read_bounded(stream: Any, buffer: bytearray) -> None:
+            nonlocal captured_bytes
             try:
                 while chunk := stream.read(65_536):
-                    remaining = MAX_OUTPUT_BYTES - len(buffer)
-                    if len(chunk) > remaining:
-                        buffer.extend(chunk[:remaining])
-                        overflow.set()
+                    with output_lock:
+                        remaining = MAX_OUTPUT_BYTES - captured_bytes
+                        accepted = min(len(chunk), remaining)
+                        buffer.extend(chunk[:accepted])
+                        captured_bytes += accepted
+                        if accepted < len(chunk):
+                            overflow.set()
+                    if overflow.is_set():
                         kill_process_group()
                         return
-                    buffer.extend(chunk)
             except Exception as exc:
                 thread_errors.append(exc)
                 kill_process_group()
@@ -333,7 +366,6 @@ class SystemdCgroupExecutor:
                     env=environment,
                 )
             except subprocess.TimeoutExpired:
-                # Continue through forced kill and positive state verification.
                 continue
         SystemdCgroupExecutor._verify_transient_unit(unit, environment)
         subprocess.run(

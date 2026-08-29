@@ -23,11 +23,10 @@ from td_controller.review_runtime import (
     _attest_codex_runtime,
     _minimal_codex_environment,
     _minimal_systemd_environment,
+    _stage_file,
 )
 
 class FakeExecutor:
-    """Return a configured Codex JSONL stream without model usage."""
-
     def __init__(self, output: ProcessOutput) -> None:
         self.output = output
         self.commands: list[list[str]] = []
@@ -147,6 +146,19 @@ class SubprocessExecutorTests(unittest.TestCase):
                     except ProcessLookupError:
                         pass
                     time.sleep(0.1)
+
+    def test_combined_output_flood_uses_one_aggregate_limit(self) -> None:
+        executor = SubprocessExecutor()
+        script = "import os; os.write(1, b'x' * 600); os.write(2, b'y' * 600)"
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch("td_controller.review_runtime.MAX_OUTPUT_BYTES", 1_024):
+                with self.assertRaisesRegex(CodexReviewError, "output limit"):
+                    executor.run(
+                        [sys.executable, "-c", script],
+                        input_bytes=b"",
+                        cwd=Path(temporary),
+                        timeout_seconds=5,
+                    )
 
     def test_output_flood_is_killed_at_the_hard_limit(self) -> None:
         executor = SubprocessExecutor()
@@ -321,7 +333,15 @@ class RuntimeAttestationTests(unittest.TestCase):
             host.chmod(0o700)
             destination = Path(temporary) / "staged"
             with (
-                patch("td_controller.review_runtime.shutil.which", return_value=str(source)),
+                patch(
+                    "td_controller.review_runtime._pinned_runtime_sources",
+                    return_value=(source, host),
+                ),
+                patch("td_controller.review_runtime.PINNED_CODEX_SIZE", len(original)),
+                patch(
+                    "td_controller.review_runtime.PINNED_CODE_MODE_HOST_SIZE",
+                    len(host.read_bytes()),
+                ),
                 patch(
                     "td_controller.review_runtime.PINNED_CODEX_SHA256",
                     hashlib.sha256(original).hexdigest(),
@@ -353,6 +373,27 @@ class RuntimeAttestationTests(unittest.TestCase):
             host.write_bytes(b"unreviewed host")
             host.chmod(0o700)
             destination = Path(temporary) / "staged"
-            with patch("td_controller.review_runtime.shutil.which", return_value=str(executable)):
+            with (
+                patch(
+                    "td_controller.review_runtime._pinned_runtime_sources",
+                    return_value=(executable, host),
+                ),
+                patch(
+                    "td_controller.review_runtime.PINNED_CODEX_SIZE",
+                    len(executable.read_bytes()),
+                ),
+            ):
                 with self.assertRaisesRegex(CodexReviewError, "hash does not match"):
                     _attest_codex_runtime(destination)
+            self.assertEqual(list(destination.iterdir()), [])
+
+    def test_non_regular_runtime_fails_without_staged_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "runtime-fifo"
+            os.mkfifo(source)
+            destination = Path(temporary) / "staged"
+
+            with self.assertRaisesRegex(CodexReviewError, "size does not match"):
+                _stage_file(source, destination, "0" * 64, 1)
+
+            self.assertFalse(destination.exists())
