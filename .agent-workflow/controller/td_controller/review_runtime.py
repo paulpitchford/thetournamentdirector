@@ -331,6 +331,7 @@ class SystemdCgroupExecutor:
             "--property=CPUQuota=200%",
             "--property=NoNewPrivileges=yes",
             "--property=ProtectControlGroups=yes",
+            "--property=PrivatePIDs=yes",
             f"--property=InaccessiblePaths=/run/user/{os.getuid()}",
             "--property=UMask=0077",
             "/usr/bin/env",
