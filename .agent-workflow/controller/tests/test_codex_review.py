@@ -165,7 +165,8 @@ class CodexReviewProviderTests(unittest.TestCase):
         disabled = {command[index + 1] for index, value in enumerate(command[:-1])
                     if value == "--disable"}
         self.assertIn("shell_tool", disabled)
-        self.assertIn("code_mode_host", disabled)
+        self.assertIn("code_mode", disabled)
+        self.assertNotIn("code_mode_host", disabled)
         self.assertIn("view_image", disabled)
         developer = next(value for value in command
                          if value.startswith("developer_instructions="))
