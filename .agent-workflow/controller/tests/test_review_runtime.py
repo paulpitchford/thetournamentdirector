@@ -234,10 +234,9 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
         self.assertIn("--property=MemoryMax=2G", command)
         self.assertIn("--property=MemorySwapMax=0", command)
         self.assertIn("--property=CPUQuota=200%", command)
-        runtime_dir = f"/run/user/{os.getuid()}"
+        self.assertIn("--property=ProtectControlGroups=yes", command)
         self.assertIn(
-            f"--property=InaccessiblePaths={runtime_dir}/bus {runtime_dir}/systemd",
-            command,
+            f"--property=InaccessiblePaths=/run/user/{os.getuid()}", command
         )
         env_index = command.index("/usr/bin/env")
         self.assertEqual(command[env_index + 1], "-i")
