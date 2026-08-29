@@ -8,24 +8,40 @@
     "Dispatch implementation or planning agents",
     "Change GitHub workflows, pilot policy, or merge controls"
   ],
-  "dependsOn": ["ORCH-001D"],
+  "dependsOn": [
+    "ORCH-001D"
+  ],
   "acceptanceCriteria": [
-    "Task JSON rejects duplicate keys recursively, unknown or missing fields, invalid primitive types, and oversized files",
-    "Task identity, state, risk, numeric limits, path boundaries, dependencies, and human-approval fields are validated without coercion",
-    "Acceptance criteria reject empty, duplicate, and deterministically vague statements",
-    "Criterion evidence mappings reject unknown criteria and unapproved trusted evidence sources",
-    "Ignored recovered roots, absolute paths, parent traversal, and exact allowed/protected overlap are rejected",
-    "Existing repository task fixtures validate successfully",
-    "Automated contract tests invoke no model"
+    "WHEN task JSON enters the parser THEN duplicate keys, invalid fields, invalid types, and oversized payloads are rejected with TaskContractError",
+    "WHEN task fields are parsed THEN identity, state, risk, limits, paths, dependencies, and approval are validated without coercion",
+    "WHEN acceptance criteria are parsed THEN empty, duplicate, vague, and unstructured statements are rejected with TaskContractError",
+    "WHEN evidence mappings are parsed THEN unknown criteria and unapproved evidence sources are rejected with TaskContractError",
+    "WHEN task path claims are parsed THEN recovered roots, absolute paths, traversal, and overlapping scopes are rejected with TaskContractError",
+    "WHEN repository task fixtures are loaded THEN every task fixture validates against the same durable contract",
+    "WHEN the automated contract suite runs THEN tests complete without invoking a model"
   ],
   "acceptanceEvidenceIds": {
-    "Task JSON rejects duplicate keys recursively, unknown or missing fields, invalid primitive types, and oversized files": ["local-task-contract-tests"],
-    "Task identity, state, risk, numeric limits, path boundaries, dependencies, and human-approval fields are validated without coercion": ["local-task-contract-tests"],
-    "Acceptance criteria reject empty, duplicate, and deterministically vague statements": ["local-task-contract-tests"],
-    "Criterion evidence mappings reject unknown criteria and unapproved trusted evidence sources": ["local-task-contract-tests"],
-    "Ignored recovered roots, absolute paths, parent traversal, and exact allowed/protected overlap are rejected": ["local-task-contract-tests"],
-    "Existing repository task fixtures validate successfully": ["local-task-contract-tests"],
-    "Automated contract tests invoke no model": ["no-model-in-tests"]
+    "WHEN task JSON enters the parser THEN duplicate keys, invalid fields, invalid types, and oversized payloads are rejected with TaskContractError": [
+      "local-task-contract-tests"
+    ],
+    "WHEN task fields are parsed THEN identity, state, risk, limits, paths, dependencies, and approval are validated without coercion": [
+      "local-task-contract-tests"
+    ],
+    "WHEN acceptance criteria are parsed THEN empty, duplicate, vague, and unstructured statements are rejected with TaskContractError": [
+      "local-task-contract-tests"
+    ],
+    "WHEN evidence mappings are parsed THEN unknown criteria and unapproved evidence sources are rejected with TaskContractError": [
+      "local-task-contract-tests"
+    ],
+    "WHEN task path claims are parsed THEN recovered roots, absolute paths, traversal, and overlapping scopes are rejected with TaskContractError": [
+      "local-task-contract-tests"
+    ],
+    "WHEN repository task fixtures are loaded THEN every task fixture validates against the same durable contract": [
+      "local-task-contract-tests"
+    ],
+    "WHEN the automated contract suite runs THEN tests complete without invoking a model": [
+      "no-model-in-tests"
+    ]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [
@@ -35,7 +51,8 @@
   "allowedPaths": [
     ".agent-workflow/controller/td_controller/task_contract.py",
     ".agent-workflow/controller/tests/test_task_contract.py",
-    ".agent-workflow/tasks/ORCH-001.json"
+    ".agent-workflow/tasks/ORCH-001.json",
+    ".agent-workflow/tasks/PILOT-DOC-001.json"
   ],
   "protectedPaths": [
     ".github/**",

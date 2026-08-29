@@ -13,7 +13,10 @@ from td_controller.task_contract import TaskContractError, load_task, parse_task
 
 
 def valid_task() -> dict[str, object]:
-    criterion = "The deterministic controller suite passes"
+    criterion = (
+        "WHEN controller verification runs THEN the deterministic controller suite "
+        "passes all registered checks"
+    )
     return {
         "id": "APP-001",
         "status": "APPROVED",
@@ -39,7 +42,10 @@ class TaskContractTests(unittest.TestCase):
         task = parse_task(valid_task())
 
         self.assertEqual(task.task_id, "APP-001")
-        self.assertEqual(task.acceptance_criteria, ("The deterministic controller suite passes",))
+        self.assertEqual(task.acceptance_criteria, (
+            "WHEN controller verification runs THEN the deterministic controller suite "
+            "passes all registered checks",
+        ))
         self.assertEqual(task.acceptance_evidence_ids[task.acceptance_criteria[0]],
                          ("controller-tests",))
         self.assertFalse(task.human_approval_required)
@@ -109,7 +115,12 @@ class TaskContractTests(unittest.TestCase):
             parse_task(value)
 
     def test_vague_duplicate_and_empty_criteria_are_rejected(self) -> None:
-        for criteria, message in ((["It works well"], "vague"),
+        for criteria, message in (
+                                  (["WHEN any input is provided THEN feature works well"],
+                                   "vague"),
+                                  (["WHEN anything happens THEN service returns something"],
+                                   "vague"),
+                                  (["It works well"], "vague"),
                                   (["The feature works correctly"], "vague"),
                                   (["It works"], "vague"),
                                   (["Everything works"], "vague"),
@@ -149,17 +160,21 @@ class TaskContractTests(unittest.TestCase):
                 with self.assertRaisesRegex(TaskContractError, message):
                     parse_task(value)
         value = valid_task()
-        value["acceptanceCriteria"] = ["Controller returns exit code 2",
-                                       " Controller returns exit code 2"]
+        value["acceptanceCriteria"] = [
+            "WHEN malformed JSON is parsed THEN controller returns exit code 2",
+            " WHEN malformed JSON is parsed THEN controller returns exit code 2",
+        ]
         value["acceptanceEvidenceIds"] = {}
         value["acceptanceEvidenceRequirements"] = {}
         with self.assertRaisesRegex(TaskContractError, "canonical"):
             parse_task(value)
 
     def test_concrete_action_led_criteria_are_accepted(self) -> None:
-        for criterion in ("Rejects path traversal with TaskContractError",
-                          "Returns HTTP 201 for a valid request",
-                          "It returns HTTP 201 for a valid request"):
+        for criterion in (
+            "WHEN a request contains path traversal THEN parser rejects it with TaskContractError",
+            "WHEN a valid request is submitted THEN API returns HTTP 201 for the request",
+            "WHEN a valid request is submitted THEN it returns HTTP 201 for the request",
+        ):
             value = valid_task()
             value["acceptanceCriteria"] = [criterion]
             value["acceptanceEvidenceIds"] = {}

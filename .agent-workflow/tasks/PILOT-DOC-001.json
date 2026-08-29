@@ -9,10 +9,10 @@
   ],
   "dependsOn": [],
   "acceptanceCriteria": [
-    "One approved status sentence is added to the orchestration plan",
-    "Repository policy CI passes",
-    "Fresh local code/security and QA Codex evidence references the current head SHA",
-    "The two review roles use distinct sessions from implementation and each other"
+    "WHEN the approved documentation task is applied THEN one approved status sentence is added to the orchestration plan",
+    "WHEN the repository policy job runs THEN repository policy CI passes at the current SHA",
+    "WHEN local review sessions finish THEN fresh code/security and QA evidence references the current head SHA",
+    "WHEN required review sessions finish THEN both review roles use sessions distinct from implementation and each other"
   ],
   "requiredTests": [
     "python3 .agent-workflow/scripts/check_repository.py"

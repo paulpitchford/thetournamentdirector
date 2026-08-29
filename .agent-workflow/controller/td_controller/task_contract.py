@@ -38,6 +38,7 @@ REQUIRED_KEYS = frozenset(
         "riskClass", "maxChangedLines", "maxAttempts", "humanApprovalRequired",
     }
 )
+CRITERION_STRUCTURE = re.compile(r"^WHEN (?P<condition>.+) THEN (?P<outcome>.+)$")
 VAGUE_CRITERION = re.compile(
     r"\b(works? (?:well|correctly)|(?:it|everything) works?|functions? correctly|"
     r"performs? correctly|properly|as expected|expected (?:output|response|result)|"
@@ -166,13 +167,8 @@ def parse_task(value: object) -> TaskContract:
     if task_id in depends_on:
         raise TaskContractError("task cannot depend on itself")
     criteria = _string_list(value["acceptanceCriteria"], "acceptanceCriteria")
-    if any(
-        VAGUE_CRITERION.search(item) or GENERIC_CRITERION.search(item)
-        or not OBSERVABLE_CRITERION.search(item)
-        or len(re.findall(r"\b[\w-]+\b", item)) < 4
-        for item in criteria
-    ):
-        raise TaskContractError("acceptance criterion is vague")
+    if any(_criterion_is_vague(item) for item in criteria):
+        raise TaskContractError("acceptance criterion is vague or unstructured")
     required_tests = _string_list(value["requiredTests"], "requiredTests")
     if not set(required_tests).issubset(REGISTERED_TESTS):
         raise TaskContractError("requiredTests contains an unregistered test")
@@ -257,6 +253,21 @@ def _path_list(value: object, field: str) -> tuple[str, ...]:
         if item != path.as_posix() or "\\" in item:
             raise TaskContractError(f"{field} contains a non-canonical path")
     return items
+
+
+def _criterion_is_vague(criterion: str) -> bool:
+    match = CRITERION_STRUCTURE.fullmatch(criterion)
+    if match is None:
+        return True
+    condition = match.group("condition")
+    outcome = match.group("outcome")
+    return (
+        len(re.findall(r"\b[\w-]+\b", condition)) < 3
+        or len(re.findall(r"\b[\w-]+\b", outcome)) < 4
+        or VAGUE_CRITERION.search(criterion) is not None
+        or GENERIC_CRITERION.search(outcome) is not None
+        or OBSERVABLE_CRITERION.search(outcome) is None
+    )
 
 
 def _path_claims_overlap(left: str, right: str) -> bool:
