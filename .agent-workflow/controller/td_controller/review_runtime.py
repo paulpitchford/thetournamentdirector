@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import pwd
 import secrets
 import signal
+import stat
 import subprocess
 import threading
 import time
@@ -16,6 +18,9 @@ from typing import Any, Callable, Protocol
 from .review_contract import CodexReviewError
 
 CGROUP_ROOT = Path("/sys/fs/cgroup")
+CLEAN_ENV_LAUNCHER = Path(__file__).parent.parent / "bin" / "td-clean-env"
+CLEAN_ENV_LAUNCHER_SHA256 = "9aecffdb6bd418fe9f41fc3744f5b388b3bd93e663d4271ba9dacac891c2a7ec"
+CLEAN_ENV_LAUNCHER_SIZE = 8_536
 MAX_INPUT_BYTES = 512_000
 MAX_OUTPUT_BYTES = 2_000_000
 
@@ -50,6 +55,23 @@ def _minimal_codex_environment(executable: str) -> dict[str, str]:
         "LC_ALL": "C.UTF-8",
         "PATH": os.pathsep.join((str(Path(executable).parent), "/usr/bin", "/bin")),
     }
+
+
+def _clean_environment_launcher() -> str:
+    try:
+        descriptor = os.open(CLEAN_ENV_LAUNCHER, os.O_RDONLY | os.O_NOFOLLOW)
+        with os.fdopen(descriptor, "rb") as launcher:
+            launcher_stat = os.fstat(launcher.fileno())
+            payload = launcher.read(CLEAN_ENV_LAUNCHER_SIZE + 1)
+    except OSError as exc:
+        raise CodexReviewError("clean environment launcher is unavailable") from exc
+    if (
+        not stat.S_ISREG(launcher_stat.st_mode)
+        or len(payload) != CLEAN_ENV_LAUNCHER_SIZE
+        or hashlib.sha256(payload).hexdigest() != CLEAN_ENV_LAUNCHER_SHA256
+    ):
+        raise CodexReviewError("clean environment launcher does not match its pin")
+    return str(CLEAN_ENV_LAUNCHER.resolve(strict=True))
 
 
 def _minimal_systemd_environment() -> dict[str, str]:
@@ -256,6 +278,7 @@ class SystemdCgroupExecutor:
         ).isalnum():
             raise CodexReviewError("invalid transient review unit name")
         service_environment = _minimal_codex_environment(command[0])
+        clean_launcher = _clean_environment_launcher()
         wrapped = [
             "/usr/bin/systemd-run",
             "--user",
@@ -282,9 +305,9 @@ class SystemdCgroupExecutor:
             "--property=PrivatePIDs=yes",
             f"--property=InaccessiblePaths=/run/user/{os.getuid()}",
             "--property=UMask=0077",
-            "/usr/bin/env",
-            "-i",
+            clean_launcher,
             *(f"{key}={value}" for key, value in sorted(service_environment.items())),
+            "--",
             *command,
         ]
         try:
