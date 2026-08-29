@@ -26,6 +26,7 @@ class FakeExecutor:
     def __init__(self, output: ProcessOutput) -> None:
         self.output = output
         self.commands: list[list[str]] = []
+        self.schemas: list[dict[str, object]] = []
 
     def run(
         self,
@@ -37,6 +38,8 @@ class FakeExecutor:
     ) -> ProcessOutput:
         """Record safe invocation fields and return configured output."""
         self.commands.append(command)
+        schema_path = Path(command[command.index("--output-schema") + 1])
+        self.schemas.append(json.loads(schema_path.read_text(encoding="utf-8")))
         self.input_bytes = input_bytes
         self.cwd = cwd
         self.timeout_seconds = timeout_seconds
@@ -148,6 +151,9 @@ class CodexReviewProviderTests(unittest.TestCase):
         self.assertIn(
             b"acceptanceEvidence must be an empty array", executor.input_bytes
         )
+        properties = executor.schemas[0]["properties"]
+        self.assertEqual(properties["reviewType"]["enum"], ["code_security"])
+        self.assertEqual(properties["acceptanceEvidence"]["maxItems"], 0)
 
     def test_valid_qa_requires_acceptance_mapping(self) -> None:
         executor = FakeExecutor(
@@ -162,6 +168,9 @@ class CodexReviewProviderTests(unittest.TestCase):
         provider.run(task_id="TASK-001", role="qa_review")
 
         self.assertEqual(provider.artifact.acceptance_evidence[0].status, "pass")
+        properties = executor.schemas[0]["properties"]
+        self.assertEqual(properties["reviewType"]["enum"], ["qa"])
+        self.assertNotIn("maxItems", properties["acceptanceEvidence"])
 
     def test_error_item_does_not_surface_provider_message(self) -> None:
         events = [
@@ -388,6 +397,22 @@ class CodexReviewProviderTests(unittest.TestCase):
 
         with self.assertRaisesRegex(CodexReviewError, "invalid UTF-8"):
             provider.run(task_id="TASK-001", role="code_review")
+
+    def test_nonzero_exit_records_only_safe_failure_classification(self) -> None:
+        executor = FakeExecutor(
+            ProcessOutput(
+                returncode=1,
+                stdout=b"",
+                stderr=b"request failed: HTTP 429 token=secret-value",
+            )
+        )
+        provider = CodexReviewProvider(request(), executor=executor)
+
+        with self.assertRaisesRegex(CodexReviewError, "rate_limit") as raised:
+            provider.run(task_id="TASK-001", role="code_review")
+        message = str(raised.exception)
+        self.assertRegex(message, r"diagnostic=\d+:[0-9a-f]{12}")
+        self.assertNotIn("secret-value", message)
 
     def test_nonzero_process_exit_is_redacted_and_rejected(self) -> None:
         executor = FakeExecutor(

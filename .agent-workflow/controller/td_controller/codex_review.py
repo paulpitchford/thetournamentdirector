@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 import tempfile
+from copy import deepcopy
 from pathlib import Path
 
 from .provider import ProviderResult
@@ -63,7 +66,9 @@ class CodexReviewProvider:
             root = Path(temporary)
             codex_executable = _attest_codex_runtime(root / "runtime")
             schema_path = root / "review-schema.json"
-            schema_path.write_text(json.dumps(REVIEW_OUTPUT_SCHEMA), encoding="utf-8")
+            schema_path.write_text(
+                json.dumps(_schema_for_role(self.request.role)), encoding="utf-8"
+            )
             output = self.executor.run(
                 self._command(codex_executable, schema_path),
                 input_bytes=prompt,
@@ -173,6 +178,17 @@ class CodexReviewProvider:
         )
 
 
+def _schema_for_role(role: str) -> dict[str, object]:
+    schema = deepcopy(REVIEW_OUTPUT_SCHEMA)
+    properties = schema["properties"]
+    properties["reviewType"]["enum"] = [
+        "code_security" if role == "code_review" else "qa"
+    ]
+    if role == "code_review":
+        properties["acceptanceEvidence"]["maxItems"] = 0
+    return schema
+
+
 def _parse_event_stream(stdout: bytes) -> tuple[str, str]:
     if len(stdout) > MAX_OUTPUT_BYTES:
         raise CodexReviewError("event stream exceeds the output limit")
@@ -226,8 +242,12 @@ def _parse_event_stream(stdout: bytes) -> tuple[str, str]:
 
 
 def _process_error_reason(output: ProcessOutput) -> str:
+    diagnostic = output.stderr + b"\0" + output.stdout
+    digest = hashlib.sha256(diagnostic).hexdigest()[:12]
+    category = _classify_provider_failure(diagnostic)
+    suffix = f"{category}; diagnostic={len(diagnostic)}:{digest}"
     if output.stderr.strip():
-        return "provider process reported stderr"
+        return f"provider process reported stderr ({suffix})"
     for raw_line in output.stdout.decode("utf-8", errors="replace").splitlines():
         try:
             event = json.loads(raw_line)
@@ -237,5 +257,31 @@ def _process_error_reason(output: ProcessOutput) -> str:
             continue
         item = event.get("item")
         if isinstance(item, dict) and item.get("type") == "error":
-            return "provider returned a structured error"
+            return f"provider returned a structured error ({suffix})"
     return "provider failed without diagnostics"
+
+
+def _classify_provider_failure(diagnostic: bytes) -> str:
+    patterns = (
+        ("rate_limit", rb"rate[ -]?limit|too many requests|quota|(?:^|\D)429(?:\D|$)"),
+        (
+            "authentication",
+            rb"unauthori[sz]ed|authentication|login required|(?:^|\D)401(?:\D|$)",
+        ),
+        (
+            "service_unavailable",
+            rb"service unavailable|overloaded|(?:^|\D)503(?:\D|$)",
+        ),
+        (
+            "transport",
+            rb"connection (?:reset|refused)|dns|resolve host|tls|certificate|timed? out",
+        ),
+        (
+            "configuration",
+            rb"invalid config|configuration error|unknown (?:option|feature)|schema",
+        ),
+    )
+    for category, pattern in patterns:
+        if re.search(pattern, diagnostic, flags=re.IGNORECASE):
+            return category
+    return "unclassified"
