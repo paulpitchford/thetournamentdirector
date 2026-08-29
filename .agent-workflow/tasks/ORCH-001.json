@@ -1,44 +1,36 @@
 {
-  "id": "ORCH-001C",
+  "id": "ORCH-001D",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Add transactional, pinned Codex runtime attestation bound to contained execution",
+  "objective": "Integrate the contained pinned runtime as a tool-less local Codex review provider",
   "nonGoals": [
-    "Build review prompts or parse provider event streams",
-    "Launch a model in automated tests",
-    "Defend against an already-compromised controller account or concurrent same-UID host attacker",
-    "Publish review statuses or auto-merge"
+    "Run a model in GitHub Actions or automated tests",
+    "Add implementation or remediation dispatch",
+    "Publish review statuses or auto-merge",
+    "Change containment or structured review contracts"
   ],
   "dependsOn": [
-    "ORCH-001B"
+    "ORCH-001A",
+    "ORCH-001B",
+    "ORCH-001C"
   ],
   "acceptanceCriteria": [
-    "Codex and its code-mode host are discovered from a fixed versioned path derived from the trusted account record",
-    "Both runtime files require exact reviewed sizes and hashes through bounded regular-file no-follow reads",
-    "The complete runtime is staged transactionally and a failed host or version check leaves no published destination",
-    "The runtime version is checked before an atomic publish and contained execution uses the absolute published path",
-    "The staged runtime directory is read-only inside the review service",
-    "No model runs in automated attestation tests"
+    "The provider constructs a bounded inert-data prompt from trusted task, diff, SHA, and deterministic evidence inputs",
+    "Every model tool, hosted search, network permission, approval path, ambient environment, and persistent session is disabled",
+    "Role-specific output schemas require code-security or QA artifacts and code review requires empty acceptance evidence",
+    "The JSONL parser accepts only allowlisted lifecycle, reasoning, and one final agent-message event while rejecting tool, error, malformed, duplicate-session, and invalid-UTF8 events",
+    "Nonzero exits and stderr fail closed with bounded secret-safe classifications rather than raw provider output",
+    "Production provider execution uses the attested runtime through SystemdCgroupExecutor",
+    "Automated provider tests use a fake executor and do not invoke a model"
   ],
   "acceptanceEvidenceIds": {
-    "Codex and its code-mode host are discovered from a fixed versioned path derived from the trusted account record": [
-      "local-attestation-tests"
-    ],
-    "Both runtime files require exact reviewed sizes and hashes through bounded regular-file no-follow reads": [
-      "local-attestation-tests"
-    ],
-    "The complete runtime is staged transactionally and a failed host or version check leaves no published destination": [
-      "local-attestation-tests"
-    ],
-    "The runtime version is checked before an atomic publish and contained execution uses the absolute published path": [
-      "local-attestation-tests"
-    ],
-    "The staged runtime directory is read-only inside the review service": [
-      "local-attestation-tests"
-    ],
-    "No model runs in automated attestation tests": [
-      "no-model-in-tests"
-    ]
+    "The provider constructs a bounded inert-data prompt from trusted task, diff, SHA, and deterministic evidence inputs": ["local-provider-tests"],
+    "Every model tool, hosted search, network permission, approval path, ambient environment, and persistent session is disabled": ["local-provider-tests"],
+    "Role-specific output schemas require code-security or QA artifacts and code review requires empty acceptance evidence": ["local-provider-tests"],
+    "The JSONL parser accepts only allowlisted lifecycle, reasoning, and one final agent-message event while rejecting tool, error, malformed, duplicate-session, and invalid-UTF8 events": ["local-provider-tests"],
+    "Nonzero exits and stderr fail closed with bounded secret-safe classifications rather than raw provider output": ["local-provider-tests"],
+    "Production provider execution uses the attested runtime through SystemdCgroupExecutor": ["local-provider-tests"],
+    "Automated provider tests use a fake executor and do not invoke a model": ["no-model-in-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [
@@ -46,8 +38,9 @@
     "python3 .agent-workflow/scripts/check_repository.py"
   ],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/review_runtime.py",
-    ".agent-workflow/controller/tests/test_review_runtime.py",
+    ".agent-workflow/controller/td_controller/__init__.py",
+    ".agent-workflow/controller/td_controller/codex_review.py",
+    ".agent-workflow/controller/tests/test_codex_review.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [
