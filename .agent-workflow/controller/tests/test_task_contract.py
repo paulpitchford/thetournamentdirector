@@ -105,6 +105,8 @@ class TaskContractTests(unittest.TestCase):
                                   (["The feature works correctly"], "vague"),
                                   (["It works"], "vague"),
                                   (["Everything works"], "vague"),
+                                  (["The API works"], "vague"),
+                                  (["The feature works."], "vague"),
                                   (["Exact result", "Exact result"], "duplicates"),
                                   ([], "bounded list")):
             with self.subTest(criteria=criteria):
@@ -128,7 +130,8 @@ class TaskContractTests(unittest.TestCase):
             parse_task(value)
 
     def test_path_escape_ignored_roots_and_exact_overlap_are_rejected(self) -> None:
-        paths = ("/etc/passwd", "../parent", "downloads/tool", "extracted/app",
+        paths = ("/etc/passwd", "../parent", ".git/config", ".git/hooks/**",
+                 ".git/objects/**", "downloads/tool", "extracted/app",
                  "**", "*", "*/tool", ".")
         for path in paths:
             with self.subTest(path=path):

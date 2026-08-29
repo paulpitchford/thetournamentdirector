@@ -34,10 +34,11 @@ REQUIRED_KEYS = frozenset(
 )
 VAGUE_CRITERION = re.compile(
     r"\b(works? (?:well|correctly)|(?:it|everything) works?|functions? correctly|"
-    r"properly|as expected|user[- ]friendly|robust|high quality)\b",
+    r"properly|as expected|user[- ]friendly|robust|high quality)\b|"
+    r"\bworks?(?=\s*[.!]?\s*$)",
     re.IGNORECASE,
 )
-PROHIBITED_ROOTS = frozenset({"downloads", "extracted", "analysis"})
+PROHIBITED_ROOTS = frozenset({".git", "downloads", "extracted", "analysis"})
 
 
 class TaskContractError(ValueError):
