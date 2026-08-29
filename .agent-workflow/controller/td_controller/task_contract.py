@@ -189,6 +189,10 @@ def _text(value: object, field: str) -> str:
         raise TaskContractError(f"{field} must be bounded non-empty text")
     if "\x00" in value:
         raise TaskContractError(f"{field} contains a null byte")
+    try:
+        value.encode("utf-8")
+    except UnicodeError as exc:
+        raise TaskContractError(f"{field} is not valid Unicode text") from exc
     return value
 
 

@@ -60,6 +60,14 @@ class TaskContractTests(unittest.TestCase):
         with self.assertRaisesRegex(TaskContractError, "unambiguous JSON"):
             parse_task_json(payload)
 
+    def test_decoded_surrogates_are_rejected_in_all_text_fields(self) -> None:
+        for surrogate in ("\ud800", "\udfff"):
+            value = valid_task()
+            value["objective"] = surrogate
+            payload = json.dumps(value)
+            with self.assertRaisesRegex(TaskContractError, "valid Unicode"):
+                parse_task_json(payload)
+
     def test_unknown_and_missing_fields_fail_closed(self) -> None:
         for mutation in (
             lambda task: task.update({"surprise": True}),
