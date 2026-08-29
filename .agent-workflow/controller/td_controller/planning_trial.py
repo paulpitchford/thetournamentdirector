@@ -197,12 +197,20 @@ def run_planning_trial(
         planning_context=planner_contract_context(),
         known_task_ids=known_task_ids,
     )
+    provider_error: Exception | None = None
+    result = None
     try:
         executor = SystemdCgroupExecutor(inaccessible_paths=(root,))
         provider = CodexPlannerProvider(request, executor=executor)
         result = provider.run(task_id=request.plan_id, role="planner")
     except Exception as exc:
-        raise PlanningTrialError("contained planner failed") from exc
+        provider_error = exc
+    finally:
+        after = repository_snapshot(root)
+        if after.head_sha != expected_base_sha:
+            raise PlanningTrialError("approved base revision changed during trial")
+    if provider_error is not None:
+        raise PlanningTrialError("contained planner failed") from provider_error
     if result is None or not isinstance(result.session_id, str) or not result.session_id.strip():
         raise PlanningTrialError("planning trial returned no fresh session identity")
     return PlanningTrialRecord(

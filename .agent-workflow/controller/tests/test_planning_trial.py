@@ -172,6 +172,13 @@ class PlanningTrialTests(unittest.TestCase):
             loader.assert_not_called()
             factory.assert_not_called()
 
+    def test_base_revision_change_during_trial_is_rejected(self) -> None:
+        current = RepositorySnapshot(BASE_SHA)
+        changed = RepositorySnapshot("b" * 40)
+        for planner in (FakePlanner(), FakePlanner(error=RuntimeError("failed"))):
+            with self.assertRaisesRegex(PlanningTrialError, "changed during trial"):
+                run_fake_trial(planner, current, changed)
+
     def test_factory_failure_is_normalized(self) -> None:
         current = RepositorySnapshot(BASE_SHA)
         with (
