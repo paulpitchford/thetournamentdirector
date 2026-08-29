@@ -267,6 +267,7 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
 
     def test_clean_environment_launcher_matches_reviewed_source(self) -> None:
         source = Path(__file__).parents[1] / "bin" / "td-clean-env.S"
+        linker_script = source.with_suffix(".ld")
         expected = source.with_suffix("")
         with tempfile.TemporaryDirectory() as temporary:
             object_file = Path(temporary) / "td-clean-env.o"
@@ -277,7 +278,8 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
             subprocess.run(
                 [
                     "/usr/bin/ld", "-static", "-s", "--build-id=none",
-                    str(object_file), "-o", str(executable),
+                    "-T", str(linker_script), str(object_file),
+                    "-o", str(executable),
                 ],
                 check=True,
             )

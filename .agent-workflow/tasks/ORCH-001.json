@@ -53,6 +53,7 @@
   "allowedPaths": [
     ".agent-workflow/controller/bin/td-clean-env",
     ".agent-workflow/controller/bin/td-clean-env.S",
+    ".agent-workflow/controller/bin/td-clean-env.ld",
     ".agent-workflow/controller/td_controller/review_runtime.py",
     ".agent-workflow/controller/tests/test_review_runtime.py",
     ".agent-workflow/tasks/ORCH-001.json"

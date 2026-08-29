@@ -19,8 +19,8 @@ from .review_contract import CodexReviewError
 
 CGROUP_ROOT = Path("/sys/fs/cgroup")
 CLEAN_ENV_LAUNCHER = Path(__file__).parent.parent / "bin" / "td-clean-env"
-CLEAN_ENV_LAUNCHER_SHA256 = "9aecffdb6bd418fe9f41fc3744f5b388b3bd93e663d4271ba9dacac891c2a7ec"
-CLEAN_ENV_LAUNCHER_SIZE = 8_536
+CLEAN_ENV_LAUNCHER_SHA256 = "346657cf479acf47f38ba3b68982d3b838a750b5ab224ddc02c17f430e1aa621"
+CLEAN_ENV_LAUNCHER_SIZE = 4_392
 MAX_INPUT_BYTES = 512_000
 MAX_OUTPUT_BYTES = 2_000_000
 
