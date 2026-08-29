@@ -24,7 +24,7 @@ def valid_task() -> dict[str, object]:
         "acceptanceCriteria": [criterion],
         "acceptanceEvidenceIds": {criterion: ["controller-tests"]},
         "acceptanceEvidenceRequirements": {criterion: ["github_actions"]},
-        "requiredTests": ["python3 -m unittest"],
+        "requiredTests": ["python3 .agent-workflow/scripts/check_repository.py"],
         "allowedPaths": ["modern-app/src/**"],
         "protectedPaths": [".github/**"],
         "riskClass": "R1",
@@ -130,6 +130,10 @@ class TaskContractTests(unittest.TestCase):
                                   (["The feature passes successfully"], "vague"),
                                   (["The service returns something"], "vague"),
                                   (["The controller validates data"], "vague"),
+                                  (["The API returns output"], "vague"),
+                                  (["Controller returns expected output"], "vague"),
+                                  (["Service produces a response"], "vague"),
+                                  (["The service returns the expected result"], "vague"),
                                   (["Exact result", "Exact result"], "duplicates"),
                                   ([], "bounded list")):
             with self.subTest(criteria=criteria):
@@ -146,6 +150,23 @@ class TaskContractTests(unittest.TestCase):
         value["acceptanceEvidenceRequirements"] = {}
         with self.assertRaisesRegex(TaskContractError, "canonical"):
             parse_task(value)
+
+    def test_concrete_action_led_criteria_are_accepted(self) -> None:
+        for criterion in ("Rejects path traversal with TaskContractError",
+                          "Returns HTTP 201 for a valid request"):
+            value = valid_task()
+            value["acceptanceCriteria"] = [criterion]
+            value["acceptanceEvidenceIds"] = {}
+            value["acceptanceEvidenceRequirements"] = {}
+            self.assertEqual(parse_task(value).acceptance_criteria, (criterion,))
+
+    def test_required_tests_use_the_trusted_registry(self) -> None:
+        for command in ("sh -c 'malicious-command'", "python3 unknown.py",
+                        "test > output", "$(malicious-command)"):
+            value = valid_task()
+            value["requiredTests"] = [command]
+            with self.assertRaisesRegex(TaskContractError, "unregistered test"):
+                parse_task(value)
 
     def test_evidence_mappings_require_known_criteria_and_sources(self) -> None:
         value = valid_task()

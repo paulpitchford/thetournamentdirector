@@ -24,6 +24,12 @@ TASK_STATES = frozenset(
     }
 )
 EVIDENCE_SOURCES = frozenset({"github_actions", "local_controller", "local_rootless"})
+REGISTERED_TESTS = frozenset(
+    {
+        ".agent-workflow/scripts/verify_controller.sh",
+        "python3 .agent-workflow/scripts/check_repository.py",
+    }
+)
 OPTIONAL_KEYS = frozenset({"acceptanceEvidenceIds", "acceptanceEvidenceRequirements"})
 REQUIRED_KEYS = frozenset(
     {
@@ -34,16 +40,17 @@ REQUIRED_KEYS = frozenset(
 )
 VAGUE_CRITERION = re.compile(
     r"\b(works? (?:well|correctly)|(?:it|everything) works?|functions? correctly|"
-    r"performs? correctly|properly|as expected|good enough|user[- ]friendly|robust|"
-    r"high quality)\b|\bworks?(?=\s*[.!]?\s*$)",
+    r"performs? correctly|properly|as expected|expected (?:output|response|result)|"
+    r"good enough|user[- ]friendly|robust|high quality)\b|"
+    r"\bworks?(?=\s*[.!]?\s*$)",
     re.IGNORECASE,
 )
 GENERIC_CRITERION = re.compile(
-    r"^(?:it|everything)\b|^(?:accepts?|blocks?|completes?|fails?|invokes?|maps?|"
-    r"passes?|rejects?|returns?|uses?|validates?)\b|^(?:the\s+)?"
-    r"(?:[\w./-]+\s+){0,2}(?:(?:is|are)\s+)?(?:accepts?|blocks?|completes?|fails?|"
-    r"invokes?|maps?|passes?|rejects?|rejected|returns?|uses?|validates?|validated)"
-    r"(?:\s+(?:a result|configuration|data|input|something|successfully|values?))?[.!]?$",
+    r"^(?:it|everything)\b|^(?:the\s+)?(?:[\w./-]+\s+){0,2}"
+    r"(?:(?:is|are)\s+)?(?:accepts?|blocks?|completes?|fails?|invokes?|maps?|"
+    r"passes?|produces?|rejects?|rejected|returns?|uses?|validates?|validated)"
+    r"(?:\s+(?:(?:a|an|the)\s+)?(?:configuration|data|input|output|response|result|"
+    r"something|successfully|values?))?[.!]?$",
     re.IGNORECASE,
 )
 OBSERVABLE_CRITERION = re.compile(
@@ -164,6 +171,8 @@ def parse_task(value: object) -> TaskContract:
     ):
         raise TaskContractError("acceptance criterion is vague")
     required_tests = _string_list(value["requiredTests"], "requiredTests")
+    if not set(required_tests).issubset(REGISTERED_TESTS):
+        raise TaskContractError("requiredTests contains an unregistered test")
     allowed_paths = _path_list(value["allowedPaths"], "allowedPaths")
     protected_paths = _path_list(value["protectedPaths"], "protectedPaths")
     if any(
