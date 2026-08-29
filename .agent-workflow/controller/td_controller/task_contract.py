@@ -42,7 +42,8 @@ CRITERION_STRUCTURE = re.compile(r"^WHEN (?P<condition>.+) THEN (?P<outcome>.+)$
 VAGUE_CRITERION = re.compile(
     r"\b(works? (?:well|correctly)|(?:it|everything) works?|functions? correctly|"
     r"performs? correctly|properly|as expected|expected (?:output|response|result)|"
-    r"good enough|user[- ]friendly|robust|high quality)\b|"
+    r"all data|every test|good enough|something|unspecified|user[- ]friendly|robust|"
+    r"high quality)\b|"
     r"\bworks?(?=\s*[.!]?\s*$)",
     re.IGNORECASE,
 )
@@ -56,13 +57,9 @@ GENERIC_CRITERION = re.compile(
     r"uses?|validates?|validated)(?:\s+successfully)?[.!]?$",
     re.IGNORECASE,
 )
-OBSERVABLE_CRITERION = re.compile(
-    r"\b(add(?:s|ed)?|accepts?|blocks?|calculates?|completes?|constructs?|creates?|"
-    r"denies?|disables?|displays?|enforces?|executes?|fails?|invokes?|maps?|passes?|"
-    r"preserves?|produces?|references?|rejects?|rejected|requires?|returns?|terminates?|"
-    r"updates?|uses?|validates?|validated)\b|\b(?:is|are) (?:above|below|empty|equal|greater|"
-    r"less|non-empty|read-only)\b",
-    re.IGNORECASE,
+CONCRETE_OUTCOME = re.compile(
+    r"\b(?:against|current|distinct|exact|exactly|no|same|without|with)\b|"
+    r"\b[A-Z]{2,}\b|\b[A-Z][A-Za-z0-9_]*Error\b|\b\d+\b|[`\"]"
 )
 PROHIBITED_ROOTS = frozenset({".git", "downloads", "extracted", "analysis"})
 
@@ -266,7 +263,7 @@ def _criterion_is_vague(criterion: str) -> bool:
         or len(re.findall(r"\b[\w-]+\b", outcome)) < 4
         or VAGUE_CRITERION.search(criterion) is not None
         or GENERIC_CRITERION.search(outcome) is not None
-        or OBSERVABLE_CRITERION.search(outcome) is None
+        or CONCRETE_OUTCOME.search(outcome) is None
     )
 
 

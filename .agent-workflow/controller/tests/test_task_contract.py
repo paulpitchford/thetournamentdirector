@@ -15,7 +15,7 @@ from td_controller.task_contract import TaskContractError, load_task, parse_task
 def valid_task() -> dict[str, object]:
     criterion = (
         "WHEN controller verification runs THEN the deterministic controller suite "
-        "passes all registered checks"
+        "passes the exact registered check set"
     )
     return {
         "id": "APP-001",
@@ -44,7 +44,7 @@ class TaskContractTests(unittest.TestCase):
         self.assertEqual(task.task_id, "APP-001")
         self.assertEqual(task.acceptance_criteria, (
             "WHEN controller verification runs THEN the deterministic controller suite "
-            "passes all registered checks",
+            "passes the exact registered check set",
         ))
         self.assertEqual(task.acceptance_evidence_ids[task.acceptance_criteria[0]],
                          ("controller-tests",))
@@ -120,6 +120,14 @@ class TaskContractTests(unittest.TestCase):
                                    "vague"),
                                   (["WHEN anything happens THEN service returns something"],
                                    "vague"),
+                                  (["WHEN any request arrives THEN service returns "
+                                    "something immediately"], "vague"),
+                                  (["WHEN any request arrives THEN service produces a "
+                                    "response successfully"], "vague"),
+                                  (["WHEN any request arrives THEN service validates all "
+                                    "data consistently"], "vague"),
+                                  (["WHEN any request arrives THEN API returns an "
+                                    "unspecified response"], "vague"),
                                   (["It works well"], "vague"),
                                   (["The feature works correctly"], "vague"),
                                   (["It works"], "vague"),
@@ -174,6 +182,7 @@ class TaskContractTests(unittest.TestCase):
             "WHEN a request contains path traversal THEN parser rejects it with TaskContractError",
             "WHEN a valid request is submitted THEN API returns HTTP 201 for the request",
             "WHEN a valid request is submitted THEN it returns HTTP 201 for the request",
+            "WHEN invalid credentials are submitted THEN server responds with HTTP 401",
         ):
             value = valid_task()
             value["acceptanceCriteria"] = [criterion]
