@@ -49,6 +49,7 @@ def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 def parse_plan_json(
     payload: str | bytes,
     *,
+    expected_plan_id: str,
     expected_base_sha: str,
     expected_backlog_sha256: str,
     known_task_ids: frozenset[str] = frozenset(),
@@ -68,6 +69,7 @@ def parse_plan_json(
         raise PlanContractError("plan is not unambiguous JSON") from exc
     return parse_plan(
         value,
+        expected_plan_id=expected_plan_id,
         expected_base_sha=expected_base_sha,
         expected_backlog_sha256=expected_backlog_sha256,
         known_task_ids=known_task_ids,
@@ -77,6 +79,7 @@ def parse_plan_json(
 def parse_plan(
     value: object,
     *,
+    expected_plan_id: str,
     expected_base_sha: str,
     expected_backlog_sha256: str,
     known_task_ids: frozenset[str] = frozenset(),
@@ -86,6 +89,8 @@ def parse_plan(
     plan_id = _required(value["planId"], "planId")
     if PLAN_ID.fullmatch(plan_id) is None:
         raise PlanContractError("plan ID is invalid")
+    if plan_id != expected_plan_id:
+        raise PlanContractError("plan ID does not match trusted input")
     base_sha = _required(value["baseSha"], "baseSha")
     backlog_sha = _required(value["backlogSha256"], "backlogSha256")
     if GIT_SHA.fullmatch(base_sha) is None or SHA256.fullmatch(backlog_sha) is None:
