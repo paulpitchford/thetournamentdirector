@@ -9,19 +9,22 @@
     "exclusive-lease|WHEN concurrent task or branch acquisition is attempted|ASSERT TEST_PASS lease-ledger-tests",
     "expiry-recovery|WHEN the controller restarts after lease expiry|ASSERT TEST_PASS lease-ledger-tests",
     "owned-heartbeat|WHEN lease heartbeat or release is requested|ASSERT TEST_PASS lease-ledger-tests",
-    "injected-values|WHEN lease time and identifiers are generated|ASSERT TEST_PASS lease-ledger-tests"
+    "injected-values|WHEN lease time and identifiers are generated|ASSERT TEST_PASS lease-ledger-tests",
+    "run-persistence|WHEN a provider run reaches terminal state|ASSERT TEST_PASS controller-ledger-tests"
   ],
   "acceptanceEvidenceIds": {
     "exclusive-lease|WHEN concurrent task or branch acquisition is attempted|ASSERT TEST_PASS lease-ledger-tests": ["lease-ledger-tests"],
     "expiry-recovery|WHEN the controller restarts after lease expiry|ASSERT TEST_PASS lease-ledger-tests": ["lease-ledger-tests"],
     "owned-heartbeat|WHEN lease heartbeat or release is requested|ASSERT TEST_PASS lease-ledger-tests": ["lease-ledger-tests"],
-    "injected-values|WHEN lease time and identifiers are generated|ASSERT TEST_PASS lease-ledger-tests": ["lease-ledger-tests"]
+    "injected-values|WHEN lease time and identifiers are generated|ASSERT TEST_PASS lease-ledger-tests": ["lease-ledger-tests"],
+    "run-persistence|WHEN a provider run reaches terminal state|ASSERT TEST_PASS controller-ledger-tests": ["controller-ledger-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
     ".agent-workflow/controller/td_controller/lease.py",
     ".agent-workflow/controller/td_controller/state.py",
+    ".agent-workflow/controller/tests/test_controller.py",
     ".agent-workflow/controller/tests/test_lease.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],

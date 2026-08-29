@@ -141,16 +141,22 @@ class RunLedger:
             raise ValueError(f"invalid terminal run status: {status}")
         finished_at = self._now().astimezone(UTC).isoformat()
         with closing(self._connect()) as connection:
-            cursor = connection.execute(
-                """
-                UPDATE runs
-                SET status = ?, finished_at = ?, error = ?
-                WHERE run_id = ? AND status = 'RUNNING'
-                """,
-                (status, finished_at, error, run_id),
-            )
-            if cursor.rowcount != 1:
-                raise KeyError(f"active run not found: {run_id}")
+            try:
+                connection.execute("BEGIN IMMEDIATE")
+                cursor = connection.execute(
+                    """
+                    UPDATE runs
+                    SET status = ?, finished_at = ?, error = ?
+                    WHERE run_id = ? AND status = 'RUNNING'
+                    """,
+                    (status, finished_at, error, run_id),
+                )
+                if cursor.rowcount != 1:
+                    raise KeyError(f"active run not found: {run_id}")
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
 
     def records(self) -> list[RunRecord]:
         """Return all records in deterministic start/run order."""

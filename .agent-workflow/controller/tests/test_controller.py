@@ -158,7 +158,11 @@ class ControllerTests(unittest.TestCase):
             now=lambda: FIXED_NOW,
         )
 
-        self.assertEqual(restarted.records()[0].task_id, "TASK-001")
+        record = restarted.records()[0]
+        self.assertEqual(record.task_id, "TASK-001")
+        self.assertEqual(record.status, "SUCCEEDED")
+        self.assertEqual(record.finished_at, FIXED_NOW.isoformat())
+        self.assertIsNone(record.error)
         self.assertEqual(restarted.summary()["SUCCEEDED"], 1)
 
 
