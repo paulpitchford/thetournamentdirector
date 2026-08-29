@@ -5,6 +5,7 @@
   "objective": "Add bounded systemd-cgroup process containment for local review providers",
   "nonGoals": [
     "Stage or attest the Codex runtime",
+    "Defend against an already-compromised controller account or concurrent same-UID host attacker",
     "Launch Codex or any other model provider",
     "Build review prompts or parse provider event streams",
     "Publish review statuses or auto-merge"
