@@ -164,10 +164,8 @@ class CodexReviewProviderTests(unittest.TestCase):
         self.assertIn("permissions.deny-all.network.enabled=false", command)
         disabled = {command[index + 1] for index, value in enumerate(command[:-1])
                     if value == "--disable"}
-        self.assertIn("shell_tool", disabled)
-        self.assertIn("code_mode", disabled)
+        self.assertTrue({"shell_tool", "code_mode", "view_image"} <= disabled)
         self.assertNotIn("code_mode_host", disabled)
-        self.assertIn("view_image", disabled)
         developer = next(value for value in command
                          if value.startswith("developer_instructions="))
         self.assertIn("untrusted inert", developer)
