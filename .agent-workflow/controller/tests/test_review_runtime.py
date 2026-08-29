@@ -218,7 +218,11 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
         self.assertIn("--property=KillMode=control-group", command)
         self.assertIn("--property=RuntimeMaxSec=30s", command)
         self.assertIn("--property=TasksMax=64", command)
-        self.assertIn("--property=RestrictAddressFamilies=AF_INET AF_INET6", command)
+        runtime_dir = f"/run/user/{os.getuid()}"
+        self.assertIn(
+            f"--property=InaccessiblePaths={runtime_dir}/bus {runtime_dir}/systemd",
+            command,
+        )
         env_index = command.index("/usr/bin/env")
         self.assertEqual(command[env_index + 1], "-i")
         self.assertFalse(any("TD_SECRET_SENTINEL" in item for item in command))

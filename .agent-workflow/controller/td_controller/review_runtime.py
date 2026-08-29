@@ -295,7 +295,10 @@ class SystemdCgroupExecutor:
             f"--property=RuntimeMaxSec={max(1, timeout_seconds)}s",
             "--property=TasksMax=64",
             "--property=NoNewPrivileges=yes",
-            "--property=RestrictAddressFamilies=AF_INET AF_INET6",
+            (
+                "--property=InaccessiblePaths="
+                f"/run/user/{os.getuid()}/bus /run/user/{os.getuid()}/systemd"
+            ),
             "--property=UMask=0077",
             "/usr/bin/env",
             "-i",
