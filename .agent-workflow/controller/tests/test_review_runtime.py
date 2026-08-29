@@ -251,12 +251,12 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
         self.assertIn("--property=CPUQuota=200%", command)
         self.assertIn("--property=ProtectControlGroups=yes", command)
         self.assertIn("--property=PrivatePIDs=yes", command)
+        self.assertIn("--property=PrivateUsers=yes", command)
         self.assertIn(
             f"--property=InaccessiblePaths=/run/user/{os.getuid()}", command
         )
-        launcher = str(
-            Path(__file__).parents[1] / "bin" / "td-clean-env"
-        )
+        launcher = str(Path(__file__).parents[1] / "bin" / "td-clean-env")
+        self.assertIn(f"--property=ReadOnlyPaths={launcher}", command)
         launcher_index = command.index(launcher)
         self.assertEqual(command[launcher_index + 5], "--")
         self.assertFalse(any("TD_SECRET_SENTINEL" in item for item in command))
