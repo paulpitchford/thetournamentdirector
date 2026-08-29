@@ -15,7 +15,7 @@ from td_controller.task_contract import TaskContractError, load_task, parse_task
 def valid_task() -> dict[str, object]:
     criterion = (
         "WHEN controller verification runs THEN the deterministic controller suite "
-        "passes the exact registered check set"
+        'passes registered check "controller-tests"'
     )
     return {
         "id": "APP-001",
@@ -44,7 +44,7 @@ class TaskContractTests(unittest.TestCase):
         self.assertEqual(task.task_id, "APP-001")
         self.assertEqual(task.acceptance_criteria, (
             "WHEN controller verification runs THEN the deterministic controller suite "
-            "passes the exact registered check set",
+            'passes registered check "controller-tests"',
         ))
         self.assertEqual(task.acceptance_evidence_ids[task.acceptance_criteria[0]],
                          ("controller-tests",))
@@ -128,6 +128,12 @@ class TaskContractTests(unittest.TestCase):
                                     "data consistently"], "vague"),
                                   (["WHEN any request arrives THEN API returns an "
                                     "unspecified response"], "vague"),
+                                  (["WHEN any request arrives THEN service returns a "
+                                    "response with information"], "vague"),
+                                  (["WHEN routine user activity occurs THEN service handles "
+                                    "the request with care"], "vague"),
+                                  (["WHEN any request arrives THEN service returns response "
+                                    "labelled FOO"], "vague"),
                                   (["It works well"], "vague"),
                                   (["The feature works correctly"], "vague"),
                                   (["It works"], "vague"),

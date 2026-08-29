@@ -58,8 +58,11 @@ GENERIC_CRITERION = re.compile(
     re.IGNORECASE,
 )
 CONCRETE_OUTCOME = re.compile(
-    r"\b(?:against|current|distinct|exact|exactly|no|same|without|with)\b|"
-    r"\b[A-Z]{2,}\b|\b[A-Z][A-Za-z0-9_]*Error\b|\b\d+\b|[`\"]"
+    r"\bHTTP\s+\d{3}\b|\bexit code\s+\d+\b|\bexactly\s+(?:one|two|\d+)\b|"
+    r"\b[A-Z][A-Za-z0-9_]*(?:Error|Exception)\b|\bcurrent (?:head )?SHA\b|"
+    r"\bwithout (?:type )?coercion\b|\bwithout invoking a model\b|"
+    r"\bagainst the same durable contract\b|\bdistinct from\b|"
+    r"\b(?:is|are) (?:empty|non-empty|read-only)\b|[`\"]"
 )
 PROHIBITED_ROOTS = frozenset({".git", "downloads", "extracted", "analysis"})
 
