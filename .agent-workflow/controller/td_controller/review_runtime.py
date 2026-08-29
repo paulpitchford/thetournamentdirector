@@ -58,8 +58,11 @@ def _absolute_command(command: list[str]) -> list[str]:
 
 
 def _systemd_property_path(path: Path, *, require_exists: bool = True) -> Path:
+    safe_characters = frozenset(
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._/+:-"
+    )
     if not isinstance(path, Path) or not path.is_absolute() or any(
-        character.isspace() or ord(character) < 32 for character in str(path)
+        character not in safe_characters for character in str(path)
     ):
         raise CodexReviewError("systemd containment path is invalid")
     try:
