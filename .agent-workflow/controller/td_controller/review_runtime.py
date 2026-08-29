@@ -101,6 +101,30 @@ def _stage_file(
         raise CodexReviewError("Codex runtime staging failed") from exc
 
 
+def _verify_staged_file(
+    path: Path, expected_sha256: str, expected_size: int
+) -> None:
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+        with os.fdopen(descriptor, "rb") as staged_file:
+            file_stat = os.fstat(staged_file.fileno())
+            if not stat.S_ISREG(file_stat.st_mode) or file_stat.st_size != expected_size:
+                raise CodexReviewError("staged Codex runtime size changed")
+            digest = hashlib.sha256()
+            copied = 0
+            while chunk := staged_file.read(min(1024 * 1024, expected_size - copied)):
+                copied += len(chunk)
+                digest.update(chunk)
+            if staged_file.read(1) or copied != expected_size:
+                raise CodexReviewError("staged Codex runtime size changed")
+            if digest.hexdigest() != expected_sha256:
+                raise CodexReviewError("staged Codex runtime hash changed")
+    except CodexReviewError:
+        raise
+    except OSError as exc:
+        raise CodexReviewError("staged Codex runtime verification failed") from exc
+
+
 def _clean_environment_launcher() -> str:
     try:
         descriptor = os.open(CLEAN_ENV_LAUNCHER, os.O_RDONLY | os.O_NOFOLLOW)
@@ -135,7 +159,9 @@ def _pinned_runtime_sources() -> tuple[Path, Path]:
     return runtime_dir / "codex", runtime_dir / "codex-code-mode-host"
 
 
-def _attest_codex_runtime(destination_dir: Path) -> str:
+def _attest_codex_runtime(
+    destination_dir: Path, executor: CommandExecutor | None = None
+) -> str:
     destination_dir = destination_dir.resolve(strict=False)
     if destination_dir.exists():
         raise CodexReviewError("Codex runtime destination already exists")
@@ -153,19 +179,25 @@ def _attest_codex_runtime(destination_dir: Path) -> str:
             PINNED_CODE_MODE_HOST_SHA256,
             PINNED_CODE_MODE_HOST_SIZE,
         )
-        version = subprocess.run(
+        boundary = executor or SystemdCgroupExecutor()
+        version = boundary.run(
             [str(staged), "--version"],
-            check=False,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            timeout=10,
-            env=_minimal_codex_environment(str(staged)),
+            input_bytes=b"",
+            cwd=temporary.parent,
+            timeout_seconds=10,
         )
-        if version.returncode != 0 or version.stdout.decode(errors="replace").strip() != (
-            PINNED_CODEX_VERSION
+        if (
+            version.returncode != 0
+            or version.stderr
+            or version.stdout.decode(errors="replace").strip() != PINNED_CODEX_VERSION
         ):
             raise CodexReviewError("Codex runtime version does not match the reviewed pin")
+        _verify_staged_file(staged, PINNED_CODEX_SHA256, PINNED_CODEX_SIZE)
+        _verify_staged_file(
+            temporary / "codex-code-mode-host",
+            PINNED_CODE_MODE_HOST_SHA256,
+            PINNED_CODE_MODE_HOST_SIZE,
+        )
         os.rename(temporary, destination_dir)
     except CodexReviewError:
         shutil.rmtree(temporary, ignore_errors=True)
@@ -504,8 +536,8 @@ def execute_attested_codex(
     destination_dir: Path, arguments: list[str], *, input_bytes: bytes, cwd: Path,
     timeout_seconds: int, executor: CommandExecutor | None = None,
 ) -> ProcessOutput:
-    executable = _attest_codex_runtime(destination_dir)
     boundary = executor or SystemdCgroupExecutor()
+    executable = _attest_codex_runtime(destination_dir, executor=boundary)
     return boundary.run(
         [executable, *arguments], input_bytes=input_bytes, cwd=cwd,
         timeout_seconds=timeout_seconds,

@@ -419,7 +419,14 @@ class RuntimeAttestationTests(unittest.TestCase):
                 ),
                 patch("td_controller.review_runtime.PINNED_CODEX_VERSION", "codex-cli test"),
             ):
-                staged = Path(_attest_codex_runtime(destination))
+                staged = Path(
+                    _attest_codex_runtime(
+                        destination,
+                        executor=FakeExecutor(
+                            ProcessOutput(0, b"codex-cli test\n", b"")
+                        ),
+                    )
+                )
             self.assertTrue(staged.is_absolute())
             source.write_bytes(b"#!/bin/sh\nprintf 'replacement ran\\n'\n")
 
@@ -470,21 +477,60 @@ class RuntimeAttestationTests(unittest.TestCase):
                 (destination / "winner").write_bytes(b"valid")
                 raise FileExistsError("publication race")
 
-            version = subprocess.CompletedProcess(
-                args=[], returncode=0, stdout=b"codex-cli 0.150.1\n"
-            )
+            version = ProcessOutput(0, b"codex-cli 0.150.1\n", b"")
             with (
                 patch(
                     "td_controller.review_runtime._pinned_runtime_sources",
                     return_value=(root / "source", root / "host"),
                 ),
                 patch("td_controller.review_runtime._stage_file", side_effect=stage_file),
-                patch("td_controller.review_runtime.subprocess.run", return_value=version),
+                patch("td_controller.review_runtime._verify_staged_file"),
                 patch("td_controller.review_runtime.os.rename", side_effect=publish_collision),
             ):
                 with self.assertRaisesRegex(CodexReviewError, "attestation failed"):
-                    _attest_codex_runtime(destination)
+                    _attest_codex_runtime(
+                        destination, executor=FakeExecutor(version)
+                    )
             self.assertEqual((destination / "winner").read_bytes(), b"valid")
+            self.assertEqual(list(root.glob(".staged.*.partial")), [])
+
+    def test_version_process_mutation_blocks_publication(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "codex"
+            payload = b"reviewed codex"
+            source.write_bytes(payload)
+            host = root / "codex-code-mode-host"
+            host.write_bytes(b"reviewed host")
+            destination = root / "staged"
+
+            class MutatingExecutor:
+                def run(self, command: list[str], **kwargs: object) -> ProcessOutput:
+                    target = Path(command[0]).with_name("codex-code-mode-host")
+                    target.unlink()
+                    target.write_bytes(b"evil")
+                    return ProcessOutput(0, b"codex-cli test\n", b"")
+
+            with (
+                patch(
+                    "td_controller.review_runtime._pinned_runtime_sources",
+                    return_value=(source, host),
+                ),
+                patch("td_controller.review_runtime.PINNED_CODEX_SIZE", len(payload)),
+                patch("td_controller.review_runtime.PINNED_CODE_MODE_HOST_SIZE", 13),
+                patch(
+                    "td_controller.review_runtime.PINNED_CODEX_SHA256",
+                    hashlib.sha256(payload).hexdigest(),
+                ),
+                patch(
+                    "td_controller.review_runtime.PINNED_CODE_MODE_HOST_SHA256",
+                    hashlib.sha256(host.read_bytes()).hexdigest(),
+                ),
+                patch("td_controller.review_runtime.PINNED_CODEX_VERSION", "codex-cli test"),
+            ):
+                with self.assertRaisesRegex(CodexReviewError, "size changed"):
+                    _attest_codex_runtime(destination, executor=MutatingExecutor())
+            self.assertFalse(destination.exists())
             self.assertEqual(list(root.glob(".staged.*.partial")), [])
 
     def test_failed_host_stage_is_rolled_back_and_retryable(self) -> None:
@@ -517,7 +563,12 @@ class RuntimeAttestationTests(unittest.TestCase):
                     "td_controller.review_runtime.PINNED_CODE_MODE_HOST_SHA256",
                     hashlib.sha256(host.read_bytes()).hexdigest(),
                 ):
-                    staged = _attest_codex_runtime(destination)
+                    staged = _attest_codex_runtime(
+                        destination,
+                        executor=FakeExecutor(
+                            ProcessOutput(0, b"codex-cli test\n", b"")
+                        ),
+                    )
             self.assertEqual(Path(staged).parent, destination)
 
     def test_non_regular_runtime_fails_without_staged_artifact(self) -> None:
