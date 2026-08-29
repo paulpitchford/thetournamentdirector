@@ -344,7 +344,7 @@ class RuntimeAttestationTests(unittest.TestCase):
             host = source.with_name("codex-code-mode-host")
             host.write_bytes(b"host payload")
             host.chmod(0o700)
-            destination = Path(temporary) / "staged"
+            destination = Path(os.path.relpath(Path(temporary) / "staged"))
             with (
                 patch(
                     "td_controller.review_runtime._pinned_runtime_sources",
@@ -366,6 +366,7 @@ class RuntimeAttestationTests(unittest.TestCase):
                 patch("td_controller.review_runtime.PINNED_CODEX_VERSION", "codex-cli test"),
             ):
                 staged = Path(_attest_codex_runtime(destination))
+            self.assertTrue(staged.is_absolute())
             source.write_bytes(b"#!/bin/sh\nprintf 'replacement ran\\n'\n")
 
             output = subprocess.run(
