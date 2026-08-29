@@ -21,6 +21,7 @@ from td_controller.review_runtime import (
     SubprocessExecutor,
     SystemdCgroupExecutor,
     _attest_codex_runtime,
+    _clean_environment_launcher,
     _minimal_codex_environment,
     _minimal_systemd_environment,
     _stage_file,
@@ -257,13 +258,22 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
         self.assertIn(
             f"--property=InaccessiblePaths=/run/user/{os.getuid()}", command
         )
-        env_index = command.index("/usr/bin/env")
-        self.assertEqual(command[env_index + 1], "-i")
+        launcher = str(Path(__file__).parents[1] / "bin" / "td-clean-env")
+        launcher_index = command.index(launcher)
+        self.assertEqual(command[launcher_index + 5], "--")
         self.assertFalse(any("TD_SECRET_SENTINEL" in item for item in command))
         self.assertEqual(command[-2:], ["/pinned/codex", "exec"])
         self.assertEqual(delegate.timeout_seconds, 40)
         cleanup.assert_called_once_with("td-codex-review-fixed123")
         self.assertEqual(result.stdout, b"ok")
+
+    def test_modified_clean_environment_launcher_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            launcher = Path(temporary) / "launcher"
+            launcher.write_bytes(b"modified")
+            with patch("td_controller.review_runtime.CLEAN_ENV_LAUNCHER", launcher):
+                with self.assertRaisesRegex(CodexReviewError, "does not match"):
+                    _clean_environment_launcher()
 
     def test_cleanup_rejects_unit_that_remains_active(self) -> None:
         completed = [
