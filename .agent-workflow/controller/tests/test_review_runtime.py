@@ -261,6 +261,7 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
         )
         launcher = str(Path(__file__).parents[1] / "bin" / "td-clean-env")
         self.assertIn(f"--property=ReadOnlyPaths={launcher}", command)
+        self.assertIn("--property=ReadOnlyPaths=/pinned", command)
         launcher_index = command.index(launcher)
         self.assertEqual(command[launcher_index + 5], "--")
         self.assertFalse(any("TD_SECRET_SENTINEL" in item for item in command))
@@ -452,7 +453,40 @@ class RuntimeAttestationTests(unittest.TestCase):
             ):
                 with self.assertRaisesRegex(CodexReviewError, "hash does not match"):
                     _attest_codex_runtime(destination)
-            self.assertEqual(list(destination.iterdir()), [])
+            self.assertFalse(destination.exists())
+
+    def test_failed_host_stage_is_rolled_back_and_retryable(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "codex"
+            source.write_bytes(b"#!/bin/sh\nprintf 'codex-cli test\\n'\n")
+            source.chmod(0o700)
+            host = root / "codex-code-mode-host"
+            host.write_bytes(b"host")
+            destination = root / "staged"
+            patches = (
+                patch(
+                    "td_controller.review_runtime._pinned_runtime_sources",
+                    return_value=(source, host),
+                ),
+                patch("td_controller.review_runtime.PINNED_CODEX_SIZE", source.stat().st_size),
+                patch("td_controller.review_runtime.PINNED_CODE_MODE_HOST_SIZE", 4),
+                patch(
+                    "td_controller.review_runtime.PINNED_CODEX_SHA256",
+                    hashlib.sha256(source.read_bytes()).hexdigest(),
+                ),
+                patch("td_controller.review_runtime.PINNED_CODEX_VERSION", "codex-cli test"),
+            )
+            with patches[0], patches[1], patches[2], patches[3], patches[4]:
+                with self.assertRaisesRegex(CodexReviewError, "hash does not match"):
+                    _attest_codex_runtime(destination)
+                self.assertFalse(destination.exists())
+                with patch(
+                    "td_controller.review_runtime.PINNED_CODE_MODE_HOST_SHA256",
+                    hashlib.sha256(host.read_bytes()).hexdigest(),
+                ):
+                    staged = _attest_codex_runtime(destination)
+            self.assertEqual(Path(staged).parent, destination)
 
     def test_non_regular_runtime_fails_without_staged_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

@@ -6,6 +6,7 @@ import hashlib
 import os
 import pwd
 import secrets
+import shutil
 import signal
 import stat
 import subprocess
@@ -136,30 +137,45 @@ def _pinned_runtime_sources() -> tuple[Path, Path]:
 
 def _attest_codex_runtime(destination_dir: Path) -> str:
     destination_dir = destination_dir.resolve(strict=False)
+    if destination_dir.exists():
+        raise CodexReviewError("Codex runtime destination already exists")
     source, host_source = _pinned_runtime_sources()
-    destination_dir.mkdir(mode=0o700)
-    staged = destination_dir / "codex"
-    _stage_file(source, staged, PINNED_CODEX_SHA256, PINNED_CODEX_SIZE)
-    _stage_file(
-        host_source,
-        destination_dir / "codex-code-mode-host",
-        PINNED_CODE_MODE_HOST_SHA256,
-        PINNED_CODE_MODE_HOST_SIZE,
+    temporary = destination_dir.with_name(
+        f".{destination_dir.name}.{secrets.token_hex(8)}.partial"
     )
-    version = subprocess.run(
-        [str(staged), "--version"],
-        check=False,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        timeout=10,
-        env=_minimal_codex_environment(str(staged)),
-    )
-    if version.returncode != 0 or version.stdout.decode(errors="replace").strip() != (
-        PINNED_CODEX_VERSION
-    ):
-        raise CodexReviewError("Codex runtime version does not match the reviewed pin")
-    return str(staged)
+    try:
+        temporary.mkdir(mode=0o700)
+        staged = temporary / "codex"
+        _stage_file(source, staged, PINNED_CODEX_SHA256, PINNED_CODEX_SIZE)
+        _stage_file(
+            host_source,
+            temporary / "codex-code-mode-host",
+            PINNED_CODE_MODE_HOST_SHA256,
+            PINNED_CODE_MODE_HOST_SIZE,
+        )
+        version = subprocess.run(
+            [str(staged), "--version"],
+            check=False,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+            env=_minimal_codex_environment(str(staged)),
+        )
+        if version.returncode != 0 or version.stdout.decode(errors="replace").strip() != (
+            PINNED_CODEX_VERSION
+        ):
+            raise CodexReviewError("Codex runtime version does not match the reviewed pin")
+        os.rename(temporary, destination_dir)
+    except CodexReviewError:
+        shutil.rmtree(temporary, ignore_errors=True)
+        shutil.rmtree(destination_dir, ignore_errors=True)
+        raise
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        shutil.rmtree(temporary, ignore_errors=True)
+        shutil.rmtree(destination_dir, ignore_errors=True)
+        raise CodexReviewError("Codex runtime attestation failed") from exc
+    return str(destination_dir / "codex")
 
 
 class CommandExecutor(Protocol):
@@ -382,6 +398,7 @@ class SystemdCgroupExecutor:
             "--property=PrivateUsers=yes",
             f"--property=InaccessiblePaths=/run/user/{os.getuid()}",
             f"--property=ReadOnlyPaths={clean_launcher}",
+            f"--property=ReadOnlyPaths={Path(command[0]).parent}",
             "--property=UMask=0077",
             clean_launcher,
             *(f"{key}={value}" for key, value in sorted(service_environment.items())),
