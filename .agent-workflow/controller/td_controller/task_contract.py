@@ -9,6 +9,7 @@ import re
 import stat
 from collections.abc import Mapping
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Any
@@ -276,6 +277,8 @@ def _path_list(value: object, field: str) -> tuple[str, ...]:
             raise TaskContractError(f"{field} contains a prohibited path")
         if item != path.as_posix() or "\\" in item:
             raise TaskContractError(f"{field} contains a non-canonical path")
+        if len(path.parts) > 64:
+            raise TaskContractError(f"{field} exceeds the path depth limit")
         if any(character in item for character in "?[{"):
             raise TaskContractError(f"{field} contains an unsupported glob")
     return items
@@ -336,6 +339,7 @@ def _glob_matches(claim: str, concrete: str) -> bool:
     claim_parts = PurePosixPath(claim).parts
     path_parts = PurePosixPath(concrete).parts
 
+    @lru_cache(maxsize=4_225)
     def match(claim_index: int, path_index: int) -> bool:
         if claim_index == len(claim_parts):
             return path_index == len(path_parts)

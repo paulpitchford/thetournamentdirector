@@ -335,6 +335,16 @@ class TaskContractTests(unittest.TestCase):
             tracked_path_is_allowed(one_segment, "modern-app/src/domain/model.py")
         )
 
+        value = valid_task()
+        value["allowedPaths"] = ["modern-app/" + "/".join(["**"] * 30) + "/missing"]
+        adversarial = parse_task(value)
+        candidate = "modern-app/" + "/".join(f"part-{index}" for index in range(30))
+        self.assertFalse(tracked_path_is_allowed(adversarial, candidate))
+
+        value["allowedPaths"] = ["modern-app/" + "/".join(["segment"] * 64)]
+        with self.assertRaisesRegex(TaskContractError, "path depth"):
+            parse_task(value)
+
     def test_trusted_task_root_rejects_parent_symlink_traversal(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "tasks"
