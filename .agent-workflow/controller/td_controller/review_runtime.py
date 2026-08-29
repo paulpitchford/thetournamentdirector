@@ -165,7 +165,9 @@ def _clean_environment_launcher() -> str:
 
 def _stage_clean_environment_launcher() -> Path:
     try:
-        staging_root = Path(tempfile.mkdtemp(prefix="td-controller-launcher-"))
+        staging_root = Path(
+            tempfile.mkdtemp(prefix="td-controller-launcher-", dir="/tmp")
+        )
     except OSError as exc:
         raise CodexReviewError("clean environment launcher staging failed") from exc
     destination = staging_root / "td-clean-env"
@@ -178,12 +180,20 @@ def _stage_clean_environment_launcher() -> Path:
         staging_root.chmod(0o500)
         _verify_clean_environment_launcher(destination)
     except CodexReviewError:
-        shutil.rmtree(staging_root, ignore_errors=True)
+        _remove_launcher_staging(staging_root)
         raise
     except OSError as exc:
-        shutil.rmtree(staging_root, ignore_errors=True)
+        _remove_launcher_staging(staging_root)
         raise CodexReviewError("clean environment launcher staging failed") from exc
     return destination
+
+
+def _remove_launcher_staging(staging_root: Path) -> None:
+    try:
+        staging_root.chmod(0o700)
+    except OSError:
+        pass
+    shutil.rmtree(staging_root, ignore_errors=True)
 
 
 def _verify_clean_environment_launcher(path: Path) -> None:
@@ -476,6 +486,14 @@ class SystemdCgroupExecutor:
             raise CodexReviewError("invalid transient review unit name")
         service_environment = _minimal_codex_environment(command[0])
         clean_launcher = _stage_clean_environment_launcher()
+        launcher_root = _systemd_property_path(clean_launcher.parent)
+        overlaps = (cwd, *self._inaccessible_paths)
+        if any(
+            launcher_root.is_relative_to(path) or path.is_relative_to(launcher_root)
+            for path in overlaps
+        ):
+            _remove_launcher_staging(launcher_root)
+            raise CodexReviewError("launcher staging overlaps a containment path")
         wrapped = [
             "/usr/bin/systemd-run",
             "--user",
@@ -509,7 +527,7 @@ class SystemdCgroupExecutor:
                 f"--property=InaccessiblePaths={path}"
                 for path in self._inaccessible_paths
             ),
-            f"--property=ReadOnlyPaths={clean_launcher.parent}",
+            f"--property=ReadOnlyPaths={launcher_root}",
             f"--property=ReadOnlyPaths={Path(command[0]).parent}",
             "--property=UMask=0077",
             str(clean_launcher),
@@ -529,11 +547,7 @@ class SystemdCgroupExecutor:
             try:
                 self._kill_transient_unit(unit)
             finally:
-                try:
-                    clean_launcher.parent.chmod(0o700)
-                except OSError:
-                    pass
-                shutil.rmtree(clean_launcher.parent, ignore_errors=True)
+                _remove_launcher_staging(clean_launcher.parent)
 
     @staticmethod
     def _kill_transient_unit(unit: str) -> None:

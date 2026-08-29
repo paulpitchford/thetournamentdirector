@@ -236,13 +236,15 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
             inaccessible_paths=(Path("/home"),),
         )
         with (
+            tempfile.TemporaryDirectory(prefix="td-cwd-") as temporary,
             patch.dict(os.environ, {"TD_SECRET_SENTINEL": "must-not-leak"}),
             patch.object(SystemdCgroupExecutor, "_kill_transient_unit") as cleanup,
         ):
+            cwd = Path(temporary)
             result = executor.run(
                 ["/pinned/codex", "exec"],
                 input_bytes=b"prompt",
-                cwd=Path("/tmp"),
+                cwd=cwd,
                 timeout_seconds=30,
             )
 
@@ -257,7 +259,7 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
         self.assertIn("--property=ProtectControlGroups=yes", command)
         self.assertIn("--property=ProtectSystem=strict", command)
         self.assertIn("--property=ProtectHome=read-only", command)
-        self.assertIn("--property=ReadWritePaths=/tmp", command)
+        self.assertIn(f"--property=ReadWritePaths={cwd}", command)
         self.assertIn("--property=PrivatePIDs=yes", command)
         self.assertIn("--property=PrivateUsers=yes", command)
         self.assertIn(
@@ -301,6 +303,37 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
             with self.assertRaisesRegex(CodexReviewError, "inaccessible containment"):
                 SystemdCgroupExecutor(inaccessible_paths=(link,))
         self.assertEqual(delegate.commands, [])
+
+    def test_launcher_ignores_tmpdir_and_rejects_containment_overlap(self) -> None:
+        delegate = FakeExecutor(ProcessOutput(0, b"", b""))
+        with (
+            tempfile.TemporaryDirectory(prefix="td-cwd-") as cwd_name,
+            tempfile.TemporaryDirectory(prefix="td TMPDIR ") as tmpdir,
+            patch.dict(os.environ, {"TMPDIR": tmpdir}),
+            patch.object(SystemdCgroupExecutor, "_kill_transient_unit"),
+        ):
+            SystemdCgroupExecutor(delegate=delegate).run(
+                ["/pinned/codex", "exec"], input_bytes=b"",
+                cwd=Path(cwd_name), timeout_seconds=5,
+            )
+        launcher = next(
+            item for item in delegate.commands[0]
+            if item.startswith("/tmp/td-controller-launcher-")
+            and item.endswith("/td-clean-env")
+        )
+        self.assertFalse(launcher.startswith(tmpdir))
+
+        blocked_delegate = FakeExecutor(ProcessOutput(0, b"", b""))
+        executor = SystemdCgroupExecutor(
+            delegate=blocked_delegate, inaccessible_paths=(Path("/tmp"),)
+        )
+        with tempfile.TemporaryDirectory(dir="/var/tmp") as cwd_name:
+            with self.assertRaisesRegex(CodexReviewError, "overlaps"):
+                executor.run(
+                    ["/pinned/codex", "exec"], input_bytes=b"",
+                    cwd=Path(cwd_name), timeout_seconds=5,
+                )
+        self.assertEqual(blocked_delegate.commands, [])
 
     def test_launcher_is_staged_outside_writable_service_cwd(self) -> None:
         observed: dict[str, object] = {}
@@ -347,8 +380,7 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
             cwd = Path(temporary)
 
             def replaced() -> Path:
-                root = cwd / ".td-launcher-replaced"
-                root.mkdir(mode=0o700)
+                root = Path(tempfile.mkdtemp(prefix="td-replaced-", dir="/tmp"))
                 launcher = root / "td-clean-env"
                 launcher.write_bytes(b"replaced")
                 launcher.chmod(0o500)
