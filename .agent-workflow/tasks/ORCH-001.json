@@ -1,50 +1,31 @@
 {
-  "id": "ORCH-001D",
+  "id": "ORCH-002A",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Integrate the contained pinned runtime as a tool-less local Codex review provider",
+  "objective": "Add a strict durable task contract before read-only planning trials",
   "nonGoals": [
-    "Run a model in GitHub Actions or automated tests",
-    "Add implementation or remediation dispatch",
-    "Publish review statuses or auto-merge",
-    "Change containment or structured review contracts"
+    "Implement planner output or dependency-graph validation",
+    "Dispatch implementation or planning agents",
+    "Change GitHub workflows, pilot policy, or merge controls"
   ],
-  "dependsOn": [
-    "ORCH-001A",
-    "ORCH-001B",
-    "ORCH-001C"
-  ],
+  "dependsOn": ["ORCH-001D"],
   "acceptanceCriteria": [
-    "The provider constructs a bounded inert-data prompt from trusted task, diff, SHA, and deterministic evidence inputs",
-    "Every model tool, hosted search, network permission, approval path, ambient environment, and persistent session is disabled",
-    "Role-specific output schemas require code-security or QA artifacts and code review requires empty acceptance evidence",
-    "The JSONL parser accepts only allowlisted lifecycle, reasoning, and one final agent-message event while rejecting tool, error, malformed, duplicate-session, and invalid-UTF8 events",
-    "Nonzero exits and stderr fail closed with bounded secret-safe classifications rather than raw provider output",
-    "Production provider execution uses the attested runtime through SystemdCgroupExecutor",
-    "Automated provider tests use a fake executor and do not invoke a model"
+    "Task JSON rejects duplicate keys recursively, unknown or missing fields, invalid primitive types, and oversized files",
+    "Task identity, state, risk, numeric limits, path boundaries, dependencies, and human-approval fields are validated without coercion",
+    "Acceptance criteria reject empty, duplicate, and deterministically vague statements",
+    "Criterion evidence mappings reject unknown criteria and unapproved trusted evidence sources",
+    "Ignored recovered roots, absolute paths, parent traversal, and exact allowed/protected overlap are rejected",
+    "Existing repository task fixtures validate successfully",
+    "Automated contract tests invoke no model"
   ],
   "acceptanceEvidenceIds": {
-    "The provider constructs a bounded inert-data prompt from trusted task, diff, SHA, and deterministic evidence inputs": [
-      "local-provider-tests"
-    ],
-    "Every model tool, hosted search, network permission, approval path, ambient environment, and persistent session is disabled": [
-      "local-provider-tests"
-    ],
-    "Role-specific output schemas require code-security or QA artifacts and code review requires empty acceptance evidence": [
-      "local-provider-tests"
-    ],
-    "The JSONL parser accepts only allowlisted lifecycle, reasoning, and one final agent-message event while rejecting tool, error, malformed, duplicate-session, and invalid-UTF8 events": [
-      "local-provider-tests"
-    ],
-    "Nonzero exits and stderr fail closed with bounded secret-safe classifications rather than raw provider output": [
-      "local-provider-tests"
-    ],
-    "Production provider execution uses the attested runtime through SystemdCgroupExecutor": [
-      "local-provider-tests"
-    ],
-    "Automated provider tests use a fake executor and do not invoke a model": [
-      "no-model-in-tests"
-    ]
+    "Task JSON rejects duplicate keys recursively, unknown or missing fields, invalid primitive types, and oversized files": ["local-task-contract-tests"],
+    "Task identity, state, risk, numeric limits, path boundaries, dependencies, and human-approval fields are validated without coercion": ["local-task-contract-tests"],
+    "Acceptance criteria reject empty, duplicate, and deterministically vague statements": ["local-task-contract-tests"],
+    "Criterion evidence mappings reject unknown criteria and unapproved trusted evidence sources": ["local-task-contract-tests"],
+    "Ignored recovered roots, absolute paths, parent traversal, and exact allowed/protected overlap are rejected": ["local-task-contract-tests"],
+    "Existing repository task fixtures validate successfully": ["local-task-contract-tests"],
+    "Automated contract tests invoke no model": ["no-model-in-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [
@@ -52,10 +33,8 @@
     "python3 .agent-workflow/scripts/check_repository.py"
   ],
   "allowedPaths": [
-    ".agent-workflow/controller/codex-0.150.1-features.txt",
-    ".agent-workflow/controller/td_controller/__init__.py",
-    ".agent-workflow/controller/td_controller/codex_review.py",
-    ".agent-workflow/controller/tests/test_codex_review.py",
+    ".agent-workflow/controller/td_controller/task_contract.py",
+    ".agent-workflow/controller/tests/test_task_contract.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [
