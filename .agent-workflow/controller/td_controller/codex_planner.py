@@ -216,11 +216,20 @@ def _normalize_wire_plan(message: str) -> dict[str, object]:
             }:
                 raise CodexPlannerError("planner wire evidence has an invalid shape")
             criterion = record["criterion"]
+            evidence = record["evidenceIds"]
+            sources = record["requiredSources"]
             if not isinstance(criterion, str) or criterion in evidence_ids:
                 raise CodexPlannerError("planner wire evidence is ambiguous")
-            evidence_ids[criterion] = record["evidenceIds"]
-            if record["requiredSources"]:
-                requirements[criterion] = record["requiredSources"]
+            if (
+                not isinstance(evidence, list)
+                or any(not isinstance(item, str) for item in evidence)
+                or not isinstance(sources, list)
+                or any(not isinstance(item, str) for item in sources)
+            ):
+                raise CodexPlannerError("planner wire evidence has an invalid shape")
+            evidence_ids[criterion] = evidence
+            if sources:
+                requirements[criterion] = sources
         task = {key: item for key, item in raw_task.items() if key != "acceptanceEvidence"}
         task["acceptanceEvidenceIds"] = evidence_ids
         task["acceptanceEvidenceRequirements"] = requirements

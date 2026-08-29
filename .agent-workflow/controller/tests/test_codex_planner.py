@@ -202,6 +202,18 @@ class CodexPlannerProviderTests(unittest.TestCase):
                     provider.run(task_id="PLAN-001", role="planner")
             build.assert_not_called()
 
+    def test_falsey_non_list_evidence_sources_are_rejected(self) -> None:
+        for malformed in ({}, "", False, None):
+            value = plan()
+            value["tasks"][0]["acceptanceEvidence"][0]["requiredSources"] = malformed
+            provider = CodexPlannerProvider(
+                planner_request(),
+                executor=FakeExecutor(ProcessOutput(0, event_stream(value), b"")),
+            )
+            with self.subTest(malformed=malformed):
+                with self.assertRaisesRegex(CodexPlannerError, "invalid plan"):
+                    provider.run(task_id="PLAN-001", role="planner")
+
     def test_stale_or_unapproved_output_is_rejected(self) -> None:
         stale = plan()
         stale["baseSha"] = "b" * 40
