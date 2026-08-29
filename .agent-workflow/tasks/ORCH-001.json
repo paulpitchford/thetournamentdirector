@@ -1,36 +1,32 @@
 {
-  "id": "ORCH-002E",
+  "id": "ORCH-002F",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Provide private temporary storage required by pinned Codex while keeping the repository inaccessible",
-  "nonGoals": ["Expose the repository", "Permit arbitrary stderr", "Run ten planning trials", "Enable model tools", "Change provider features"],
-  "dependsOn": ["ORCH-002D"],
+  "objective": "Disambiguate planner evidence IDs from registered verification commands",
+  "nonGoals": ["Relax criterion validation", "Run ten planning trials", "Approve proposed tasks", "Change containment"],
+  "dependsOn": ["ORCH-002E"],
   "acceptanceCriteria": [
-    "private-temp|WHEN pinned Codex initializes Linux sandbox internals|ASSERT TEST_PASS local-private-temp-tests",
-    "repository-hidden|WHEN contained Codex attempts repository access|ASSERT TEST_PASS repository-inaccessible-smoke",
-    "planner-startup|WHEN a real contained planner reaches semantic validation|ASSERT TEST_PASS real-planner-startup-smoke",
-    "no-model-tests|WHEN automated private temporary storage tests execute|ASSERT TEST_PASS no-model-in-tests"
+    "evidence-token|WHEN planner criterion guidance is constructed|ASSERT TEST_PASS local-planner-context-tests",
+    "command-separation|WHEN planner evidence guidance is inspected|ASSERT TEST_PASS local-planner-context-tests",
+    "real-output|WHEN a real planner follows corrected criterion guidance|ASSERT TEST_PASS real-planner-context-smoke",
+    "no-model-tests|WHEN automated planner context tests execute|ASSERT TEST_PASS no-model-in-tests"
   ],
   "acceptanceEvidenceIds": {
-    "private-temp|WHEN pinned Codex initializes Linux sandbox internals|ASSERT TEST_PASS local-private-temp-tests": ["local-private-temp-tests"],
-    "repository-hidden|WHEN contained Codex attempts repository access|ASSERT TEST_PASS repository-inaccessible-smoke": ["repository-inaccessible-smoke"],
-    "planner-startup|WHEN a real contained planner reaches semantic validation|ASSERT TEST_PASS real-planner-startup-smoke": ["real-planner-startup-smoke"],
-    "no-model-tests|WHEN automated private temporary storage tests execute|ASSERT TEST_PASS no-model-in-tests": ["no-model-in-tests"]
+    "evidence-token|WHEN planner criterion guidance is constructed|ASSERT TEST_PASS local-planner-context-tests": ["local-planner-context-tests"],
+    "command-separation|WHEN planner evidence guidance is inspected|ASSERT TEST_PASS local-planner-context-tests": ["local-planner-context-tests"],
+    "real-output|WHEN a real planner follows corrected criterion guidance|ASSERT TEST_PASS real-planner-context-smoke": ["real-planner-context-smoke"],
+    "no-model-tests|WHEN automated planner context tests execute|ASSERT TEST_PASS no-model-in-tests": ["no-model-in-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/codex_planner.py",
-    ".agent-workflow/controller/td_controller/codex_review.py",
-    ".agent-workflow/controller/td_controller/review_runtime.py",
-    ".agent-workflow/controller/tests/test_codex_planner.py",
-    ".agent-workflow/controller/tests/test_codex_review.py",
-    ".agent-workflow/controller/tests/test_review_runtime.py",
+    ".agent-workflow/controller/td_controller/planning_trial.py",
+    ".agent-workflow/controller/tests/test_planning_trial.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**", ".agent-workflow/policy/**", ".agent-workflow/scripts/**"],
   "riskClass": "R3",
-  "maxChangedLines": 500,
+  "maxChangedLines": 300,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }

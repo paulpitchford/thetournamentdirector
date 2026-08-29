@@ -278,11 +278,19 @@ def planner_contract_context() -> dict[str, object]:
         "humanApprovalRequired": True,
         "criterionGrammar": (
             "criterion-id|WHEN condition of at least three words|ASSERT "
-            "TEST_PASS selected-evidence-id"
+            "TEST_PASS evidence-id"
+        ),
+        "criterionExample": (
+            "scaffold-checks|WHEN scaffold verification commands execute|ASSERT "
+            "TEST_PASS repository-policy"
+        ),
+        "allowedEvidenceIds": ["repository-policy", "controller-tests"],
+        "evidenceIdRule": (
+            "ASSERT TEST_PASS expects one allowedEvidenceIds token, never a test command"
         ),
         "wireEvidenceShape": {
             "criterion": "the exact full criterion string",
-            "evidenceIds": ["selected-evidence-id"],
+            "evidenceIds": ["repository-policy"],
             "requiredSources": [],
         },
         "registeredTests": [
@@ -290,8 +298,13 @@ def planner_contract_context() -> dict[str, object]:
             "python3 .agent-workflow/scripts/check_repository.py",
         ],
         "pathRules": (
-            "use canonical repository-relative paths; never propose .github, .git, "
-            "downloads, extracted, analysis, controller policy, or controller scripts"
+            "allowedPaths use canonical repository-relative paths and never include .github, "
+            ".git, downloads, extracted, analysis, controller policy, or controller scripts"
+        ),
+        "protectedPathsExact": [".github/**"],
+        "protectedPathRule": (
+            "use protectedPathsExact verbatim; never list .git or ignored roots because the "
+            "controller protects those independently"
         ),
         "completedKnownTasks": ["HUM-001", "HUM-002"],
     }

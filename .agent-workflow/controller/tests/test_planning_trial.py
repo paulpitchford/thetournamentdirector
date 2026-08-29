@@ -260,6 +260,13 @@ class PlanningTrialTests(unittest.TestCase):
         self.assertEqual(context["status"], "PROPOSED")
         self.assertIs(context["humanApprovalRequired"], True)
         self.assertIn("ASSERT TEST_PASS", context["criterionGrammar"])
+        self.assertIn("repository-policy", context["criterionExample"])
+        self.assertNotIn("python3", context["criterionExample"])
+        self.assertEqual(
+            context["wireEvidenceShape"]["evidenceIds"], ["repository-policy"]
+        )
+        self.assertEqual(context["protectedPathsExact"], [".github/**"])
+        self.assertNotIn(".git/**", context["protectedPathsExact"])
         self.assertIn("HUM-001", context["completedKnownTasks"])
 
 
