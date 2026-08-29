@@ -351,7 +351,10 @@ class TaskContractTests(unittest.TestCase):
             external = Path(temporary) / "external"
             root.mkdir()
             external.mkdir()
-            (external / "task.json").write_text(json.dumps(valid_task()))
+            external_task = external / "task.json"
+            external_task.write_text(json.dumps(valid_task()))
+            with self.assertRaisesRegex(TaskContractError, "trusted task root"):
+                load_task(external_task, trusted_root=root)
             (root / "link").symlink_to(external, target_is_directory=True)
             with self.assertRaisesRegex(TaskContractError, "trusted task root"):
                 load_task(root / "link" / "task.json", trusted_root=root)

@@ -114,8 +114,11 @@ def load_task(path: Path, *, trusted_root: Path) -> TaskContract:
     """Load one direct child of an explicit no-follow trusted task directory."""
     try:
         relative = path.relative_to(trusted_root)
-        if len(relative.parts) != 1:
-            raise TaskContractError("task file is outside the trusted task root")
+    except ValueError as exc:
+        raise TaskContractError("task file is outside the trusted task root") from exc
+    if len(relative.parts) != 1:
+        raise TaskContractError("task file is outside the trusted task root")
+    try:
         root_descriptor = os.open(
             trusted_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
         )
