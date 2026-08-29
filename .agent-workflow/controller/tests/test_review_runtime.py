@@ -147,13 +147,13 @@ class SubprocessExecutorTests(unittest.TestCase):
             )
             started = time.monotonic()
             try:
-                with self.assertRaisesRegex(CodexReviewError, "worker did not terminate"):
-                    executor.run(
-                        [sys.executable, "-c", parent],
-                        input_bytes=b"",
-                        cwd=Path(temporary),
-                        timeout_seconds=2,
-                    )
+                output = executor.run(
+                    [sys.executable, "-c", parent],
+                    input_bytes=b"",
+                    cwd=Path(temporary),
+                    timeout_seconds=2,
+                )
+                self.assertEqual(output.returncode, 0)
                 self.assertLess(time.monotonic() - started, 7)
             finally:
                 if pid_file.exists():
@@ -210,6 +210,9 @@ class SubprocessExecutorTests(unittest.TestCase):
                     cwd=Path("/tmp"),
                     timeout_seconds=1,
                 )
+        self.assertTrue(process.stdin.closed)
+        self.assertTrue(process.stdout.closed)
+        self.assertTrue(process.stderr.closed)
 
     def test_timeout_kills_the_process_group(self) -> None:
         executor = SubprocessExecutor()
