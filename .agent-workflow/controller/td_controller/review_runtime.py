@@ -6,6 +6,7 @@ import hashlib
 import os
 import pwd
 import secrets
+import shutil
 import signal
 import stat
 import subprocess
@@ -23,6 +24,14 @@ CLEAN_ENV_LAUNCHER_SHA256 = "346657cf479acf47f38ba3b68982d3b838a750b5ab224ddc02c
 CLEAN_ENV_LAUNCHER_SIZE = 4_392
 MAX_INPUT_BYTES = 512_000
 MAX_OUTPUT_BYTES = 2_000_000
+PINNED_CODEX_VERSION = "codex-cli 0.150.1"
+PINNED_CODEX_SIZE = 268_330_432
+PINNED_CODE_MODE_HOST_SIZE = 57_886_648
+PINNED_RUNTIME_RELATIVE_DIR = Path(".local/share/mise/installs/codex/0.150.1/bin")
+PINNED_CODEX_SHA256 = "abf1bb1643a79f73aa78ee627e111e02d4f8c98f25813a0cf6ce277709664386"
+PINNED_CODE_MODE_HOST_SHA256 = (
+    "b3d633427c8c75057fba11dad6051714d44886440305e86ba9d2c0366f4dd63b"
+)
 
 @dataclass(frozen=True)
 class ProcessOutput:
@@ -57,6 +66,65 @@ def _minimal_codex_environment(executable: str) -> dict[str, str]:
     }
 
 
+def _stage_file(
+    source: Path, destination: Path, expected_sha256: str, expected_size: int
+) -> None:
+    temporary = destination.with_name(f".{destination.name}.partial")
+    try:
+        source_fd = os.open(source, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+        with os.fdopen(source_fd, "rb") as input_file:
+            source_stat = os.fstat(input_file.fileno())
+            if not stat.S_ISREG(source_stat.st_mode) or source_stat.st_size != expected_size:
+                raise CodexReviewError("Codex runtime size does not match the reviewed pin")
+            digest = hashlib.sha256()
+            with temporary.open("xb") as output_file:
+                copied = 0
+                while chunk := input_file.read(min(1024 * 1024, expected_size - copied)):
+                    copied += len(chunk)
+                    if copied > expected_size:
+                        raise CodexReviewError("Codex runtime exceeded its size bound")
+                    digest.update(chunk)
+                    output_file.write(chunk)
+                if input_file.read(1) or copied != expected_size:
+                    raise CodexReviewError("Codex runtime exceeded its size bound")
+                if digest.hexdigest() != expected_sha256:
+                    raise CodexReviewError("Codex runtime hash does not match the reviewed pin")
+                output_file.flush()
+                os.fsync(output_file.fileno())
+            temporary.chmod(0o500)
+            os.replace(temporary, destination)
+    except CodexReviewError:
+        temporary.unlink(missing_ok=True)
+        raise
+    except OSError as exc:
+        temporary.unlink(missing_ok=True)
+        raise CodexReviewError("Codex runtime staging failed") from exc
+
+
+def _verify_staged_file(
+    path: Path, expected_sha256: str, expected_size: int
+) -> None:
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+        with os.fdopen(descriptor, "rb") as staged_file:
+            file_stat = os.fstat(staged_file.fileno())
+            if not stat.S_ISREG(file_stat.st_mode) or file_stat.st_size != expected_size:
+                raise CodexReviewError("staged Codex runtime size changed")
+            digest = hashlib.sha256()
+            copied = 0
+            while chunk := staged_file.read(min(1024 * 1024, expected_size - copied)):
+                copied += len(chunk)
+                digest.update(chunk)
+            if staged_file.read(1) or copied != expected_size:
+                raise CodexReviewError("staged Codex runtime size changed")
+            if digest.hexdigest() != expected_sha256:
+                raise CodexReviewError("staged Codex runtime hash changed")
+    except CodexReviewError:
+        raise
+    except OSError as exc:
+        raise CodexReviewError("staged Codex runtime verification failed") from exc
+
+
 def _clean_environment_launcher() -> str:
     try:
         descriptor = os.open(CLEAN_ENV_LAUNCHER, os.O_RDONLY | os.O_NOFOLLOW)
@@ -84,6 +152,60 @@ def _minimal_systemd_environment() -> dict[str, str]:
         "PATH": "/usr/bin:/bin",
         "XDG_RUNTIME_DIR": runtime_dir,
     }
+
+
+def _pinned_runtime_sources() -> tuple[Path, Path]:
+    runtime_dir = _trusted_home() / PINNED_RUNTIME_RELATIVE_DIR
+    return runtime_dir / "codex", runtime_dir / "codex-code-mode-host"
+
+
+def _attest_codex_runtime(
+    destination_dir: Path, executor: CommandExecutor | None = None
+) -> str:
+    destination_dir = destination_dir.resolve(strict=False)
+    if destination_dir.exists():
+        raise CodexReviewError("Codex runtime destination already exists")
+    source, host_source = _pinned_runtime_sources()
+    temporary = destination_dir.with_name(
+        f".{destination_dir.name}.{secrets.token_hex(8)}.partial"
+    )
+    try:
+        temporary.mkdir(mode=0o700)
+        staged = temporary / "codex"
+        _stage_file(source, staged, PINNED_CODEX_SHA256, PINNED_CODEX_SIZE)
+        _stage_file(
+            host_source,
+            temporary / "codex-code-mode-host",
+            PINNED_CODE_MODE_HOST_SHA256,
+            PINNED_CODE_MODE_HOST_SIZE,
+        )
+        boundary = executor or SystemdCgroupExecutor()
+        version = boundary.run(
+            [str(staged), "--version"],
+            input_bytes=b"",
+            cwd=temporary.parent,
+            timeout_seconds=10,
+        )
+        if (
+            version.returncode != 0
+            or version.stderr
+            or version.stdout.decode(errors="replace").strip() != PINNED_CODEX_VERSION
+        ):
+            raise CodexReviewError("Codex runtime version does not match the reviewed pin")
+        _verify_staged_file(staged, PINNED_CODEX_SHA256, PINNED_CODEX_SIZE)
+        _verify_staged_file(
+            temporary / "codex-code-mode-host",
+            PINNED_CODE_MODE_HOST_SHA256,
+            PINNED_CODE_MODE_HOST_SIZE,
+        )
+        os.rename(temporary, destination_dir)
+    except CodexReviewError:
+        shutil.rmtree(temporary, ignore_errors=True)
+        raise
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        shutil.rmtree(temporary, ignore_errors=True)
+        raise CodexReviewError("Codex runtime attestation failed") from exc
+    return str(destination_dir / "codex")
 
 
 class CommandExecutor(Protocol):
@@ -306,6 +428,7 @@ class SystemdCgroupExecutor:
             "--property=PrivateUsers=yes",
             f"--property=InaccessiblePaths=/run/user/{os.getuid()}",
             f"--property=ReadOnlyPaths={clean_launcher}",
+            f"--property=ReadOnlyPaths={Path(command[0]).parent}",
             "--property=UMask=0077",
             clean_launcher,
             *(f"{key}={value}" for key, value in sorted(service_environment.items())),
@@ -408,3 +531,14 @@ class SystemdCgroupExecutor:
             if cgroup.exists() and "populated 0" not in populated:
                 raise CodexReviewError("transient review cgroup remained populated")
 
+
+def execute_attested_codex(
+    destination_dir: Path, arguments: list[str], *, input_bytes: bytes, cwd: Path,
+    timeout_seconds: int, executor: CommandExecutor | None = None,
+) -> ProcessOutput:
+    boundary = executor or SystemdCgroupExecutor()
+    executable = _attest_codex_runtime(destination_dir, executor=boundary)
+    return boundary.run(
+        [executable, *arguments], input_bytes=input_bytes, cwd=cwd,
+        timeout_seconds=timeout_seconds,
+    )

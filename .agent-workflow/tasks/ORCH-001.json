@@ -1,59 +1,51 @@
 {
-  "id": "ORCH-001B",
+  "id": "ORCH-001C",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Add bounded systemd-cgroup process containment for local review providers",
+  "objective": "Add transactional, pinned Codex runtime attestation bound to contained execution",
   "nonGoals": [
-    "Stage or attest the Codex runtime",
-    "Defend against an already-compromised controller account or concurrent same-UID host attacker",
-    "Launch Codex or any other model provider",
     "Build review prompts or parse provider event streams",
+    "Launch a model in automated tests",
+    "Defend against an already-compromised controller account or concurrent same-UID host attacker",
     "Publish review statuses or auto-merge"
   ],
   "dependsOn": [
-    "ORCH-001A"
+    "ORCH-001B"
   ],
   "acceptanceCriteria": [
-    "Provider subprocess input and aggregate output are bounded and timeout or malformed cleanup paths fail closed",
-    "A transient systemd user-service cgroup terminates session-changing descendants and positively verifies empty cleanup",
-    "Review services cannot reach user process-launch brokers",
-    "Review services have explicit task, memory, swap, CPU, and wall-clock limits",
-    "Parent and service process environments contain only explicitly allowlisted values",
-    "No model runs in automated containment tests"
+    "Codex and its code-mode host are discovered from a fixed versioned path derived from the trusted account record",
+    "Both runtime files require exact reviewed sizes and hashes through bounded regular-file no-follow reads",
+    "The complete runtime is staged transactionally and a failed host or version check leaves no published destination",
+    "The runtime version is checked before an atomic publish and contained execution uses the absolute published path",
+    "The staged runtime directory is read-only inside the review service",
+    "No model runs in automated attestation tests"
   ],
   "acceptanceEvidenceIds": {
-    "Provider subprocess input and aggregate output are bounded and timeout or malformed cleanup paths fail closed": [
-      "local-runtime-tests"
+    "Codex and its code-mode host are discovered from a fixed versioned path derived from the trusted account record": [
+      "local-attestation-tests"
     ],
-    "A transient systemd user-service cgroup terminates session-changing descendants and positively verifies empty cleanup": [
-      "local-runtime-tests",
-      "systemd-cgroup-probe"
+    "Both runtime files require exact reviewed sizes and hashes through bounded regular-file no-follow reads": [
+      "local-attestation-tests"
     ],
-    "Review services cannot reach user process-launch brokers": [
-      "local-runtime-tests",
-      "systemd-cgroup-probe"
+    "The complete runtime is staged transactionally and a failed host or version check leaves no published destination": [
+      "local-attestation-tests"
     ],
-    "Review services have explicit task, memory, swap, CPU, and wall-clock limits": [
-      "local-runtime-tests",
-      "systemd-resource-probe"
+    "The runtime version is checked before an atomic publish and contained execution uses the absolute published path": [
+      "local-attestation-tests"
     ],
-    "Parent and service process environments contain only explicitly allowlisted values": [
-      "local-runtime-tests"
+    "The staged runtime directory is read-only inside the review service": [
+      "local-attestation-tests"
     ],
-    "No model runs in automated containment tests": [
+    "No model runs in automated attestation tests": [
       "no-model-in-tests"
     ]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [
     ".agent-workflow/scripts/verify_controller.sh",
-    ".agent-workflow/scripts/verify_rootless_runner.sh",
     "python3 .agent-workflow/scripts/check_repository.py"
   ],
   "allowedPaths": [
-    ".agent-workflow/controller/bin/td-clean-env",
-    ".agent-workflow/controller/bin/td-clean-env.S",
-    ".agent-workflow/controller/bin/td-clean-env.ld",
     ".agent-workflow/controller/td_controller/review_runtime.py",
     ".agent-workflow/controller/tests/test_review_runtime.py",
     ".agent-workflow/tasks/ORCH-001.json"
