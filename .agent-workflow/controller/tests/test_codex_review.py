@@ -136,6 +136,16 @@ class CodexReviewProviderTests(unittest.TestCase):
                 provider.run(task_id="TASK-001", role="code_review")
         build.assert_not_called()
 
+    def test_many_evidence_records_are_bounded_before_prompt_build(self) -> None:
+        evidence = tuple(TrustedEvidence(f"e-{i}", "local_controller", "x")
+                         for i in range(10_000))
+        provider = CodexReviewProvider(replace(request(), deterministic_evidence=evidence),
+                                       executor=FakeExecutor(ProcessOutput(0, b"", b"")))
+        with patch.object(provider, "_build_prompt") as build:
+            with self.assertRaisesRegex(CodexReviewError, "size limit"):
+                provider.run(task_id="TASK-001", role="code_review")
+        build.assert_not_called()
+
     def test_valid_code_review_returns_session_and_artifact(self) -> None:
         executor = FakeExecutor(
             ProcessOutput(returncode=0, stdout=event_stream(artifact()), stderr=b"")
@@ -415,19 +425,14 @@ class CodexReviewProviderTests(unittest.TestCase):
         with self.assertRaisesRegex(CodexReviewError, "duplicate acceptance"):
             provider.run(task_id="TASK-001", role="qa_review")
 
-    def test_successful_process_with_stderr_is_rejected(self) -> None:
-        executor = FakeExecutor(
-            ProcessOutput(
-                returncode=0,
-                stdout=event_stream(artifact()),
-                stderr=b"hidden tool attempt",
-            )
-        )
-        provider = CodexReviewProvider(request(), executor=executor)
-
-        with self.assertRaisesRegex(CodexReviewError, "unexpected stderr") as raised:
-            provider.run(task_id="TASK-001", role="code_review")
-        self.assertNotIn("hidden tool", str(raised.exception))
+    def test_successful_process_with_any_stderr_is_rejected(self) -> None:
+        for stderr in (b"hidden tool attempt", b"\n"):
+            executor = FakeExecutor(ProcessOutput(
+                0, event_stream(artifact()), stderr))
+            provider = CodexReviewProvider(request(), executor=executor)
+            with self.assertRaisesRegex(CodexReviewError, "unexpected stderr") as raised:
+                provider.run(task_id="TASK-001", role="code_review")
+            self.assertNotIn("hidden tool", str(raised.exception))
 
     def test_nonzero_exit_uses_structured_stdout_error(self) -> None:
         events = [
