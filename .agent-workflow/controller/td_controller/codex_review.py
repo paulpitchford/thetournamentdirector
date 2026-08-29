@@ -22,7 +22,7 @@ from .review_runtime import (
 
 MAX_PROMPT_BYTES = 512_000
 FEATURE_MANIFEST = Path(__file__).parent.parent / "codex-0.150.1-features.txt"
-FEATURE_MANIFEST_SHA256 = "32db8c07dcf04b796e6b3f52da6fa0729dd6982b05e2025af9ee8eaec2ca3297"
+FEATURE_MANIFEST_SHA256 = "7436ff03498271f51c936ccc1b3c1019cb95dbbf509e0b5763e58f534a338f4e"
 ALLOWED_ITEM_TYPES = frozenset({"agent_message", "reasoning"})
 class CodexReviewProvider:
     """Run one fresh local Codex review with every model tool disabled."""
