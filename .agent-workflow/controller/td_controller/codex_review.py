@@ -281,9 +281,8 @@ def _parse_event_stream(stdout: bytes) -> tuple[str, str]:
 
 def _process_error_reason(output: ProcessOutput) -> str:
     diagnostic = output.stderr + b"\0" + output.stdout
-    digest = hashlib.sha256(diagnostic).hexdigest()[:12]
     category = _classify_provider_failure(diagnostic)
-    suffix = f"{category}; diagnostic={len(diagnostic)}:{digest}"
+    suffix = f"{category}; diagnostic_bytes={len(diagnostic)}"
     if output.stderr.strip():
         return f"provider process reported stderr ({suffix})"
     for raw_line in output.stdout.decode("utf-8", errors="replace").splitlines():
