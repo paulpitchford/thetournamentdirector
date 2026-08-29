@@ -110,6 +110,7 @@ class SubprocessExecutor:
         stdout = bytearray()
         stderr = bytearray()
         overflow = threading.Event()
+        stop_workers = threading.Event()
         output_lock = threading.Lock()
         captured_bytes = 0
         thread_errors: list[Exception] = []
@@ -123,7 +124,16 @@ class SubprocessExecutor:
         def read_bounded(stream: Any, buffer: bytearray) -> None:
             nonlocal captured_bytes
             try:
-                while chunk := stream.read(65_536):
+                descriptor = stream.fileno()
+                os.set_blocking(descriptor, False)
+                while not stop_workers.is_set():
+                    try:
+                        chunk = os.read(descriptor, 65_536)
+                    except BlockingIOError:
+                        stop_workers.wait(0.01)
+                        continue
+                    if not chunk:
+                        return
                     with output_lock:
                         remaining = MAX_OUTPUT_BYTES - captured_bytes
                         accepted = min(len(chunk), remaining)
@@ -142,13 +152,21 @@ class SubprocessExecutor:
 
         def write_prompt() -> None:
             try:
-                process.stdin.write(input_bytes)
-                process.stdin.close()
+                descriptor = process.stdin.fileno()
+                os.set_blocking(descriptor, False)
+                pending = memoryview(input_bytes)
+                while pending and not stop_workers.is_set():
+                    try:
+                        pending = pending[os.write(descriptor, pending) :]
+                    except BlockingIOError:
+                        stop_workers.wait(0.01)
             except BrokenPipeError:
                 pass
             except Exception as exc:
                 thread_errors.append(exc)
                 kill_process_group()
+            finally:
+                process.stdin.close()
 
         threads = [
             threading.Thread(
@@ -167,6 +185,7 @@ class SubprocessExecutor:
             thread.start()
 
         timed_out = False
+        reap_error: subprocess.TimeoutExpired | None = None
         try:
             process.wait(timeout=timeout_seconds)
         except subprocess.TimeoutExpired:
@@ -175,19 +194,26 @@ class SubprocessExecutor:
             try:
                 process.wait(timeout=5)
             except subprocess.TimeoutExpired as exc:
-                raise CodexReviewError("local Codex process could not be reaped") from exc
+                reap_error = exc
         stream_deadline = time.monotonic() + 5
         for thread in threads:
             thread.join(timeout=max(0.0, stream_deadline - time.monotonic()))
         if any(thread.is_alive() for thread in threads):
             kill_process_group()
+            stop_workers.set()
+            stream_deadline = time.monotonic() + 5
             for thread in threads:
                 thread.join(timeout=max(0.0, stream_deadline - time.monotonic()))
-        if any(thread.is_alive() for thread in threads):
+        workers_alive = any(thread.is_alive() for thread in threads)
+        for stream in (process.stdin, process.stdout, process.stderr):
+            try:
+                stream.close()
+            except Exception:
+                pass
+        if workers_alive:
             raise CodexReviewError("local Codex stream worker did not terminate")
-        process.stdin.close()
-        process.stdout.close()
-        process.stderr.close()
+        if reap_error is not None:
+            raise CodexReviewError("local Codex process could not be reaped") from reap_error
         if timed_out:
             raise CodexReviewError("local Codex review timed out")
         if thread_errors:
