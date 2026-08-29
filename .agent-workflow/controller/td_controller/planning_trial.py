@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+import os
+import select
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -75,19 +78,9 @@ def load_reviewed_backlog(repository_root: Path, expected_base_sha: str) -> str:
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
         )
-        if process.stdout is None:
-            process.kill()
-            raise PlanningTrialError("reviewed backlog is unavailable")
-        with process.stdout:
-            payload = process.stdout.read(size + 1)
-        if len(payload) > size:
-            process.kill()
-        try:
-            returncode = process.wait(timeout=10)
-        except subprocess.TimeoutExpired as exc:
-            process.kill()
-            process.wait(timeout=5)
-            raise PlanningTrialError("reviewed backlog is unavailable") from exc
+        payload, returncode = _read_bounded_process(
+            process, expected_size=size, timeout_seconds=10
+        )
     except PlanningTrialError:
         raise
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
@@ -98,6 +91,51 @@ def load_reviewed_backlog(repository_root: Path, expected_base_sha: str) -> str:
         return payload.decode("utf-8", errors="strict")
     except UnicodeDecodeError as exc:
         raise PlanningTrialError("reviewed backlog is not valid UTF-8") from exc
+
+
+def _read_bounded_process(
+    process: subprocess.Popen[bytes], *, expected_size: int, timeout_seconds: float
+) -> tuple[bytes, int]:
+    if process.stdout is None:
+        process.kill()
+        process.wait(timeout=5)
+        raise PlanningTrialError("reviewed backlog is unavailable")
+    payload = bytearray()
+    deadline = time.monotonic() + timeout_seconds
+    descriptor = process.stdout.fileno()
+    os.set_blocking(descriptor, False)
+    try:
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError
+            readable, _, _ = select.select([descriptor], [], [], remaining)
+            if not readable:
+                raise TimeoutError
+            try:
+                chunk = os.read(descriptor, min(65_536, expected_size + 1 - len(payload)))
+            except BlockingIOError:
+                continue
+            if not chunk:
+                break
+            payload.extend(chunk)
+            if len(payload) > expected_size:
+                break
+    except TimeoutError as exc:
+        process.kill()
+        process.wait(timeout=5)
+        raise PlanningTrialError("reviewed backlog is unavailable") from exc
+    finally:
+        process.stdout.close()
+    if len(payload) > expected_size:
+        process.kill()
+    try:
+        returncode = process.wait(timeout=max(0.1, deadline - time.monotonic()))
+    except subprocess.TimeoutExpired as exc:
+        process.kill()
+        process.wait(timeout=5)
+        raise PlanningTrialError("reviewed backlog is unavailable") from exc
+    return bytes(payload), returncode
 
 
 def repository_snapshot(repository_root: Path) -> RepositorySnapshot:

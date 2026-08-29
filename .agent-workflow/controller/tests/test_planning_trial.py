@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -12,6 +13,7 @@ from td_controller.planning_trial import (
     MAX_BACKLOG_BYTES,
     PlanningTrialError,
     RepositorySnapshot,
+    _read_bounded_process,
     load_reviewed_backlog,
     planner_contract_context,
     repository_snapshot,
@@ -127,6 +129,25 @@ class PlanningTrialTests(unittest.TestCase):
         self.assertEqual(request.base_sha, BASE_SHA)
         executor = factory.call_args.kwargs["executor"]
         self.assertEqual(executor._inaccessible_paths, (Path.cwd().resolve(),))
+
+    def test_bounded_blob_reader_times_out_and_reaps_partial_process(self) -> None:
+        process = subprocess.Popen(
+            [
+                "/usr/bin/python3", "-c",
+                "import os,time; os.write(1,b'x'); time.sleep(5)",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        started = time.monotonic()
+
+        with self.assertRaises(PlanningTrialError):
+            _read_bounded_process(
+                process, expected_size=2, timeout_seconds=0.1
+            )
+
+        self.assertLess(time.monotonic() - started, 1)
+        self.assertIsNotNone(process.poll())
 
     def test_stale_or_malformed_approved_base_prevents_backlog_loading(self) -> None:
         current = RepositorySnapshot(BASE_SHA)

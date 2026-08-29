@@ -282,6 +282,17 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
         cleanup.assert_called_once_with("td-codex-review-fixed123")
         self.assertEqual(result.stdout, b"ok")
 
+    def test_systemd_property_paths_reject_whitespace(self) -> None:
+        delegate = FakeExecutor(ProcessOutput(0, b"", b""))
+        executor = SystemdCgroupExecutor(delegate=delegate)
+        with tempfile.TemporaryDirectory(prefix="td path ") as temporary:
+            with self.assertRaisesRegex(CodexReviewError, "containment path"):
+                executor.run(
+                    ["/pinned/codex", "exec"], input_bytes=b"",
+                    cwd=Path(temporary), timeout_seconds=5,
+                )
+        self.assertEqual(delegate.commands, [])
+
     def test_launcher_is_staged_outside_writable_service_cwd(self) -> None:
         observed: dict[str, object] = {}
 

@@ -57,6 +57,17 @@ def _absolute_command(command: list[str]) -> list[str]:
     return [str(Path(command[0]).resolve(strict=False)), *command[1:]]
 
 
+def _systemd_property_path(path: Path, *, require_exists: bool = True) -> Path:
+    if not isinstance(path, Path) or not path.is_absolute() or any(
+        character.isspace() or ord(character) < 32 for character in str(path)
+    ):
+        raise CodexReviewError("systemd containment path is invalid")
+    try:
+        return path.resolve(strict=require_exists)
+    except OSError as exc:
+        raise CodexReviewError("systemd containment path is invalid") from exc
+
+
 def _minimal_codex_environment(executable: str) -> dict[str, str]:
     home = _trusted_home()
     return {
@@ -436,14 +447,11 @@ class SystemdCgroupExecutor:
         self._unit_name_factory = unit_name_factory or (
             lambda: f"td-codex-review-{secrets.token_hex(8)}"
         )
-        if any(not isinstance(path, Path) or not path.is_absolute()
-               for path in inaccessible_paths):
-            raise CodexReviewError("inaccessible containment path is invalid")
         try:
             self._inaccessible_paths = tuple(
-                path.resolve(strict=True) for path in inaccessible_paths
+                _systemd_property_path(path) for path in inaccessible_paths
             )
-        except OSError as exc:
+        except CodexReviewError as exc:
             raise CodexReviewError("inaccessible containment path is invalid") from exc
 
     def run(
@@ -455,6 +463,8 @@ class SystemdCgroupExecutor:
         timeout_seconds: int,
     ) -> ProcessOutput:
         command = _absolute_command(command)
+        cwd = _systemd_property_path(cwd)
+        _systemd_property_path(Path(command[0]).parent, require_exists=False)
         unit = self._unit_name_factory()
         if not unit.startswith("td-codex-review-") or not unit.removeprefix(
             "td-codex-review-"
