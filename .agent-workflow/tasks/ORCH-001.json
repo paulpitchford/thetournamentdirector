@@ -1,64 +1,34 @@
 {
-  "id": "ORCH-002A",
+  "id": "ORCH-002B",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Add a strict durable task contract before read-only planning trials",
-  "nonGoals": [
-    "Implement planner output or dependency-graph validation",
-    "Dispatch implementation or planning agents",
-    "Change GitHub workflows, pilot policy, or merge controls"
-  ],
-  "dependsOn": [
-    "ORCH-001D"
-  ],
+  "objective": "Add strict planner output and dependency-graph validation before read-only trials",
+  "nonGoals": ["Dispatch a planner", "Approve proposed tasks", "Change workflow or pilot policy"],
+  "dependsOn": ["ORCH-002A"],
   "acceptanceCriteria": [
-    "json-errors|WHEN invalid task JSON enters the parser|ASSERT ERROR TaskContractError",
-    "field-validation|WHEN task fields are parsed by the contract|ASSERT TEST_PASS local-task-contract-tests",
-    "criterion-validation|WHEN invalid acceptance criteria enter the parser|ASSERT ERROR TaskContractError",
-    "evidence-validation|WHEN invalid evidence mappings enter the parser|ASSERT ERROR TaskContractError",
-    "path-validation|WHEN unsafe task path claims enter the parser|ASSERT ERROR TaskContractError",
-    "fixture-compatibility|WHEN repository task fixtures enter the parser|ASSERT TEST_PASS local-task-contract-tests",
-    "no-model-tests|WHEN the automated contract suite executes|ASSERT TEST_PASS no-model-in-tests"
+    "plan-json|WHEN invalid planner JSON enters the parser|ASSERT ERROR PlanContractError",
+    "proposed-only|WHEN planner tasks enter the parser|ASSERT TEST_PASS local-plan-contract-tests",
+    "dependency-graph|WHEN task dependencies enter graph validation|ASSERT TEST_PASS local-plan-contract-tests",
+    "parallel-groups|WHEN parallel task groups enter validation|ASSERT TEST_PASS local-plan-contract-tests",
+    "fixture-tasks|WHEN nested proposed tasks enter validation|ASSERT TEST_PASS local-plan-contract-tests",
+    "no-model-tests|WHEN automated plan contract tests execute|ASSERT TEST_PASS no-model-in-tests"
   ],
   "acceptanceEvidenceIds": {
-    "json-errors|WHEN invalid task JSON enters the parser|ASSERT ERROR TaskContractError": [
-      "local-task-contract-tests"
-    ],
-    "field-validation|WHEN task fields are parsed by the contract|ASSERT TEST_PASS local-task-contract-tests": [
-      "local-task-contract-tests"
-    ],
-    "criterion-validation|WHEN invalid acceptance criteria enter the parser|ASSERT ERROR TaskContractError": [
-      "local-task-contract-tests"
-    ],
-    "evidence-validation|WHEN invalid evidence mappings enter the parser|ASSERT ERROR TaskContractError": [
-      "local-task-contract-tests"
-    ],
-    "path-validation|WHEN unsafe task path claims enter the parser|ASSERT ERROR TaskContractError": [
-      "local-task-contract-tests"
-    ],
-    "fixture-compatibility|WHEN repository task fixtures enter the parser|ASSERT TEST_PASS local-task-contract-tests": [
-      "local-task-contract-tests"
-    ],
-    "no-model-tests|WHEN the automated contract suite executes|ASSERT TEST_PASS no-model-in-tests": [
-      "no-model-in-tests"
-    ]
+    "plan-json|WHEN invalid planner JSON enters the parser|ASSERT ERROR PlanContractError": ["local-plan-contract-tests"],
+    "proposed-only|WHEN planner tasks enter the parser|ASSERT TEST_PASS local-plan-contract-tests": ["local-plan-contract-tests"],
+    "dependency-graph|WHEN task dependencies enter graph validation|ASSERT TEST_PASS local-plan-contract-tests": ["local-plan-contract-tests"],
+    "parallel-groups|WHEN parallel task groups enter validation|ASSERT TEST_PASS local-plan-contract-tests": ["local-plan-contract-tests"],
+    "fixture-tasks|WHEN nested proposed tasks enter validation|ASSERT TEST_PASS local-plan-contract-tests": ["local-plan-contract-tests"],
+    "no-model-tests|WHEN automated plan contract tests execute|ASSERT TEST_PASS no-model-in-tests": ["no-model-in-tests"]
   },
   "acceptanceEvidenceRequirements": {},
-  "requiredTests": [
-    ".agent-workflow/scripts/verify_controller.sh",
-    "python3 .agent-workflow/scripts/check_repository.py"
-  ],
+  "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/task_contract.py",
-    ".agent-workflow/controller/tests/test_task_contract.py",
-    ".agent-workflow/tasks/ORCH-001.json",
-    ".agent-workflow/tasks/PILOT-DOC-001.json"
+    ".agent-workflow/controller/td_controller/plan_contract.py",
+    ".agent-workflow/controller/tests/test_plan_contract.py",
+    ".agent-workflow/tasks/ORCH-001.json"
   ],
-  "protectedPaths": [
-    ".github/**",
-    ".agent-workflow/policy/**",
-    ".agent-workflow/scripts/**"
-  ],
+  "protectedPaths": [".github/**", ".agent-workflow/policy/**", ".agent-workflow/scripts/**"],
   "riskClass": "R3",
   "maxChangedLines": 900,
   "maxAttempts": 2,
