@@ -29,7 +29,7 @@ from .review_runtime import (
     ProcessOutput,
     SubprocessExecutor,
     SystemdCgroupExecutor,
-    _attest_codex_runtime,
+    execute_attested_codex,
 )
 
 MAX_PROMPT_BYTES = 512_000
@@ -64,16 +64,17 @@ class CodexReviewProvider:
 
         with tempfile.TemporaryDirectory(prefix="td-codex-review-") as temporary:
             root = Path(temporary)
-            codex_executable = _attest_codex_runtime(root / "runtime")
             schema_path = root / "review-schema.json"
             schema_path.write_text(
                 json.dumps(_schema_for_role(self.request.role)), encoding="utf-8"
             )
-            output = self.executor.run(
-                self._command(codex_executable, schema_path),
+            output = execute_attested_codex(
+                root / "runtime",
+                self._command(schema_path),
                 input_bytes=prompt,
                 cwd=root,
                 timeout_seconds=self.timeout_seconds,
+                executor=self.executor,
             )
 
         if output.returncode != 0:
@@ -92,9 +93,8 @@ class CodexReviewProvider:
         )
 
     @staticmethod
-    def _command(codex_executable: str, schema_path: Path) -> list[str]:
+    def _command(schema_path: Path) -> list[str]:
         return [
-            codex_executable,
             "-a",
             "never",
             "exec",

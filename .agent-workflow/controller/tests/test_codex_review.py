@@ -115,7 +115,7 @@ class CodexReviewProviderTests(unittest.TestCase):
 
     def setUp(self) -> None:
         runtime = patch(
-            "td_controller.codex_review._attest_codex_runtime",
+            "td_controller.review_runtime._attest_codex_runtime",
             return_value="/pinned/codex",
         )
         runtime.start()
