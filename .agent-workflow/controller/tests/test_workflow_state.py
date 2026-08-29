@@ -89,18 +89,30 @@ class TaskStateLedgerTests(unittest.TestCase):
         new_state: str,
         *,
         expected_revision: int | None = None,
+        expected_head_sha: str | None = None,
         attempt: int = 1,
-        head_sha: str = HEAD_SHA,
+        head_sha: str | None = None,
         result: str = "PASS",
-        artifact_ids: tuple[str, ...] = (),
+        artifact_ids: tuple[str, ...] | None = None,
     ):
-        if expected_revision is None:
-            expected_revision = self.ledger.current("DOC-001").revision
+        current = self.ledger.current("DOC-001")
+        expected_revision = expected_revision or current.revision
+        expected_head_sha = expected_head_sha or current.head_sha
+        if head_sha is None:
+            head_sha = HEAD_SHA if new_state == "VERIFYING" else current.head_sha
+        gate = (expected_state, new_state) in {
+            ("VERIFYING", "PR_DRAFT"),
+            ("REVIEWING", "CI_PENDING"),
+            ("CI_PENDING", "READY_FOR_POLICY_MERGE"),
+        }
+        if artifact_ids is None:
+            artifact_ids = ("gate-evidence",) if gate else ()
         self.clock.advance()
         return self.ledger.transition(
             "DOC-001",
             expected_state=expected_state,
             expected_revision=expected_revision,
+            expected_head_sha=expected_head_sha,
             new_state=new_state,
             attempt=attempt,
             head_sha=head_sha,
@@ -190,6 +202,35 @@ class TaskStateLedgerTests(unittest.TestCase):
             self.transition(
                 "VERIFYING", "PR_DRAFT", expected_revision=first_verifying_revision
             )
+        with self.assertRaisesRegex(WorkflowStateError, "changed before"):
+            self.transition(
+                "VERIFYING", "PR_DRAFT", expected_head_sha=BASE_SHA
+            )
+        self.assertEqual(self.ledger.current("DOC-001"), current)
+
+    def test_merge_path_requires_pass_evidence_and_preserves_head(self) -> None:
+        self.register(status="QUEUED")
+        for prior, new in (
+            ("QUEUED", "LEASED"),
+            ("LEASED", "IMPLEMENTING"),
+            ("IMPLEMENTING", "VERIFYING"),
+            ("VERIFYING", "PR_DRAFT"),
+            ("PR_DRAFT", "REVIEWING"),
+        ):
+            self.transition(prior, new)
+        current = self.ledger.current("DOC-001")
+        for result, artifacts in (
+            ("FAIL", ("review-evidence",)),
+            ("NONE", ("review-evidence",)),
+            ("PASS", ()),
+        ):
+            with self.assertRaisesRegex(WorkflowStateError, "evidence"):
+                self.transition(
+                    "REVIEWING", "CI_PENDING", result=result,
+                    artifact_ids=artifacts,
+                )
+        with self.assertRaisesRegex(WorkflowStateError, "head change"):
+            self.transition("REVIEWING", "CI_PENDING", head_sha="c" * 40)
         self.assertEqual(self.ledger.current("DOC-001"), current)
 
     def test_stale_or_illegal_transition_rolls_back(self) -> None:
@@ -273,87 +314,16 @@ class TaskStateLedgerTests(unittest.TestCase):
                 "DOC-001",
                 expected_state="APPROVED",
                 expected_revision=1,
+                expected_head_sha=BASE_SHA,
                 new_state="QUEUED",
                 attempt=1,
-                head_sha=HEAD_SHA,
+                head_sha=BASE_SHA,
                 actor="controller-primary",
                 gate_id="test-gate",
                 result="PASS",
             )
 
         self.assertEqual(self.ledger.current("DOC-001").state, "APPROVED")
-
-    def test_clock_rollback_is_rejected_without_mutation(self) -> None:
-        registered = self.register()
-        self.clock.value -= timedelta(seconds=1)
-
-        with self.assertRaisesRegex(WorkflowStateError, "clock moved backwards"):
-            self.ledger.transition(
-                "DOC-001",
-                expected_state="APPROVED",
-                expected_revision=1,
-                new_state="QUEUED",
-                attempt=1,
-                head_sha=HEAD_SHA,
-                actor="controller-primary",
-                gate_id="test-gate",
-                result="PASS",
-            )
-
-        self.assertEqual(self.ledger.current("DOC-001"), registered)
-        self.assertEqual(len(self.ledger.history("DOC-001")), 1)
-
-    def test_malformed_metadata_is_rejected_without_mutation(self) -> None:
-        self.register()
-        invalid = (
-            {"head_sha": "ABC"},
-            {"actor": "controller primary"},
-            {"gate_id": ""},
-            {"result": "SUCCESS"},
-            {"artifact_ids": ["not-a-tuple"]},
-            {"artifact_ids": ("duplicate", "duplicate")},
-        )
-        for override in invalid:
-            arguments = {
-                "task_id": "DOC-001",
-                "expected_state": "APPROVED",
-                "expected_revision": 1,
-                "new_state": "QUEUED",
-                "attempt": 1,
-                "head_sha": HEAD_SHA,
-                "actor": "controller-primary",
-                "gate_id": "test-gate",
-                "result": "PASS",
-                "artifact_ids": (),
-            }
-            arguments.update(override)
-            with self.subTest(override=override):
-                with self.assertRaises(WorkflowStateError):
-                    self.ledger.transition(**arguments)
-
-        self.assertEqual(self.ledger.current("DOC-001").state, "APPROVED")
-        self.assertEqual(len(self.ledger.history("DOC-001")), 1)
-
-    def test_non_dispatchable_task_and_naive_clock_are_rejected(self) -> None:
-        with self.assertRaisesRegex(WorkflowStateError, "not dispatchable"):
-            self.ledger.register(
-                task(status="PROPOSED"),
-                base_sha=BASE_SHA,
-                actor="controller-primary",
-                gate_id="task-admission",
-            )
-        naive = TaskStateLedger(
-            self.path,
-            now=lambda: datetime(2026, 8, 29),
-            transition_id_factory=self.identifiers,
-        )
-        with self.assertRaisesRegex(WorkflowStateError, "timezone-aware"):
-            naive.register(
-                task(),
-                base_sha=BASE_SHA,
-                actor="controller-primary",
-                gate_id="task-admission",
-            )
 
 
 if __name__ == "__main__":

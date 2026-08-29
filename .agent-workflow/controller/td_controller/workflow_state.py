@@ -40,6 +40,16 @@ INTERRUPTION_STATES = frozenset(
     }
 )
 INTERRUPTIBLE_STATES = frozenset(NORMAL_TRANSITIONS) - {"MERGED"}
+HEAD_CHANGE_TRANSITIONS = frozenset(
+    {("IMPLEMENTING", "VERIFYING"), ("REMEDIATING", "VERIFYING")}
+)
+EVIDENCE_GATE_TRANSITIONS = frozenset(
+    {
+        ("VERIFYING", "PR_DRAFT"),
+        ("REVIEWING", "CI_PENDING"),
+        ("CI_PENDING", "READY_FOR_POLICY_MERGE"),
+    }
+)
 TERMINAL_STATES = frozenset(
     {
         "DONE",
@@ -224,6 +234,7 @@ class TaskStateLedger:
         *,
         expected_state: str,
         expected_revision: int,
+        expected_head_sha: str,
         new_state: str,
         attempt: int,
         head_sha: str,
@@ -242,6 +253,7 @@ class TaskStateLedger:
             or expected_revision < 1
         ):
             raise WorkflowStateError("task revision is invalid")
+        _validate_sha(expected_head_sha)
         _validate_sha(head_sha)
         _validate_token(actor, "actor")
         _validate_token(gate_id, "gate ID")
@@ -258,7 +270,11 @@ class TaskStateLedger:
             ).fetchone()
             if row is None:
                 raise WorkflowStateError("task state is unavailable")
-            if row["state"] != expected_state or row["revision"] != expected_revision:
+            if (
+                row["state"] != expected_state
+                or row["revision"] != expected_revision
+                or row["head_sha"] != expected_head_sha
+            ):
                 raise WorkflowStateError("task state changed before transition")
             if _parse_timestamp(row["updated_at"]) > _parse_timestamp(timestamp):
                 raise WorkflowStateError("workflow clock moved backwards")
@@ -268,13 +284,17 @@ class TaskStateLedger:
                 current_attempt=row["attempt"],
                 new_attempt=attempt,
                 max_attempts=row["max_attempts"],
+                head_changed=head_sha != expected_head_sha,
+                result=result,
+                has_artifacts=bool(artifacts),
             )
             cursor = connection.execute(
                 """
                 UPDATE task_states
                 SET state = ?, revision = revision + 1, attempt = ?,
                     head_sha = ?, updated_at = ?
-                WHERE task_id = ? AND state = ? AND revision = ? AND attempt = ?
+                WHERE task_id = ? AND state = ? AND revision = ?
+                    AND attempt = ? AND head_sha = ?
                 """,
                 (
                     new_state,
@@ -285,6 +305,7 @@ class TaskStateLedger:
                     expected_state,
                     expected_revision,
                     row["attempt"],
+                    expected_head_sha,
                 ),
             )
             if cursor.rowcount != 1:
@@ -428,6 +449,9 @@ def _validate_transition(
     current_attempt: int,
     new_attempt: int,
     max_attempts: int,
+    head_changed: bool,
+    result: str,
+    has_artifacts: bool,
 ) -> None:
     allowed = set(NORMAL_TRANSITIONS.get(prior, ()))
     if prior in INTERRUPTIBLE_STATES:
@@ -435,6 +459,11 @@ def _validate_transition(
     allowed.discard(prior)
     if new not in allowed:
         raise WorkflowStateError("task transition is not allowed")
+    edge = (prior, new)
+    if head_changed and edge not in HEAD_CHANGE_TRANSITIONS:
+        raise WorkflowStateError("task head change is not allowed")
+    if edge in EVIDENCE_GATE_TRANSITIONS and (result != "PASS" or not has_artifacts):
+        raise WorkflowStateError("task gate evidence is incomplete")
     retrying = prior == "FAILED_RETRYABLE" and new == "QUEUED"
     expected_attempt = current_attempt + 1 if retrying else current_attempt
     if new_attempt != expected_attempt or not 1 <= new_attempt <= max_attempts:
