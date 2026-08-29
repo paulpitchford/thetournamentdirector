@@ -57,7 +57,9 @@ class CodexReviewProvider:
         if len(prompt) > MAX_PROMPT_BYTES:
             raise CodexReviewError("review prompt exceeds the configured size limit")
 
-        with tempfile.TemporaryDirectory(prefix="td-codex-review-") as temporary:
+        with tempfile.TemporaryDirectory(
+            prefix="td-codex-review-", dir="/var/tmp"
+        ) as temporary:
             root = Path(temporary)
             schema_path = root / "review-schema.json"
             schema_path.write_text(

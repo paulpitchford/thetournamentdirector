@@ -1,39 +1,36 @@
 {
-  "id": "ORCH-002D",
+  "id": "ORCH-002E",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Add a repository-inaccessible coordinator and controller-owned grammar for read-only planning trials",
-  "nonGoals": ["Mutate the repository", "Approve proposed tasks", "Dispatch implementation work", "Persist model output in Git", "Complete ten real planning runs"],
-  "dependsOn": ["ORCH-002C"],
+  "objective": "Provide private temporary storage required by pinned Codex while keeping the repository inaccessible",
+  "nonGoals": ["Expose the repository", "Permit arbitrary stderr", "Run ten planning trials", "Enable model tools", "Change provider features"],
+  "dependsOn": ["ORCH-002D"],
   "acceptanceCriteria": [
-    "backlog-load|WHEN the reviewed backlog enters a trial|ASSERT TEST_PASS local-planning-trial-tests",
-    "approved-base|WHEN a trial starts from a stale or malformed revision|ASSERT ERROR PlanningTrialError",
-    "repository-hidden|WHEN the contained planner attempts repository access|ASSERT TEST_PASS repository-inaccessible-smoke",
-    "fresh-session|WHEN a planner omits its session identity|ASSERT ERROR PlanningTrialError",
-    "contract-context|WHEN a planner receives controller constraints|ASSERT TEST_PASS local-planning-trial-tests",
-    "no-model-tests|WHEN automated planning trial tests execute|ASSERT TEST_PASS no-model-in-tests"
+    "private-temp|WHEN pinned Codex initializes Linux sandbox internals|ASSERT TEST_PASS local-private-temp-tests",
+    "repository-hidden|WHEN contained Codex attempts repository access|ASSERT TEST_PASS repository-inaccessible-smoke",
+    "planner-startup|WHEN a real contained planner reaches semantic validation|ASSERT TEST_PASS real-planner-startup-smoke",
+    "no-model-tests|WHEN automated private temporary storage tests execute|ASSERT TEST_PASS no-model-in-tests"
   ],
   "acceptanceEvidenceIds": {
-    "backlog-load|WHEN the reviewed backlog enters a trial|ASSERT TEST_PASS local-planning-trial-tests": ["local-planning-trial-tests"],
-    "approved-base|WHEN a trial starts from a stale or malformed revision|ASSERT ERROR PlanningTrialError": ["local-planning-trial-tests"],
-    "repository-hidden|WHEN the contained planner attempts repository access|ASSERT TEST_PASS repository-inaccessible-smoke": ["repository-inaccessible-smoke"],
-    "fresh-session|WHEN a planner omits its session identity|ASSERT ERROR PlanningTrialError": ["local-planning-trial-tests"],
-    "contract-context|WHEN a planner receives controller constraints|ASSERT TEST_PASS local-planning-trial-tests": ["local-planning-trial-tests"],
-    "no-model-tests|WHEN automated planning trial tests execute|ASSERT TEST_PASS no-model-in-tests": ["no-model-in-tests"]
+    "private-temp|WHEN pinned Codex initializes Linux sandbox internals|ASSERT TEST_PASS local-private-temp-tests": ["local-private-temp-tests"],
+    "repository-hidden|WHEN contained Codex attempts repository access|ASSERT TEST_PASS repository-inaccessible-smoke": ["repository-inaccessible-smoke"],
+    "planner-startup|WHEN a real contained planner reaches semantic validation|ASSERT TEST_PASS real-planner-startup-smoke": ["real-planner-startup-smoke"],
+    "no-model-tests|WHEN automated private temporary storage tests execute|ASSERT TEST_PASS no-model-in-tests": ["no-model-in-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
     ".agent-workflow/controller/td_controller/codex_planner.py",
-    ".agent-workflow/controller/td_controller/planning_trial.py",
+    ".agent-workflow/controller/td_controller/codex_review.py",
     ".agent-workflow/controller/td_controller/review_runtime.py",
-    ".agent-workflow/controller/tests/test_planning_trial.py",
+    ".agent-workflow/controller/tests/test_codex_planner.py",
+    ".agent-workflow/controller/tests/test_codex_review.py",
     ".agent-workflow/controller/tests/test_review_runtime.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**", ".agent-workflow/policy/**", ".agent-workflow/scripts/**"],
   "riskClass": "R3",
-  "maxChangedLines": 900,
+  "maxChangedLines": 500,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
