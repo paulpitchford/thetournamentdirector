@@ -246,12 +246,14 @@ def _parse_event_stream(stdout: bytes) -> tuple[str, str]:
             turn_started = True
             continue
         if event_type == "turn.completed":
-            if "item" in event or not final_message_seen:
+            if "item" in event or not turn_started or not final_message_seen:
                 raise CodexReviewError("Codex lifecycle event has an invalid shape")
             turn_completed = True
             continue
         if final_message_seen:
             raise CodexReviewError("Codex emitted activity after its final message")
+        if not turn_started:
+            raise CodexReviewError("Codex emitted an invalid lifecycle order")
 
         item = event.get("item")
         if not isinstance(item, dict) or not isinstance(item.get("type"), str):
@@ -268,6 +270,8 @@ def _parse_event_stream(stdout: bytes) -> tuple[str, str]:
             final_message_seen = True
     if not isinstance(session_id, str) or not session_id.strip():
         raise CodexReviewError("Codex returned no session identity")
+    if not turn_started or not turn_completed:
+        raise CodexReviewError("Codex event lifecycle did not complete")
     if len(messages) != 1:
         raise CodexReviewError("Codex must return exactly one final agent message")
     return session_id, messages[0]
