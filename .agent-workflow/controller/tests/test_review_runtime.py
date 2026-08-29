@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import io
 import json
 import os
@@ -20,11 +19,8 @@ from td_controller.review_runtime import (
     ProcessOutput,
     SubprocessExecutor,
     SystemdCgroupExecutor,
-    _attest_codex_runtime,
     _minimal_codex_environment,
     _minimal_systemd_environment,
-    _stage_file,
-    execute_attested_codex,
 )
 
 class FakeExecutor:
@@ -231,6 +227,9 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
         self.assertIn("--property=KillMode=control-group", command)
         self.assertIn("--property=RuntimeMaxSec=30s", command)
         self.assertIn("--property=TasksMax=64", command)
+        self.assertIn("--property=MemoryMax=2G", command)
+        self.assertIn("--property=MemorySwapMax=0", command)
+        self.assertIn("--property=CPUQuota=200%", command)
         runtime_dir = f"/run/user/{os.getuid()}"
         self.assertIn(
             f"--property=InaccessiblePaths={runtime_dir}/bus {runtime_dir}/systemd",
@@ -321,93 +320,3 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
             )
         self.assertEqual(delegate.commands, [])
 
-
-class RuntimeAttestationTests(unittest.TestCase):
-    def test_integrated_api_executes_only_attested_path(self) -> None:
-        executor = FakeExecutor(ProcessOutput(0, b"ok", b""))
-        with patch(
-            "td_controller.review_runtime._attest_codex_runtime",
-            return_value="/controller/runtime/codex",
-        ):
-            execute_attested_codex(
-                Path("/controller/runtime"), ["exec"], input_bytes=b"prompt",
-                cwd=Path("/tmp"), timeout_seconds=5, executor=executor,
-            )
-        self.assertEqual(executor.commands, [["/controller/runtime/codex", "exec"]])
-
-    def test_attested_copy_is_bound_after_source_replacement(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            source = Path(temporary) / "codex"
-            original = b"#!/bin/sh\nprintf 'codex-cli test\\n'\n"
-            source.write_bytes(original)
-            source.chmod(0o700)
-            host = source.with_name("codex-code-mode-host")
-            host.write_bytes(b"host payload")
-            host.chmod(0o700)
-            destination = Path(os.path.relpath(Path(temporary) / "staged"))
-            with (
-                patch(
-                    "td_controller.review_runtime._pinned_runtime_sources",
-                    return_value=(source, host),
-                ),
-                patch("td_controller.review_runtime.PINNED_CODEX_SIZE", len(original)),
-                patch(
-                    "td_controller.review_runtime.PINNED_CODE_MODE_HOST_SIZE",
-                    len(host.read_bytes()),
-                ),
-                patch(
-                    "td_controller.review_runtime.PINNED_CODEX_SHA256",
-                    hashlib.sha256(original).hexdigest(),
-                ),
-                patch(
-                    "td_controller.review_runtime.PINNED_CODE_MODE_HOST_SHA256",
-                    hashlib.sha256(host.read_bytes()).hexdigest(),
-                ),
-                patch("td_controller.review_runtime.PINNED_CODEX_VERSION", "codex-cli test"),
-            ):
-                staged = Path(_attest_codex_runtime(destination))
-            self.assertTrue(staged.is_absolute())
-            source.write_bytes(b"#!/bin/sh\nprintf 'replacement ran\\n'\n")
-
-            output = subprocess.run(
-                [str(staged), "--version"],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-
-            self.assertEqual(output.stdout.strip(), "codex-cli test")
-
-    def test_unreviewed_codex_binary_is_rejected(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            executable = Path(temporary) / "codex"
-            executable.write_bytes(b"unreviewed runtime")
-            executable.chmod(0o700)
-            host = executable.with_name("codex-code-mode-host")
-            host.write_bytes(b"unreviewed host")
-            host.chmod(0o700)
-            destination = Path(temporary) / "staged"
-            with (
-                patch(
-                    "td_controller.review_runtime._pinned_runtime_sources",
-                    return_value=(executable, host),
-                ),
-                patch(
-                    "td_controller.review_runtime.PINNED_CODEX_SIZE",
-                    len(executable.read_bytes()),
-                ),
-            ):
-                with self.assertRaisesRegex(CodexReviewError, "hash does not match"):
-                    _attest_codex_runtime(destination)
-            self.assertEqual(list(destination.iterdir()), [])
-
-    def test_non_regular_runtime_fails_without_staged_artifact(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            source = Path(temporary) / "runtime-fifo"
-            os.mkfifo(source)
-            destination = Path(temporary) / "staged"
-
-            with self.assertRaisesRegex(CodexReviewError, "size does not match"):
-                _stage_file(source, destination, "0" * 64, 1)
-
-            self.assertFalse(destination.exists())

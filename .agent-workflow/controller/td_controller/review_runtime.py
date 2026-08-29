@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import hashlib
 import os
 import pwd
 import secrets
 import signal
-import stat
 import subprocess
 import threading
 import time
@@ -20,14 +18,6 @@ from .review_contract import CodexReviewError
 CGROUP_ROOT = Path("/sys/fs/cgroup")
 MAX_INPUT_BYTES = 512_000
 MAX_OUTPUT_BYTES = 2_000_000
-PINNED_CODEX_VERSION = "codex-cli 0.150.1"
-PINNED_CODEX_SIZE = 268_330_432
-PINNED_CODE_MODE_HOST_SIZE = 57_886_648
-PINNED_RUNTIME_RELATIVE_DIR = Path(".local/share/mise/installs/codex/0.150.1/bin")
-PINNED_CODEX_SHA256 = "abf1bb1643a79f73aa78ee627e111e02d4f8c98f25813a0cf6ce277709664386"
-PINNED_CODE_MODE_HOST_SHA256 = (
-    "b3d633427c8c75057fba11dad6051714d44886440305e86ba9d2c0366f4dd63b"
-)
 
 @dataclass(frozen=True)
 class ProcessOutput:
@@ -56,41 +46,6 @@ def _minimal_codex_environment(executable: str) -> dict[str, str]:
     }
 
 
-def _stage_file(
-    source: Path, destination: Path, expected_sha256: str, expected_size: int
-) -> None:
-    temporary = destination.with_name(f".{destination.name}.partial")
-    try:
-        source_fd = os.open(source, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
-        with os.fdopen(source_fd, "rb") as input_file:
-            source_stat = os.fstat(input_file.fileno())
-            if not stat.S_ISREG(source_stat.st_mode) or source_stat.st_size != expected_size:
-                raise CodexReviewError("Codex runtime size does not match the reviewed pin")
-            digest = hashlib.sha256()
-            with temporary.open("xb") as output_file:
-                copied = 0
-                while chunk := input_file.read(min(1024 * 1024, expected_size - copied)):
-                    copied += len(chunk)
-                    if copied > expected_size:
-                        raise CodexReviewError("Codex runtime exceeded its size bound")
-                    digest.update(chunk)
-                    output_file.write(chunk)
-                if input_file.read(1) or copied != expected_size:
-                    raise CodexReviewError("Codex runtime exceeded its size bound")
-                if digest.hexdigest() != expected_sha256:
-                    raise CodexReviewError("Codex runtime hash does not match the reviewed pin")
-                output_file.flush()
-                os.fsync(output_file.fileno())
-            temporary.chmod(0o500)
-            os.replace(temporary, destination)
-    except CodexReviewError:
-        temporary.unlink(missing_ok=True)
-        raise
-    except OSError as exc:
-        temporary.unlink(missing_ok=True)
-        raise CodexReviewError("Codex runtime staging failed") from exc
-
-
 def _minimal_systemd_environment() -> dict[str, str]:
     runtime_dir = f"/run/user/{os.getuid()}"
     return {
@@ -101,39 +56,6 @@ def _minimal_systemd_environment() -> dict[str, str]:
         "PATH": "/usr/bin:/bin",
         "XDG_RUNTIME_DIR": runtime_dir,
     }
-
-
-def _pinned_runtime_sources() -> tuple[Path, Path]:
-    runtime_dir = _trusted_home() / PINNED_RUNTIME_RELATIVE_DIR
-    return runtime_dir / "codex", runtime_dir / "codex-code-mode-host"
-
-
-def _attest_codex_runtime(destination_dir: Path) -> str:
-    destination_dir = destination_dir.resolve(strict=False)
-    source, host_source = _pinned_runtime_sources()
-    destination_dir.mkdir(mode=0o700)
-    staged = destination_dir / "codex"
-    _stage_file(source, staged, PINNED_CODEX_SHA256, PINNED_CODEX_SIZE)
-    _stage_file(
-        host_source,
-        destination_dir / "codex-code-mode-host",
-        PINNED_CODE_MODE_HOST_SHA256,
-        PINNED_CODE_MODE_HOST_SIZE,
-    )
-    version = subprocess.run(
-        [str(staged), "--version"],
-        check=False,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        timeout=10,
-        env=_minimal_codex_environment(str(staged)),
-    )
-    if version.returncode != 0 or version.stdout.decode(errors="replace").strip() != (
-        PINNED_CODEX_VERSION
-    ):
-        raise CodexReviewError("Codex runtime version does not match the reviewed pin")
-    return str(staged)
 
 
 class CommandExecutor(Protocol):
@@ -318,6 +240,9 @@ class SystemdCgroupExecutor:
             "--property=TimeoutStopSec=2s",
             f"--property=RuntimeMaxSec={max(1, timeout_seconds)}s",
             "--property=TasksMax=64",
+            "--property=MemoryMax=2G",
+            "--property=MemorySwapMax=0",
+            "--property=CPUQuota=200%",
             "--property=NoNewPrivileges=yes",
             (
                 "--property=InaccessiblePaths="
@@ -425,14 +350,3 @@ class SystemdCgroupExecutor:
             if cgroup.exists() and "populated 0" not in populated:
                 raise CodexReviewError("transient review cgroup remained populated")
 
-
-def execute_attested_codex(
-    destination_dir: Path, arguments: list[str], *, input_bytes: bytes, cwd: Path,
-    timeout_seconds: int, executor: CommandExecutor | None = None,
-) -> ProcessOutput:
-    executable = _attest_codex_runtime(destination_dir)
-    boundary = executor or SystemdCgroupExecutor()
-    return boundary.run(
-        [executable, *arguments], input_bytes=input_bytes, cwd=cwd,
-        timeout_seconds=timeout_seconds,
-    )
