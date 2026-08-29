@@ -1,48 +1,45 @@
 {
-  "id": "ORCH-001D",
+  "id": "ORCH-002A",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Integrate the contained pinned runtime as a tool-less local Codex review provider",
+  "objective": "Add a strict durable task contract before read-only planning trials",
   "nonGoals": [
-    "Run a model in GitHub Actions or automated tests",
-    "Add implementation or remediation dispatch",
-    "Publish review statuses or auto-merge",
-    "Change containment or structured review contracts"
+    "Implement planner output or dependency-graph validation",
+    "Dispatch implementation or planning agents",
+    "Change GitHub workflows, pilot policy, or merge controls"
   ],
   "dependsOn": [
-    "ORCH-001A",
-    "ORCH-001B",
-    "ORCH-001C"
+    "ORCH-001D"
   ],
   "acceptanceCriteria": [
-    "The provider constructs a bounded inert-data prompt from trusted task, diff, SHA, and deterministic evidence inputs",
-    "Every model tool, hosted search, network permission, approval path, ambient environment, and persistent session is disabled",
-    "Role-specific output schemas require code-security or QA artifacts and code review requires empty acceptance evidence",
-    "The JSONL parser accepts only allowlisted lifecycle, reasoning, and one final agent-message event while rejecting tool, error, malformed, duplicate-session, and invalid-UTF8 events",
-    "Nonzero exits and stderr fail closed with bounded secret-safe classifications rather than raw provider output",
-    "Production provider execution uses the attested runtime through SystemdCgroupExecutor",
-    "Automated provider tests use a fake executor and do not invoke a model"
+    "json-errors|WHEN invalid task JSON enters the parser|ASSERT ERROR TaskContractError",
+    "field-validation|WHEN task fields are parsed by the contract|ASSERT TEST_PASS local-task-contract-tests",
+    "criterion-validation|WHEN invalid acceptance criteria enter the parser|ASSERT ERROR TaskContractError",
+    "evidence-validation|WHEN invalid evidence mappings enter the parser|ASSERT ERROR TaskContractError",
+    "path-validation|WHEN unsafe task path claims enter the parser|ASSERT ERROR TaskContractError",
+    "fixture-compatibility|WHEN repository task fixtures enter the parser|ASSERT TEST_PASS local-task-contract-tests",
+    "no-model-tests|WHEN the automated contract suite executes|ASSERT TEST_PASS no-model-in-tests"
   ],
   "acceptanceEvidenceIds": {
-    "The provider constructs a bounded inert-data prompt from trusted task, diff, SHA, and deterministic evidence inputs": [
-      "local-provider-tests"
+    "json-errors|WHEN invalid task JSON enters the parser|ASSERT ERROR TaskContractError": [
+      "local-task-contract-tests"
     ],
-    "Every model tool, hosted search, network permission, approval path, ambient environment, and persistent session is disabled": [
-      "local-provider-tests"
+    "field-validation|WHEN task fields are parsed by the contract|ASSERT TEST_PASS local-task-contract-tests": [
+      "local-task-contract-tests"
     ],
-    "Role-specific output schemas require code-security or QA artifacts and code review requires empty acceptance evidence": [
-      "local-provider-tests"
+    "criterion-validation|WHEN invalid acceptance criteria enter the parser|ASSERT ERROR TaskContractError": [
+      "local-task-contract-tests"
     ],
-    "The JSONL parser accepts only allowlisted lifecycle, reasoning, and one final agent-message event while rejecting tool, error, malformed, duplicate-session, and invalid-UTF8 events": [
-      "local-provider-tests"
+    "evidence-validation|WHEN invalid evidence mappings enter the parser|ASSERT ERROR TaskContractError": [
+      "local-task-contract-tests"
     ],
-    "Nonzero exits and stderr fail closed with bounded secret-safe classifications rather than raw provider output": [
-      "local-provider-tests"
+    "path-validation|WHEN unsafe task path claims enter the parser|ASSERT ERROR TaskContractError": [
+      "local-task-contract-tests"
     ],
-    "Production provider execution uses the attested runtime through SystemdCgroupExecutor": [
-      "local-provider-tests"
+    "fixture-compatibility|WHEN repository task fixtures enter the parser|ASSERT TEST_PASS local-task-contract-tests": [
+      "local-task-contract-tests"
     ],
-    "Automated provider tests use a fake executor and do not invoke a model": [
+    "no-model-tests|WHEN the automated contract suite executes|ASSERT TEST_PASS no-model-in-tests": [
       "no-model-in-tests"
     ]
   },
@@ -52,11 +49,10 @@
     "python3 .agent-workflow/scripts/check_repository.py"
   ],
   "allowedPaths": [
-    ".agent-workflow/controller/codex-0.150.1-features.txt",
-    ".agent-workflow/controller/td_controller/__init__.py",
-    ".agent-workflow/controller/td_controller/codex_review.py",
-    ".agent-workflow/controller/tests/test_codex_review.py",
-    ".agent-workflow/tasks/ORCH-001.json"
+    ".agent-workflow/controller/td_controller/task_contract.py",
+    ".agent-workflow/controller/tests/test_task_contract.py",
+    ".agent-workflow/tasks/ORCH-001.json",
+    ".agent-workflow/tasks/PILOT-DOC-001.json"
   ],
   "protectedPaths": [
     ".github/**",
