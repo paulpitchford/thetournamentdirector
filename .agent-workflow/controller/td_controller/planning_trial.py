@@ -1,4 +1,4 @@
-"""Mutation-detecting coordinator for contained read-only planning trials."""
+"""Repository-inaccessible coordinator for contained read-only planning trials."""
 
 from __future__ import annotations
 
@@ -21,7 +21,6 @@ class PlanningTrialError(RuntimeError):
 @dataclass(frozen=True)
 class RepositorySnapshot:
     head_sha: str
-    worktree_status: bytes
 
 
 @dataclass(frozen=True)
@@ -39,6 +38,7 @@ def load_reviewed_backlog(repository_root: Path, expected_base_sha: str) -> str:
     environment = {
         "GIT_CONFIG_GLOBAL": "/dev/null",
         "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_NO_LAZY_FETCH": "1",
         "GIT_NO_REPLACE_OBJECTS": "1",
         "GIT_OPTIONAL_LOCKS": "0",
         "HOME": "/nonexistent",
@@ -46,12 +46,11 @@ def load_reviewed_backlog(repository_root: Path, expected_base_sha: str) -> str:
         "LC_ALL": "C.UTF-8",
         "PATH": "/usr/bin:/bin",
     }
-    try:
-        result = subprocess.run(
-            [
-                "/usr/bin/git", "-c", "core.hooksPath=/dev/null", "cat-file",
-                "blob", f"{expected_base_sha}:{APPROVED_BACKLOG.as_posix()}",
-            ],
+    object_name = f"{expected_base_sha}:{APPROVED_BACKLOG.as_posix()}"
+
+    def cat_file(mode: str) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.run(
+            ["/usr/bin/git", "cat-file", mode, object_name],
             cwd=root,
             env=environment,
             check=False,
@@ -60,13 +59,41 @@ def load_reviewed_backlog(repository_root: Path, expected_base_sha: str) -> str:
             stderr=subprocess.DEVNULL,
             timeout=10,
         )
-    except (OSError, subprocess.SubprocessError) as exc:
+
+    try:
+        size_result = cat_file("-s")
+        if size_result.returncode != 0 or len(size_result.stdout) > 32:
+            raise PlanningTrialError("reviewed backlog is unavailable")
+        size = int(size_result.stdout.strip())
+        if size > MAX_BACKLOG_BYTES:
+            raise PlanningTrialError("reviewed backlog exceeds the size limit")
+        process = subprocess.Popen(
+            ["/usr/bin/git", "cat-file", "blob", object_name],
+            cwd=root,
+            env=environment,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        if process.stdout is None:
+            process.kill()
+            raise PlanningTrialError("reviewed backlog is unavailable")
+        with process.stdout:
+            payload = process.stdout.read(size + 1)
+        if len(payload) > size:
+            process.kill()
+        try:
+            returncode = process.wait(timeout=10)
+        except subprocess.TimeoutExpired as exc:
+            process.kill()
+            process.wait(timeout=5)
+            raise PlanningTrialError("reviewed backlog is unavailable") from exc
+    except PlanningTrialError:
+        raise
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
         raise PlanningTrialError("reviewed backlog is unavailable") from exc
-    payload = result.stdout
-    if result.returncode != 0:
+    if returncode != 0 or len(payload) != size:
         raise PlanningTrialError("reviewed backlog is unavailable")
-    if len(payload) > MAX_BACKLOG_BYTES:
-        raise PlanningTrialError("reviewed backlog exceeds the size limit")
     try:
         return payload.decode("utf-8", errors="strict")
     except UnicodeDecodeError as exc:
@@ -74,7 +101,7 @@ def load_reviewed_backlog(repository_root: Path, expected_base_sha: str) -> str:
 
 
 def repository_snapshot(repository_root: Path) -> RepositorySnapshot:
-    """Capture controller-visible Git identity and mutation state without hooks."""
+    """Capture only the approved Git identity; planner input comes from that commit."""
     root = repository_root.resolve(strict=True)
     environment = {
         "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -96,20 +123,6 @@ def repository_snapshot(repository_root: Path) -> RepositorySnapshot:
             stderr=subprocess.DEVNULL,
             timeout=10,
         ).stdout
-        status = subprocess.run(
-            [
-                "/usr/bin/git", "-c", "core.hooksPath=/dev/null",
-                "-c", "core.fsmonitor=false", "status", "--porcelain=v1",
-                "--untracked-files=all",
-            ],
-            cwd=root,
-            env=environment,
-            check=True,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            timeout=10,
-        ).stdout
     except (OSError, subprocess.SubprocessError) as exc:
         raise PlanningTrialError("repository snapshot failed") from exc
     try:
@@ -118,7 +131,7 @@ def repository_snapshot(repository_root: Path) -> RepositorySnapshot:
         raise PlanningTrialError("repository identity is invalid") from exc
     if len(head_sha) != 40 or any(character not in "0123456789abcdef" for character in head_sha):
         raise PlanningTrialError("repository identity is invalid")
-    return RepositorySnapshot(head_sha, status)
+    return RepositorySnapshot(head_sha)
 
 
 def run_planning_trial(
@@ -135,8 +148,8 @@ def run_planning_trial(
         raise PlanningTrialError("approved planning base revision is invalid")
     root = repository_root.resolve(strict=True)
     before = repository_snapshot(root)
-    if before.head_sha != expected_base_sha or before.worktree_status:
-        raise PlanningTrialError("planning trial requires the exact clean base revision")
+    if before.head_sha != expected_base_sha:
+        raise PlanningTrialError("planning trial requires the exact approved base revision")
     backlog = load_reviewed_backlog(root, expected_base_sha)
     request = PlannerRequest(
         plan_id=plan_id,

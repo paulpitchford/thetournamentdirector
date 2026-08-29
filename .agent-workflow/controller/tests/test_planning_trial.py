@@ -113,7 +113,7 @@ class PlanningTrialTests(unittest.TestCase):
                     load_reviewed_backlog(root, base_sha)
 
     def test_clean_snapshot_builds_request_from_controller_inputs(self) -> None:
-        clean = RepositorySnapshot(BASE_SHA, b"")
+        clean = RepositorySnapshot(BASE_SHA)
         planner = FakePlanner()
 
         record, factory = run_fake_trial(planner, clean, clean)
@@ -128,31 +128,13 @@ class PlanningTrialTests(unittest.TestCase):
         executor = factory.call_args.kwargs["executor"]
         self.assertEqual(executor._inaccessible_paths, (Path.cwd().resolve(),))
 
-    def test_dirty_repository_prevents_provider_construction(self) -> None:
-        dirty = RepositorySnapshot(BASE_SHA, b"?? unexpected")
-        with (
-            patch(
-                "td_controller.planning_trial.repository_snapshot",
-                return_value=dirty,
-            ),
-            patch("td_controller.planning_trial.CodexPlannerProvider") as factory,
-        ):
-            with self.assertRaisesRegex(PlanningTrialError, "exact clean"):
-                run_planning_trial(
-                    "PLAN-TRIAL-001",
-                    repository_root=Path.cwd(),
-                    expected_base_sha=BASE_SHA,
-                    known_task_ids=frozenset(),
-                )
-        factory.assert_not_called()
-
     def test_stale_or_malformed_approved_base_prevents_backlog_loading(self) -> None:
-        clean = RepositorySnapshot(BASE_SHA, b"")
+        current = RepositorySnapshot(BASE_SHA)
         for expected in ("b" * 40, "INVALID"):
             with (
                 patch(
                     "td_controller.planning_trial.repository_snapshot",
-                    return_value=clean,
+                    return_value=current,
                 ),
                 patch(
                     "td_controller.planning_trial.load_reviewed_backlog"
@@ -169,20 +151,20 @@ class PlanningTrialTests(unittest.TestCase):
             loader.assert_not_called()
             factory.assert_not_called()
 
-    def test_repository_mutation_is_rejected_after_success_or_failure(self) -> None:
-        clean = RepositorySnapshot(BASE_SHA, b"")
-        changed = RepositorySnapshot(BASE_SHA, b" M changed")
+    def test_head_change_is_rejected_after_success_or_failure(self) -> None:
+        current = RepositorySnapshot(BASE_SHA)
+        changed = RepositorySnapshot("b" * 40)
         for planner in (FakePlanner(), FakePlanner(error=RuntimeError("failed"))):
             with self.assertRaisesRegex(PlanningTrialError, "changed repository"):
-                run_fake_trial(planner, clean, changed)
+                run_fake_trial(planner, current, changed)
 
-    def test_factory_mutation_is_always_rechecked(self) -> None:
-        clean = RepositorySnapshot(BASE_SHA, b"")
-        changed = RepositorySnapshot(BASE_SHA, b" M factory-change")
+    def test_factory_head_change_is_always_rechecked(self) -> None:
+        current = RepositorySnapshot(BASE_SHA)
+        changed = RepositorySnapshot("b" * 40)
         with (
             patch(
                 "td_controller.planning_trial.repository_snapshot",
-                side_effect=(clean, changed),
+                side_effect=(current, changed),
             ),
             patch(
                 "td_controller.planning_trial.load_reviewed_backlog",
@@ -201,12 +183,12 @@ class PlanningTrialTests(unittest.TestCase):
                     known_task_ids=frozenset(),
                 )
 
-    def test_factory_failure_is_normalized_after_clean_recheck(self) -> None:
-        clean = RepositorySnapshot(BASE_SHA, b"")
+    def test_factory_failure_is_normalized_after_identity_recheck(self) -> None:
+        current = RepositorySnapshot(BASE_SHA)
         with (
             patch(
                 "td_controller.planning_trial.repository_snapshot",
-                side_effect=(clean, clean),
+                side_effect=(current, current),
             ),
             patch(
                 "td_controller.planning_trial.load_reviewed_backlog",
@@ -226,35 +208,31 @@ class PlanningTrialTests(unittest.TestCase):
                 )
 
     def test_missing_session_identity_is_rejected(self) -> None:
-        clean = RepositorySnapshot(BASE_SHA, b"")
+        current = RepositorySnapshot(BASE_SHA)
         planner = FakePlanner(ProviderResult("{}", None))
         with self.assertRaisesRegex(PlanningTrialError, "session identity"):
-            run_fake_trial(planner, clean, clean)
+            run_fake_trial(planner, current, current)
 
-    def test_repository_snapshot_observes_head_and_untracked_files(self) -> None:
+    def test_repository_identity_does_not_execute_worktree_filter(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            environment = {
-                "HOME": temporary,
-                "PATH": "/usr/bin:/bin",
-                "GIT_AUTHOR_NAME": "test",
-                "GIT_AUTHOR_EMAIL": "test@example.invalid",
-                "GIT_COMMITTER_NAME": "test",
-                "GIT_COMMITTER_EMAIL": "test@example.invalid",
-            }
-            subprocess.run(["/usr/bin/git", "init", "-q"], cwd=root,
-                           env=environment, check=True)
-            (root / "tracked").write_text("value")
-            subprocess.run(["/usr/bin/git", "add", "tracked"], cwd=root,
-                           env=environment, check=True)
-            subprocess.run(["/usr/bin/git", "commit", "-qm", "initial"], cwd=root,
-                           env=environment, check=True)
+            base_sha = initialize_repository(root, BACKLOG.encode())
+            sentinel = root / "filter-executed"
+            environment = {"HOME": temporary, "PATH": "/usr/bin:/bin"}
+            subprocess.run(
+                [
+                    "/usr/bin/git", "config", "filter.sentinel.clean",
+                    f"/usr/bin/touch {sentinel}",
+                ],
+                cwd=root, env=environment, check=True,
+            )
+            (root / ".gitattributes").write_text("tracked filter=sentinel\n")
+            (root / "tracked").write_text("changed")
 
-            clean = repository_snapshot(root)
-            self.assertEqual(clean.worktree_status, b"")
-            self.assertEqual(len(clean.head_sha), 40)
-            (root / "untracked").write_text("new")
-            self.assertIn(b"untracked", repository_snapshot(root).worktree_status)
+            identity = repository_snapshot(root)
+
+            self.assertEqual(identity.head_sha, base_sha)
+            self.assertFalse(sentinel.exists())
 
     def test_context_exposes_strict_proposal_constraints(self) -> None:
         context = planner_contract_context()

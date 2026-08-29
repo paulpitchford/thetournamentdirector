@@ -7,7 +7,7 @@
   "dependsOn": ["ORCH-002C"],
   "acceptanceCriteria": [
     "backlog-load|WHEN the reviewed backlog enters a trial|ASSERT TEST_PASS local-planning-trial-tests",
-    "clean-base|WHEN a trial starts from a dirty or stale repository|ASSERT ERROR PlanningTrialError",
+    "approved-base|WHEN a trial starts from a stale or malformed revision|ASSERT ERROR PlanningTrialError",
     "repository-hidden|WHEN the contained planner attempts repository access|ASSERT TEST_PASS repository-inaccessible-smoke",
     "fresh-session|WHEN a planner omits its session identity|ASSERT ERROR PlanningTrialError",
     "contract-context|WHEN a planner receives controller constraints|ASSERT TEST_PASS local-planning-trial-tests",
@@ -15,7 +15,7 @@
   ],
   "acceptanceEvidenceIds": {
     "backlog-load|WHEN the reviewed backlog enters a trial|ASSERT TEST_PASS local-planning-trial-tests": ["local-planning-trial-tests"],
-    "clean-base|WHEN a trial starts from a dirty or stale repository|ASSERT ERROR PlanningTrialError": ["local-planning-trial-tests"],
+    "approved-base|WHEN a trial starts from a stale or malformed revision|ASSERT ERROR PlanningTrialError": ["local-planning-trial-tests"],
     "repository-hidden|WHEN the contained planner attempts repository access|ASSERT TEST_PASS repository-inaccessible-smoke": ["repository-inaccessible-smoke"],
     "fresh-session|WHEN a planner omits its session identity|ASSERT ERROR PlanningTrialError": ["local-planning-trial-tests"],
     "contract-context|WHEN a planner receives controller constraints|ASSERT TEST_PASS local-planning-trial-tests": ["local-planning-trial-tests"],
