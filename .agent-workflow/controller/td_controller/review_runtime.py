@@ -10,6 +10,7 @@ import shutil
 import signal
 import stat
 import subprocess
+import tempfile
 import threading
 import time
 from dataclasses import dataclass
@@ -147,11 +148,13 @@ def _clean_environment_launcher() -> str:
     return str(CLEAN_ENV_LAUNCHER.resolve(strict=True))
 
 
-def _stage_clean_environment_launcher(cwd: Path) -> Path:
-    staging_root = cwd / f".td-launcher-{secrets.token_hex(8)}"
+def _stage_clean_environment_launcher() -> Path:
+    try:
+        staging_root = Path(tempfile.mkdtemp(prefix="td-controller-launcher-"))
+    except OSError as exc:
+        raise CodexReviewError("clean environment launcher staging failed") from exc
     destination = staging_root / "td-clean-env"
     try:
-        staging_root.mkdir(mode=0o700)
         with destination.open("xb") as staged:
             staged.write(_clean_environment_launcher_payload())
             staged.flush()
@@ -458,7 +461,7 @@ class SystemdCgroupExecutor:
         ).isalnum():
             raise CodexReviewError("invalid transient review unit name")
         service_environment = _minimal_codex_environment(command[0])
-        clean_launcher = _stage_clean_environment_launcher(cwd)
+        clean_launcher = _stage_clean_environment_launcher()
         wrapped = [
             "/usr/bin/systemd-run",
             "--user",

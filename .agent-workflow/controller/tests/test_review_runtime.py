@@ -266,7 +266,8 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
         self.assertIn("--property=InaccessiblePaths=/home", command)
         launcher = next(
             item for item in command
-            if item.startswith("/tmp/.td-launcher-") and item.endswith("/td-clean-env")
+            if item.startswith("/tmp/td-controller-launcher-")
+            and item.endswith("/td-clean-env")
         )
         self.assertIn(
             f"--property=ReadOnlyPaths={Path(launcher).parent}", command
@@ -281,6 +282,41 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
         cleanup.assert_called_once_with("td-codex-review-fixed123")
         self.assertEqual(result.stdout, b"ok")
 
+    def test_launcher_is_staged_outside_writable_service_cwd(self) -> None:
+        observed: dict[str, object] = {}
+
+        class InspectingExecutor(FakeExecutor):
+            def run(self, command, *, input_bytes, cwd, timeout_seconds):
+                launcher = Path(next(
+                    item for item in command
+                    if item.startswith("/tmp/td-controller-launcher-")
+                    and item.endswith("/td-clean-env")
+                ))
+                observed["launcher"] = launcher
+                observed["exists"] = launcher.exists()
+                observed["outside"] = not launcher.is_relative_to(cwd)
+                observed["cwdEntries"] = tuple(cwd.iterdir())
+                return super().run(
+                    command, input_bytes=input_bytes, cwd=cwd,
+                    timeout_seconds=timeout_seconds,
+                )
+
+        delegate = InspectingExecutor(ProcessOutput(0, b"", b""))
+        executor = SystemdCgroupExecutor(
+            delegate=delegate,
+            unit_name_factory=lambda: "td-codex-review-fixed123",
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch.object(SystemdCgroupExecutor, "_kill_transient_unit"):
+                executor.run(
+                    ["/pinned/codex", "exec"], input_bytes=b"",
+                    cwd=Path(temporary), timeout_seconds=5,
+                )
+        self.assertIs(observed["exists"], True)
+        self.assertIs(observed["outside"], True)
+        self.assertEqual(observed["cwdEntries"], ())
+        self.assertFalse(observed["launcher"].exists())
+
     def test_replaced_staged_launcher_is_rejected_before_delegate(self) -> None:
         delegate = FakeExecutor(ProcessOutput(0, b"", b""))
         executor = SystemdCgroupExecutor(
@@ -290,7 +326,7 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             cwd = Path(temporary)
 
-            def replaced(_: Path) -> Path:
+            def replaced() -> Path:
                 root = cwd / ".td-launcher-replaced"
                 root.mkdir(mode=0o700)
                 launcher = root / "td-clean-env"
