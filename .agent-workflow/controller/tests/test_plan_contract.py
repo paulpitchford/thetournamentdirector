@@ -6,10 +6,31 @@ import copy
 import json
 import unittest
 
-from td_controller.plan_contract import PlanContractError, parse_plan, parse_plan_json
+from td_controller.plan_contract import (
+    PlanContractError,
+    parse_plan as _parse_plan,
+    parse_plan_json as _parse_plan_json,
+)
 
 BASE_SHA = "a" * 40
 BACKLOG_SHA = "b" * 64
+
+
+def parse_plan(value: object, **kwargs: object):
+    return _parse_plan(
+        value,
+        expected_base_sha=BASE_SHA,
+        expected_backlog_sha256=BACKLOG_SHA,
+        **kwargs,
+    )
+
+
+def parse_plan_json(payload: str | bytes):
+    return _parse_plan_json(
+        payload,
+        expected_base_sha=BASE_SHA,
+        expected_backlog_sha256=BACKLOG_SHA,
+    )
 
 
 def proposed_task(
@@ -85,6 +106,16 @@ class PlanContractTests(unittest.TestCase):
         value.pop("tasks")
         with self.assertRaisesRegex(PlanContractError, "fields"):
             parse_plan(value)
+
+    def test_well_formed_stale_source_identity_is_rejected(self) -> None:
+        for base_sha, backlog_sha in (("c" * 40, BACKLOG_SHA),
+                                      (BASE_SHA, "d" * 64)):
+            with self.assertRaisesRegex(PlanContractError, "trusted input"):
+                _parse_plan(
+                    valid_plan(),
+                    expected_base_sha=base_sha,
+                    expected_backlog_sha256=backlog_sha,
+                )
 
     def test_planner_cannot_approve_or_remove_human_approval(self) -> None:
         for field, invalid in (("status", "APPROVED"),

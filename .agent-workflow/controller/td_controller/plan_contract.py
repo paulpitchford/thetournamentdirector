@@ -47,7 +47,11 @@ def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 
 def parse_plan_json(
-    payload: str | bytes, *, known_task_ids: frozenset[str] = frozenset()
+    payload: str | bytes,
+    *,
+    expected_base_sha: str,
+    expected_backlog_sha256: str,
+    known_task_ids: frozenset[str] = frozenset(),
 ) -> PlanContract:
     if not isinstance(payload, (str, bytes)) or len(payload) > 512_000:
         raise PlanContractError("plan payload exceeds the size limit")
@@ -62,11 +66,20 @@ def parse_plan_json(
         value = json.loads(payload, object_pairs_hook=_unique_object)
     except (ValueError, UnicodeError, RecursionError) as exc:
         raise PlanContractError("plan is not unambiguous JSON") from exc
-    return parse_plan(value, known_task_ids=known_task_ids)
+    return parse_plan(
+        value,
+        expected_base_sha=expected_base_sha,
+        expected_backlog_sha256=expected_backlog_sha256,
+        known_task_ids=known_task_ids,
+    )
 
 
 def parse_plan(
-    value: object, *, known_task_ids: frozenset[str] = frozenset()
+    value: object,
+    *,
+    expected_base_sha: str,
+    expected_backlog_sha256: str,
+    known_task_ids: frozenset[str] = frozenset(),
 ) -> PlanContract:
     if not isinstance(value, dict) or set(value) != PLAN_KEYS:
         raise PlanContractError("plan fields do not match the contract")
@@ -77,6 +90,8 @@ def parse_plan(
     backlog_sha = _required(value["backlogSha256"], "backlogSha256")
     if GIT_SHA.fullmatch(base_sha) is None or SHA256.fullmatch(backlog_sha) is None:
         raise PlanContractError("plan source identity is invalid")
+    if base_sha != expected_base_sha or backlog_sha != expected_backlog_sha256:
+        raise PlanContractError("plan source identity does not match trusted input")
     raw_tasks = value["tasks"]
     if not isinstance(raw_tasks, list) or not raw_tasks or len(raw_tasks) > 100:
         raise PlanContractError("plan tasks must be a bounded non-empty list")
