@@ -128,6 +128,14 @@ class CodexReviewProviderTests(unittest.TestCase):
 
         self.assertIsInstance(provider.executor, SystemdCgroupExecutor)
 
+    def test_oversized_diff_is_rejected_before_prompt_materialization(self) -> None:
+        provider = CodexReviewProvider(replace(request(), diff="x" * 512_001),
+                                       executor=FakeExecutor(ProcessOutput(0, b"", b"")))
+        with patch.object(provider, "_build_prompt") as build:
+            with self.assertRaisesRegex(CodexReviewError, "size limit"):
+                provider.run(task_id="TASK-001", role="code_review")
+        build.assert_not_called()
+
     def test_valid_code_review_returns_session_and_artifact(self) -> None:
         executor = FakeExecutor(
             ProcessOutput(returncode=0, stdout=event_stream(artifact()), stderr=b"")
