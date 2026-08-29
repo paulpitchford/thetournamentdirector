@@ -104,6 +104,8 @@ def parse_plan(
     tasks_by_id = {task.task_id: task for task in tasks}
     if len(tasks_by_id) != len(tasks):
         raise PlanContractError("plan contains duplicate task IDs")
+    if set(tasks_by_id) & set(known_task_ids):
+        raise PlanContractError("plan task ID collides with an existing task")
     available = set(tasks_by_id) | set(known_task_ids)
     for task in tasks:
         if any(dependency not in available for dependency in task.depends_on):

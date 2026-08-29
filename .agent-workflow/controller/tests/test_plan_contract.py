@@ -151,6 +151,10 @@ class PlanContractTests(unittest.TestCase):
 
         self.assertEqual(plan.tasks[0].depends_on, ("FOUNDATION-001",))
 
+    def test_proposed_ids_cannot_collide_with_existing_tasks(self) -> None:
+        with self.assertRaisesRegex(PlanContractError, "existing task"):
+            parse_plan(valid_plan(), known_task_ids=frozenset({"APP-001"}))
+
     def test_parallel_groups_reject_dependency_relationships(self) -> None:
         value = valid_plan()
         value["tasks"][1]["dependsOn"] = ["APP-001"]
