@@ -178,6 +178,8 @@ class TaskStateLedgerTests(unittest.TestCase):
             {"expected_revision": 1},
             {"expected_head_sha": "c" * 40},
             {"head_sha": "c" * 40},
+            {"result": "FAIL"},
+            {"artifact_ids": ("fabricated",)},
         )
         for override in invalid:
             with self.subTest(override=override):
@@ -211,19 +213,16 @@ class TaskStateLedgerTests(unittest.TestCase):
         )
         self.assertEqual(quarantined.state, "QUARANTINED")
 
-    def test_interruptions_are_terminal_and_preserve_failure_evidence(self) -> None:
+    def test_interruptions_require_compatible_results(self) -> None:
         self.register()
-        state = self.transition(
-            "APPROVED",
-            "QUARANTINED",
-            result="FAIL",
-            artifact_ids=("scope-report", "provider-log"),
-        )
+        with self.assertRaisesRegex(WorkflowStateError, "incompatible"):
+            self.transition("APPROVED", "QUARANTINED", result="PASS")
+        state = self.transition("APPROVED", "QUARANTINED", result="FAIL")
 
         self.assertEqual(state.state, "QUARANTINED")
         self.assertEqual(self.ledger.active(), ())
         event = self.ledger.history("DOC-001")[-1]
-        self.assertEqual(event.artifact_ids, ("scope-report", "provider-log"))
+        self.assertEqual(event.artifact_ids, ())
         with self.assertRaisesRegex(WorkflowStateError, "not allowed"):
             self.transition("QUARANTINED", "QUEUED")
 

@@ -50,6 +50,14 @@ EVIDENCE_GATE_TRANSITIONS = frozenset(
         ("CI_PENDING", "READY_FOR_POLICY_MERGE"),
     }
 )
+FAILURE_STATES = frozenset(
+    {
+        "BLOCKED_REQUIREMENTS",
+        "BLOCKED_DEPENDENCY",
+        "FAILED_RETRYABLE",
+        "QUARANTINED",
+    }
+)
 TERMINAL_STATES = frozenset(
     {
         "DONE",
@@ -285,6 +293,8 @@ class TaskStateLedger:
                 new_attempt=attempt,
                 max_attempts=row["max_attempts"],
                 head_changed=head_sha != expected_head_sha,
+                result=result,
+                has_artifacts=bool(artifacts),
             )
             cursor = connection.execute(
                 """
@@ -448,6 +458,8 @@ def _validate_transition(
     new_attempt: int,
     max_attempts: int,
     head_changed: bool,
+    result: str,
+    has_artifacts: bool,
 ) -> None:
     allowed = set(NORMAL_TRANSITIONS.get(prior, ()))
     if prior in INTERRUPTIBLE_STATES:
@@ -460,6 +472,15 @@ def _validate_transition(
         raise WorkflowStateError("task head change is not allowed")
     if edge in EVIDENCE_GATE_TRANSITIONS:
         raise WorkflowStateError("authoritative gate evidence is unavailable")
+    if has_artifacts:
+        raise WorkflowStateError("authoritative artifact evidence is unavailable")
+    expected_result = (
+        "FAIL" if new in FAILURE_STATES
+        else "NONE" if new in {"CANCELLED", "SUPERSEDED"}
+        else "PASS"
+    )
+    if result != expected_result:
+        raise WorkflowStateError("task transition result is incompatible")
     retrying = prior == "FAILED_RETRYABLE" and new == "QUEUED"
     expected_attempt = current_attempt + 1 if retrying else current_attempt
     if new_attempt != expected_attempt or not 1 <= new_attempt <= max_attempts:
