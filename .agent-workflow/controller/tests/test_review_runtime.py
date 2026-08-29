@@ -246,6 +246,7 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
         self.assertIn("--property=MemorySwapMax=0", command)
         self.assertIn("--property=CPUQuota=200%", command)
         self.assertIn("--property=ProtectControlGroups=yes", command)
+        self.assertIn("--property=PrivatePIDs=yes", command)
         self.assertIn(
             f"--property=InaccessiblePaths=/run/user/{os.getuid()}", command
         )
