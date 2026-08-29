@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import pwd
 import secrets
 import shutil
 import signal
@@ -16,6 +17,7 @@ from typing import Any, Callable, Protocol
 
 from .review_contract import CodexReviewError
 
+MAX_INPUT_BYTES = 512_000
 MAX_OUTPUT_BYTES = 2_000_000
 PINNED_CODEX_VERSION = "codex-cli 0.150.1"
 PINNED_CODEX_SHA256 = "abf1bb1643a79f73aa78ee627e111e02d4f8c98f25813a0cf6ce277709664386"
@@ -32,8 +34,18 @@ class ProcessOutput:
     stderr: bytes
 
 
+def _trusted_home() -> Path:
+    try:
+        home = Path(pwd.getpwuid(os.getuid()).pw_dir).resolve(strict=True)
+    except (KeyError, OSError, RuntimeError) as exc:
+        raise CodexReviewError("trusted account home is unavailable") from exc
+    if not home.is_dir() or home.stat().st_uid != os.getuid():
+        raise CodexReviewError("trusted account home is invalid")
+    return home
+
+
 def _minimal_codex_environment(executable: str) -> dict[str, str]:
-    home = Path.home().resolve(strict=True)
+    home = _trusted_home()
     return {
         "HOME": str(home),
         "LANG": "C.UTF-8",
@@ -59,7 +71,7 @@ def _minimal_systemd_environment() -> dict[str, str]:
     runtime_dir = f"/run/user/{os.getuid()}"
     return {
         "DBUS_SESSION_BUS_ADDRESS": f"unix:path={runtime_dir}/bus",
-        "HOME": str(Path.home().resolve(strict=True)),
+        "HOME": str(_trusted_home()),
         "LANG": "C.UTF-8",
         "LC_ALL": "C.UTF-8",
         "PATH": "/usr/bin:/bin",
@@ -130,6 +142,8 @@ class SubprocessExecutor:
         timeout_seconds: int,
     ) -> ProcessOutput:
         """Run a command and return captured bytes or fail on timeout."""
+        if len(input_bytes) > MAX_INPUT_BYTES:
+            raise CodexReviewError("local Codex review exceeded the input limit")
         process = subprocess.Popen(
             command,
             stdin=subprocess.PIPE,
