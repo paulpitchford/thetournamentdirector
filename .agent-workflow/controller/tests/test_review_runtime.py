@@ -258,7 +258,8 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
         self.assertIn("--property=CPUQuota=200%", command)
         self.assertIn("--property=ProtectControlGroups=yes", command)
         self.assertIn("--property=ProtectSystem=strict", command)
-        self.assertIn("--property=ProtectHome=read-only", command)
+        self.assertNotIn("--property=ProtectHome=read-only", command)
+        self.assertIn("--property=TemporaryFileSystem=/tmp:rw", command)
         self.assertIn(f"--property=ReadWritePaths={cwd}", command)
         self.assertIn("--property=PrivatePIDs=yes", command)
         self.assertIn("--property=PrivateUsers=yes", command)
@@ -268,7 +269,7 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
         self.assertIn("--property=InaccessiblePaths=/home", command)
         launcher = next(
             item for item in command
-            if item.startswith("/tmp/td-controller-launcher-")
+            if item.startswith("/var/tmp/td-controller-launcher-")
             and item.endswith("/td-clean-env")
         )
         self.assertIn(
@@ -276,7 +277,11 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
         )
         self.assertIn("--property=ReadOnlyPaths=/pinned", command)
         launcher_index = command.index(launcher)
-        self.assertEqual(command[launcher_index + 5], "--")
+        separator = command.index("--", launcher_index)
+        self.assertFalse(any(
+            item.startswith(("CODEX_HOME=", "CODEX_SQLITE_HOME="))
+            for item in command[launcher_index:separator]
+        ))
         self.assertFalse(Path(launcher).exists())
         self.assertFalse(any("TD_SECRET_SENTINEL" in item for item in command))
         self.assertEqual(command[-2:], ["/pinned/codex", "exec"])
@@ -318,14 +323,14 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
             )
         launcher = next(
             item for item in delegate.commands[0]
-            if item.startswith("/tmp/td-controller-launcher-")
+            if item.startswith("/var/tmp/td-controller-launcher-")
             and item.endswith("/td-clean-env")
         )
         self.assertFalse(launcher.startswith(tmpdir))
 
         blocked_delegate = FakeExecutor(ProcessOutput(0, b"", b""))
         executor = SystemdCgroupExecutor(
-            delegate=blocked_delegate, inaccessible_paths=(Path("/tmp"),)
+            delegate=blocked_delegate, inaccessible_paths=(Path("/var/tmp"),)
         )
         with tempfile.TemporaryDirectory(dir="/var/tmp") as cwd_name:
             with self.assertRaisesRegex(CodexReviewError, "overlaps"):
@@ -342,13 +347,13 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
             def run(self, command, *, input_bytes, cwd, timeout_seconds):
                 launcher = Path(next(
                     item for item in command
-                    if item.startswith("/tmp/td-controller-launcher-")
+                    if item.startswith("/var/tmp/td-controller-launcher-")
                     and item.endswith("/td-clean-env")
                 ))
                 observed["launcher"] = launcher
                 observed["exists"] = launcher.exists()
                 observed["outside"] = not launcher.is_relative_to(cwd)
-                observed["cwdEntries"] = tuple(cwd.iterdir())
+                observed["cwdEntries"] = tuple(path.name for path in cwd.iterdir())
                 return super().run(
                     command, input_bytes=input_bytes, cwd=cwd,
                     timeout_seconds=timeout_seconds,

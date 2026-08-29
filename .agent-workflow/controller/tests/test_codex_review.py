@@ -16,7 +16,6 @@ from td_controller.codex_review import (
     SystemdCgroupExecutor,
     TrustedEvidence,
 )
-
 BASE_SHA = "a" * 40
 HEAD_SHA = "b" * 40
 

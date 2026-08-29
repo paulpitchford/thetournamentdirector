@@ -166,7 +166,7 @@ def _clean_environment_launcher() -> str:
 def _stage_clean_environment_launcher() -> Path:
     try:
         staging_root = Path(
-            tempfile.mkdtemp(prefix="td-controller-launcher-", dir="/tmp")
+            tempfile.mkdtemp(prefix="td-controller-launcher-", dir="/var/tmp")
         )
     except OSError as exc:
         raise CodexReviewError("clean environment launcher staging failed") from exc
@@ -518,7 +518,7 @@ class SystemdCgroupExecutor:
             "--property=NoNewPrivileges=yes",
             "--property=ProtectControlGroups=yes",
             "--property=ProtectSystem=strict",
-            "--property=ProtectHome=read-only",
+            "--property=TemporaryFileSystem=/tmp:rw",
             f"--property=ReadWritePaths={cwd}",
             "--property=PrivatePIDs=yes",
             "--property=PrivateUsers=yes",

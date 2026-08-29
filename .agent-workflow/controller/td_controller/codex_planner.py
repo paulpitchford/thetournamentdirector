@@ -25,7 +25,11 @@ from .plan_contract import (
 )
 from .task_contract import TASK_ID_PATTERN
 from .provider import ProviderResult
-from .review_runtime import CommandExecutor, SystemdCgroupExecutor, execute_attested_codex
+from .review_runtime import (
+    CommandExecutor,
+    SystemdCgroupExecutor,
+    execute_attested_codex,
+)
 
 
 class CodexPlannerError(RuntimeError):
@@ -75,7 +79,9 @@ class CodexPlannerProvider:
         if len(prompt) > MAX_PROMPT_BYTES:
             raise CodexPlannerError("planner prompt exceeds the configured size limit")
 
-        with tempfile.TemporaryDirectory(prefix="td-codex-planner-") as temporary:
+        with tempfile.TemporaryDirectory(
+            prefix="td-codex-planner-", dir="/var/tmp"
+        ) as temporary:
             root = Path(temporary)
             schema_path = root / "plan-schema.json"
             schema_path.write_text(json.dumps(PLAN_OUTPUT_SCHEMA), encoding="utf-8")
