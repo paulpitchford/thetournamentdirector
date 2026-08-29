@@ -326,7 +326,6 @@ class TaskContractTests(unittest.TestCase):
             "modern-app/src/**",
         ):
             self.assertFalse(tracked_path_is_allowed(task, candidate))
-
         value = valid_task()
         value["allowedPaths"] = ["modern-app/src/*"]
         one_segment = parse_task(value)
@@ -334,15 +333,24 @@ class TaskContractTests(unittest.TestCase):
         self.assertFalse(
             tracked_path_is_allowed(one_segment, "modern-app/src/domain/model.py")
         )
-
         value = valid_task()
-        value["allowedPaths"] = ["modern-app/" + "/".join(["**"] * 30) + "/missing"]
+        value["allowedPaths"] = ["modern-app/**/**/missing"]
+        with self.assertRaisesRegex(TaskContractError, "consecutive recursive"):
+            parse_task(value)
+
+        parts = [part for index in range(20) for part in ("**", f"item-{index}")]
+        value["allowedPaths"] = ["modern-app/" + "/".join(parts) + "/missing"]
         adversarial = parse_task(value)
-        candidate = "modern-app/" + "/".join(f"part-{index}" for index in range(30))
+        candidate_parts = [part for index in range(20)
+                           for part in (f"extra-{index}", f"item-{index}")]
+        candidate = "modern-app/" + "/".join(candidate_parts)
         self.assertFalse(tracked_path_is_allowed(adversarial, candidate))
 
         value["allowedPaths"] = ["modern-app/" + "/".join(["segment"] * 64)]
         with self.assertRaisesRegex(TaskContractError, "path depth"):
+            parse_task(value)
+        value["allowedPaths"] = [f"modern-app/path-{index}" for index in range(65)]
+        with self.assertRaisesRegex(TaskContractError, "path-claim limit"):
             parse_task(value)
 
     def test_trusted_task_root_rejects_parent_symlink_traversal(self) -> None:

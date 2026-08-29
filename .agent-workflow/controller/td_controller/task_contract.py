@@ -269,6 +269,8 @@ def _identifier_list(value: object, field: str) -> tuple[str, ...]:
 
 def _path_list(value: object, field: str) -> tuple[str, ...]:
     items = _string_list(value, field)
+    if len(items) > 64:
+        raise TaskContractError(f"{field} exceeds the path-claim limit")
     for item in items:
         path = PurePosixPath(item)
         root = item.split("/", 1)[0]
@@ -282,6 +284,8 @@ def _path_list(value: object, field: str) -> tuple[str, ...]:
             raise TaskContractError(f"{field} contains a non-canonical path")
         if len(path.parts) > 64:
             raise TaskContractError(f"{field} exceeds the path depth limit")
+        if any(left == right == "**" for left, right in zip(path.parts, path.parts[1:])):
+            raise TaskContractError(f"{field} contains consecutive recursive globs")
         if any(character in item for character in "?[{"):
             raise TaskContractError(f"{field} contains an unsupported glob")
     return items
@@ -348,9 +352,8 @@ def _glob_matches(claim: str, concrete: str) -> bool:
             return path_index == len(path_parts)
         part = claim_parts[claim_index]
         if part == "**":
-            return any(
-                match(claim_index + 1, index)
-                for index in range(path_index, len(path_parts) + 1)
+            return match(claim_index + 1, path_index) or (
+                path_index < len(path_parts) and match(claim_index, path_index + 1)
             )
         return (
             path_index < len(path_parts)
