@@ -46,11 +46,13 @@ VAGUE_CRITERION = re.compile(
     re.IGNORECASE,
 )
 GENERIC_CRITERION = re.compile(
-    r"^(?:it|everything)\b|^(?:the\s+)?(?:[\w./-]+\s+){0,2}"
-    r"(?:(?:is|are)\s+)?(?:accepts?|blocks?|completes?|fails?|invokes?|maps?|"
-    r"passes?|produces?|rejects?|rejected|returns?|uses?|validates?|validated)"
-    r"(?:\s+(?:(?:a|an|the)\s+)?(?:configuration|data|input|output|response|result|"
-    r"something|successfully|values?))?[.!]?$",
+    r"\b(?:accepts?|blocks?|completes?|fails?|invokes?|maps?|passes?|produces?|"
+    r"rejects?|rejected|returns?|uses?|validates?|validated)\s+(?:(?:a|an|the)\s+)?"
+    r"(?:error|all data|configuration|data|every test|expected (?:output|response|result)|"
+    r"input|invalid input|output|response|result|something|values?)[.!]?$|"
+    r"^(?:the\s+)?(?:[\w./-]+\s+){0,2}(?:(?:is|are)\s+)?(?:accepts?|blocks?|"
+    r"completes?|fails?|invokes?|maps?|passes?|produces?|rejects?|rejected|returns?|"
+    r"uses?|validates?|validated)(?:\s+successfully)?[.!]?$",
     re.IGNORECASE,
 )
 OBSERVABLE_CRITERION = re.compile(
@@ -167,6 +169,7 @@ def parse_task(value: object) -> TaskContract:
     if any(
         VAGUE_CRITERION.search(item) or GENERIC_CRITERION.search(item)
         or not OBSERVABLE_CRITERION.search(item)
+        or len(re.findall(r"\b[\w-]+\b", item)) < 4
         for item in criteria
     ):
         raise TaskContractError("acceptance criterion is vague")

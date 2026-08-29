@@ -134,6 +134,11 @@ class TaskContractTests(unittest.TestCase):
                                   (["Controller returns expected output"], "vague"),
                                   (["Service produces a response"], "vague"),
                                   (["The service returns the expected result"], "vague"),
+                                  (["Passes every test"], "vague"),
+                                  (["Rejects invalid input"], "vague"),
+                                  (["Returns an error"], "vague"),
+                                  (["Validates all data"], "vague"),
+                                  (["The modern API controller validates data"], "vague"),
                                   (["Exact result", "Exact result"], "duplicates"),
                                   ([], "bounded list")):
             with self.subTest(criteria=criteria):
@@ -153,7 +158,8 @@ class TaskContractTests(unittest.TestCase):
 
     def test_concrete_action_led_criteria_are_accepted(self) -> None:
         for criterion in ("Rejects path traversal with TaskContractError",
-                          "Returns HTTP 201 for a valid request"):
+                          "Returns HTTP 201 for a valid request",
+                          "It returns HTTP 201 for a valid request"):
             value = valid_task()
             value["acceptanceCriteria"] = [criterion]
             value["acceptanceEvidenceIds"] = {}
