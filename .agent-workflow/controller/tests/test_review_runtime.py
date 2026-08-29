@@ -48,6 +48,16 @@ class FakeExecutor:
         return self.output
 
 
+def unit_state(
+    *, active: str = "inactive", sub: str = "dead", control_group: str = ""
+) -> subprocess.CompletedProcess[bytes]:
+    stdout = (
+        f"LoadState=loaded\nActiveState={active}\nSubState={sub}\n"
+        f"ControlGroup={control_group}\n"
+    ).encode()
+    return subprocess.CompletedProcess([], returncode=0, stdout=stdout)
+
+
 class SubprocessExecutorTests(unittest.TestCase):
     """Prove output floods, environment leaks, and timeouts fail closed."""
 
@@ -208,6 +218,7 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
         self.assertIn("--property=KillMode=control-group", command)
         self.assertIn("--property=RuntimeMaxSec=30s", command)
         self.assertIn("--property=TasksMax=64", command)
+        self.assertIn("--property=RestrictAddressFamilies=AF_INET AF_INET6", command)
         env_index = command.index("/usr/bin/env")
         self.assertEqual(command[env_index + 1], "-i")
         self.assertFalse(any("TD_SECRET_SENTINEL" in item for item in command))
@@ -220,8 +231,7 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
         completed = [
             subprocess.CompletedProcess([], returncode=0),
             subprocess.CompletedProcess([], returncode=0),
-            subprocess.CompletedProcess([], returncode=0),
-            subprocess.CompletedProcess([], returncode=0),
+            unit_state(active="active", sub="running"),
         ]
         with patch("td_controller.review_runtime.subprocess.run", side_effect=completed):
             with self.assertRaisesRegex(CodexReviewError, "remained active"):
@@ -231,8 +241,8 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
         results = [
             subprocess.TimeoutExpired(["systemctl", "stop"], timeout=5),
             subprocess.CompletedProcess([], returncode=0),
+            unit_state(),
             subprocess.CompletedProcess([], returncode=0),
-            subprocess.CompletedProcess([], returncode=4),
         ]
         with patch("td_controller.review_runtime.subprocess.run", side_effect=results) as run:
             SystemdCgroupExecutor._kill_transient_unit("td-codex-review-fixed123")
@@ -244,12 +254,39 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
         completed = [
             subprocess.CompletedProcess([], returncode=1),
             subprocess.CompletedProcess([], returncode=1),
-            subprocess.CompletedProcess([], returncode=1),
-            subprocess.CompletedProcess([], returncode=1),
+            subprocess.CompletedProcess([], returncode=1, stdout=b""),
         ]
         with patch("td_controller.review_runtime.subprocess.run", side_effect=completed):
             with self.assertRaisesRegex(CodexReviewError, "could not verify"):
                 SystemdCgroupExecutor._kill_transient_unit("td-codex-review-fixed123")
+
+    def test_cleanup_rejects_transitional_state(self) -> None:
+        completed = [
+            subprocess.CompletedProcess([], returncode=0),
+            subprocess.CompletedProcess([], returncode=0),
+            unit_state(active="deactivating", sub="stop-sigterm"),
+        ]
+        with patch("td_controller.review_runtime.subprocess.run", side_effect=completed):
+            with self.assertRaisesRegex(CodexReviewError, "remained active"):
+                SystemdCgroupExecutor._kill_transient_unit("td-codex-review-fixed123")
+
+    def test_cleanup_rejects_populated_cgroup(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            cgroup = root / "review"
+            cgroup.mkdir()
+            (cgroup / "cgroup.events").write_text("populated 1\n")
+            with (
+                patch("td_controller.review_runtime.CGROUP_ROOT", root),
+                patch(
+                    "td_controller.review_runtime.subprocess.run",
+                    return_value=unit_state(control_group="/review"),
+                ),
+            ):
+                with self.assertRaisesRegex(CodexReviewError, "remained populated"):
+                    SystemdCgroupExecutor._verify_transient_unit(
+                        "td-codex-review-fixed123", {}
+                    )
 
     def test_invalid_unit_name_is_rejected_before_dispatch(self) -> None:
         delegate = FakeExecutor(ProcessOutput(returncode=0, stdout=b"", stderr=b""))

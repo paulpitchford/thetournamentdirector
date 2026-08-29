@@ -17,6 +17,7 @@ from typing import Any, Callable, Protocol
 
 from .review_contract import CodexReviewError
 
+CGROUP_ROOT = Path("/sys/fs/cgroup")
 MAX_INPUT_BYTES = 512_000
 MAX_OUTPUT_BYTES = 2_000_000
 PINNED_CODEX_VERSION = "codex-cli 0.150.1"
@@ -294,6 +295,7 @@ class SystemdCgroupExecutor:
             f"--property=RuntimeMaxSec={max(1, timeout_seconds)}s",
             "--property=TasksMax=64",
             "--property=NoNewPrivileges=yes",
+            "--property=RestrictAddressFamilies=AF_INET AF_INET6",
             "--property=UMask=0077",
             "/usr/bin/env",
             "-i",
@@ -316,7 +318,6 @@ class SystemdCgroupExecutor:
         for action in (
             ["stop", f"{unit}.service"],
             ["kill", "--kill-whom=all", "--signal=SIGKILL", f"{unit}.service"],
-            ["reset-failed", f"{unit}.service"],
         ):
             try:
                 subprocess.run(
@@ -329,21 +330,71 @@ class SystemdCgroupExecutor:
                     env=environment,
                 )
             except subprocess.TimeoutExpired:
-                # Continue through the forced kill and positive state check.
+                # Continue through forced kill and positive state verification.
                 continue
+        SystemdCgroupExecutor._verify_transient_unit(unit, environment)
+        subprocess.run(
+            ["/usr/bin/systemctl", "--user", "reset-failed", f"{unit}.service"],
+            check=False,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+            env=environment,
+        )
+
+    @staticmethod
+    def _verify_transient_unit(unit: str, environment: dict[str, str]) -> None:
         try:
             status = subprocess.run(
-                ["/usr/bin/systemctl", "--user", "is-active", f"{unit}.service"],
+                [
+                    "/usr/bin/systemctl",
+                    "--user",
+                    "show",
+                    "--property=LoadState",
+                    "--property=ActiveState",
+                    "--property=SubState",
+                    "--property=ControlGroup",
+                    f"{unit}.service",
+                ],
                 check=False,
                 stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
                 timeout=5,
                 env=environment,
             )
         except subprocess.TimeoutExpired as exc:
             raise CodexReviewError("transient review unit verification timed out") from exc
-        if status.returncode == 0:
-            raise CodexReviewError("transient review unit remained active after cleanup")
-        if status.returncode not in {3, 4}:
+        if status.returncode != 0 or len(status.stdout) > 4_096:
             raise CodexReviewError("could not verify transient review unit cleanup")
+        try:
+            properties: dict[str, str] = {}
+            for line in status.stdout.decode("utf-8", errors="strict").splitlines():
+                key, value = line.split("=", 1)
+                if key in properties:
+                    raise ValueError("duplicate property")
+                properties[key] = value
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise CodexReviewError("invalid transient review unit state") from exc
+        if set(properties) != {"LoadState", "ActiveState", "SubState", "ControlGroup"}:
+            raise CodexReviewError("incomplete transient review unit state")
+        if properties["LoadState"] not in {"loaded", "not-found"}:
+            raise CodexReviewError("invalid transient review unit state")
+        if properties.get("ActiveState") not in {"inactive", "failed"}:
+            raise CodexReviewError("transient review unit remained active after cleanup")
+        if properties.get("SubState") not in {"dead", "failed"}:
+            raise CodexReviewError("transient review unit cleanup remained transitional")
+        control_group = properties["ControlGroup"]
+        if control_group:
+            try:
+                relative = Path(control_group).relative_to("/")
+                cgroup = (CGROUP_ROOT / relative).resolve()
+                if not cgroup.is_relative_to(CGROUP_ROOT.resolve()):
+                    raise ValueError("escaping cgroup")
+                events = cgroup / "cgroup.events"
+                populated = events.read_text().splitlines() if cgroup.exists() else []
+            except (OSError, ValueError) as exc:
+                raise CodexReviewError("invalid transient review cgroup state") from exc
+            if cgroup.exists() and "populated 0" not in populated:
+                raise CodexReviewError("transient review cgroup remained populated")
