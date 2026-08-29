@@ -36,6 +36,12 @@ def _trusted_home() -> Path:
     return home
 
 
+def _absolute_command(command: list[str]) -> list[str]:
+    if not command or not Path(command[0]).is_absolute():
+        raise CodexReviewError("review executable path must be absolute")
+    return [str(Path(command[0]).resolve(strict=False)), *command[1:]]
+
+
 def _minimal_codex_environment(executable: str) -> dict[str, str]:
     home = _trusted_home()
     return {
@@ -87,6 +93,7 @@ class SubprocessExecutor:
     ) -> ProcessOutput:
         if len(input_bytes) > MAX_INPUT_BYTES:
             raise CodexReviewError("local Codex review exceeded the input limit")
+        command = _absolute_command(command)
         process = subprocess.Popen(
             command,
             stdin=subprocess.PIPE,
@@ -216,6 +223,7 @@ class SystemdCgroupExecutor:
         cwd: Path,
         timeout_seconds: int,
     ) -> ProcessOutput:
+        command = _absolute_command(command)
         unit = self._unit_name_factory()
         if not unit.startswith("td-codex-review-") or not unit.removeprefix(
             "td-codex-review-"

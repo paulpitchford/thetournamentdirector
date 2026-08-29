@@ -70,6 +70,21 @@ class SubprocessExecutorTests(unittest.TestCase):
         self.assertEqual(parent["HOME"], temporary)
         self.assertEqual(service["HOME"], temporary)
 
+    def test_relative_executables_are_rejected_before_dispatch(self) -> None:
+        subprocess_executor = SubprocessExecutor()
+        delegate = FakeExecutor(ProcessOutput(0, b"", b""))
+        systemd_executor = SystemdCgroupExecutor(delegate=delegate)
+        with patch("td_controller.review_runtime.subprocess.Popen") as popen:
+            for executor in (subprocess_executor, systemd_executor):
+                with self.subTest(executor=type(executor).__name__):
+                    with self.assertRaisesRegex(CodexReviewError, "must be absolute"):
+                        executor.run(
+                            ["codex"], input_bytes=b"", cwd=Path("/tmp"),
+                            timeout_seconds=1,
+                        )
+        popen.assert_not_called()
+        self.assertEqual(delegate.commands, [])
+
     def test_input_limit_is_enforced_before_dispatch(self) -> None:
         executor = SubprocessExecutor()
         with patch("td_controller.review_runtime.subprocess.Popen") as popen:
