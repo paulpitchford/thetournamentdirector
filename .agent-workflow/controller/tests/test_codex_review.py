@@ -98,6 +98,7 @@ def event_stream(value: dict[str, object], *, tool: str | None = None) -> bytes:
     """Encode a minimal Codex JSONL stream with optional forbidden tool use."""
     events: list[dict[str, object]] = [
         {"type": "thread.started", "thread_id": "fresh-session"},
+        {"type": "turn.started"},
     ]
     if tool is not None:
         events.append({"type": "item.started", "item": {"type": tool}})
@@ -107,6 +108,7 @@ def event_stream(value: dict[str, object], *, tool: str | None = None) -> bytes:
             "item": {"type": "agent_message", "text": json.dumps(value)},
         }
     )
+    events.append({"type": "turn.completed"})
     return ("\n".join(json.dumps(item) for item in events) + "\n").encode()
 
 
@@ -155,6 +157,14 @@ class CodexReviewProviderTests(unittest.TestCase):
         self.assertEqual(properties["reviewType"]["enum"], ["code_security"])
         self.assertEqual(properties["acceptanceEvidence"]["maxItems"], 0)
 
+    def test_missing_turn_lifecycle_is_rejected(self) -> None:
+        lines = event_stream(artifact()).splitlines()
+        for output in (b"\n".join([lines[0], *lines[2:]]), b"\n".join(lines[:-1])):
+            provider = CodexReviewProvider(
+                request(), executor=FakeExecutor(ProcessOutput(0, output, b"")))
+            with self.assertRaisesRegex(CodexReviewError, "lifecycle"):
+                provider.run(task_id="TASK-001", role="code_review")
+
     def test_valid_qa_requires_acceptance_mapping(self) -> None:
         executor = FakeExecutor(
             ProcessOutput(
@@ -175,6 +185,7 @@ class CodexReviewProviderTests(unittest.TestCase):
     def test_error_item_does_not_surface_provider_message(self) -> None:
         events = [
             {"type": "thread.started", "thread_id": "fresh-session"},
+            {"type": "turn.started"},
             {
                 "type": "item.completed",
                 "item": {
@@ -239,7 +250,8 @@ class CodexReviewProviderTests(unittest.TestCase):
 
     def test_activity_after_final_message_is_rejected(self) -> None:
         event = {"type": "item.completed", "item": {"type": "reasoning"}}
-        output = event_stream(artifact()) + (json.dumps(event) + "\n").encode()
+        lines = event_stream(artifact()).splitlines()
+        output = b"\n".join([*lines[:-1], json.dumps(event).encode(), lines[-1]])
         provider = CodexReviewProvider(
             request(), executor=FakeExecutor(ProcessOutput(0, output, b"")))
         with self.assertRaisesRegex(CodexReviewError, "after its final"):
