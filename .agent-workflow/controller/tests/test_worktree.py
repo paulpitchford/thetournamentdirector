@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from td_controller.lease import TaskLease
 from td_controller.worktree import MetadataWorktreeManager, WorktreeError
@@ -102,6 +103,27 @@ class MetadataWorktreeManagerTests(unittest.TestCase):
         (linked / ".git").write_text(f"gitdir: {external}\n")
         with self.assertRaisesRegex(WorktreeError, "self-contained"):
             MetadataWorktreeManager(linked, self.root / "linked-worktrees")
+
+    def test_replacement_objects_cannot_substitute_the_approved_base(self) -> None:
+        manager = MetadataWorktreeManager(self.repository, self.worktrees)
+        blob = self.git("hash-object", "README.md").stdout.strip()
+        self.git("update-ref", f"refs/replace/{blob}", self.base_sha)
+
+        with self.assertRaisesRegex(WorktreeError, "rejected"):
+            manager.reserve(self.lease, attempt=1, base_sha=blob)
+
+        self.assertEqual(tuple(self.worktrees.iterdir()), ())
+
+    def test_post_creation_failure_rolls_back_branch_path_and_registration(self) -> None:
+        manager = MetadataWorktreeManager(self.repository, self.worktrees)
+        with patch.object(Path, "iterdir", side_effect=OSError("inspection failed")):
+            with self.assertRaisesRegex(WorktreeError, "inspected"):
+                manager.reserve(self.lease, attempt=1, base_sha=self.base_sha)
+
+        self.assertFalse((self.worktrees / "doc-001-attempt-1").exists())
+        self.assertNotIn(self.lease.branch, self.git("branch", "--list").stdout)
+        reservation = manager.reserve(self.lease, attempt=1, base_sha=self.base_sha)
+        self.assertTrue((reservation.path / ".git").is_file())
 
     def test_unknown_base_is_rejected_before_target_creation(self) -> None:
         manager = MetadataWorktreeManager(self.repository, self.worktrees)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import stat
 import subprocess
 from dataclasses import dataclass
@@ -80,16 +81,21 @@ class MetadataWorktreeManager:
         if target.exists() or target.is_symlink():
             raise WorktreeError("task worktree path is already reserved")
         self._git("cat-file", "-e", f"{base_sha}^{{commit}}")
-        self._git(
-            "worktree", "add", "--quiet", "--no-checkout", "-b", lease.branch,
-            str(target), base_sha,
-        )
+        reference = f"refs/heads/{lease.branch}"
+        self._git("update-ref", reference, base_sha, "0" * 40)
         try:
+            self._git(
+                "worktree", "add", "--quiet", "--no-checkout",
+                str(target), lease.branch,
+            )
             entries = tuple(target.iterdir())
             marker = target / ".git"
             if entries != (marker,) or not marker.is_file() or marker.is_symlink():
                 raise WorktreeError("reserved worktree is not metadata-only")
-        except OSError as exc:
+        except (OSError, WorktreeError) as exc:
+            self._rollback(target, reference, base_sha)
+            if isinstance(exc, WorktreeError):
+                raise
             raise WorktreeError("reserved worktree cannot be inspected") from exc
         return WorktreeReservation(
             task_id=lease.task_id,
@@ -119,7 +125,29 @@ class MetadataWorktreeManager:
         ):
             raise WorktreeError("worktree root permissions are unsafe")
 
+    def _rollback(self, target: Path, reference: str, base_sha: str) -> None:
+        self._run_git("worktree", "remove", "--force", str(target))
+        if target.exists() or target.is_symlink():
+            try:
+                if target.is_symlink():
+                    target.unlink()
+                else:
+                    shutil.rmtree(target)
+            except OSError as exc:
+                raise WorktreeError("partial worktree cleanup failed") from exc
+        listing = self._run_git("worktree", "list", "--porcelain").stdout
+        if f"worktree {target}\n".encode() in listing:
+            raise WorktreeError("partial worktree cleanup failed")
+        deletion = self._run_git("update-ref", "-d", reference, base_sha)
+        if deletion.returncode != 0:
+            raise WorktreeError("partial branch cleanup failed")
+
     def _git(self, *arguments: str) -> None:
+        result = self._run_git(*arguments)
+        if result.returncode != 0 or result.stdout or result.stderr:
+            raise WorktreeError("trusted Git command was rejected")
+
+    def _run_git(self, *arguments: str) -> subprocess.CompletedProcess[bytes]:
         command = [
             "/usr/bin/git",
             "-c", "core.hooksPath=/dev/null",
@@ -132,18 +160,17 @@ class MetadataWorktreeManager:
             "GIT_CONFIG_GLOBAL": "/dev/null",
             "GIT_CONFIG_NOSYSTEM": "1",
             "GIT_NO_LAZY_FETCH": "1",
+            "GIT_NO_REPLACE_OBJECTS": "1",
             "HOME": "/dev/null",
             "LANG": "C.UTF-8",
             "LC_ALL": "C.UTF-8",
             "PATH": "/usr/bin:/bin",
         }
         try:
-            result = subprocess.run(
+            return subprocess.run(
                 command, check=False, stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 timeout=30, env=environment,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise WorktreeError("trusted Git command failed") from exc
-        if result.returncode != 0 or result.stdout or result.stderr:
-            raise WorktreeError("trusted Git command was rejected")
