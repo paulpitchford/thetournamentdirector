@@ -225,6 +225,9 @@ class TaskStateLedger:
                 result="PASS",
                 artifact_ids=(),
             )
+            committed = _task_state(connection.execute(
+                "SELECT * FROM task_states WHERE task_id = ?", (task.task_id,)
+            ).fetchone())
             connection.commit()
         except sqlite3.IntegrityError as exc:
             connection.rollback()
@@ -234,7 +237,7 @@ class TaskStateLedger:
             raise
         finally:
             connection.close()
-        return self.current(task.task_id)
+        return committed
 
     def transition(
         self,
@@ -246,12 +249,12 @@ class TaskStateLedger:
         new_state: str,
         attempt: int,
         head_sha: str,
-        actor: str,
+        lease_id: str,
         gate_id: str,
         result: str,
         artifact_ids: tuple[str, ...] = (),
     ) -> TaskState:
-        """Apply one legal transition only from the exact expected state."""
+        """Apply one legal transition under an exact active task lease."""
         _validate_task_id(task_id)
         _validate_state(expected_state)
         _validate_state(new_state)
@@ -263,21 +266,31 @@ class TaskStateLedger:
             raise WorkflowStateError("task revision is invalid")
         _validate_sha(expected_head_sha)
         _validate_sha(head_sha)
-        _validate_token(actor, "actor")
+        _validate_token(lease_id, "lease ID")
         _validate_token(gate_id, "gate ID")
         if result not in {"PASS", "FAIL", "NONE"}:
             raise WorkflowStateError("transition result is invalid")
         artifacts = _validate_artifact_ids(artifact_ids)
-        timestamp = self._timestamp()
         transition_id = self._transition_id()
         connection = self._connect()
         try:
             connection.execute("BEGIN IMMEDIATE")
+            timestamp = self._timestamp()
             row = connection.execute(
                 "SELECT * FROM task_states WHERE task_id = ?", (task_id,)
             ).fetchone()
             if row is None:
                 raise WorkflowStateError("task state is unavailable")
+            lease = connection.execute(
+                """
+                SELECT owner FROM task_leases
+                WHERE lease_id = ? AND task_id = ? AND state = 'ACTIVE'
+                    AND expires_at > ?
+                """,
+                (lease_id, task_id, timestamp),
+            ).fetchone()
+            if lease is None:
+                raise WorkflowStateError("authoritative task lease is unavailable")
             if (
                 row["state"] != expected_state
                 or row["revision"] != expected_revision
@@ -332,11 +345,14 @@ class TaskStateLedger:
                 timestamp=timestamp,
                 base_sha=row["base_sha"],
                 head_sha=head_sha,
-                actor=actor,
+                actor=lease["owner"],
                 gate_id=gate_id,
                 result=result,
                 artifact_ids=artifacts,
             )
+            committed = _task_state(connection.execute(
+                "SELECT * FROM task_states WHERE task_id = ?", (task_id,)
+            ).fetchone())
             connection.commit()
         except sqlite3.IntegrityError as exc:
             connection.rollback()
@@ -346,7 +362,7 @@ class TaskStateLedger:
             raise
         finally:
             connection.close()
-        return self.current(task_id)
+        return committed
 
     def current(self, task_id: str) -> TaskState:
         """Return current state for one registered task."""

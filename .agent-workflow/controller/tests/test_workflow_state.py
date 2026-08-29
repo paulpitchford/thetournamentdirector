@@ -7,6 +7,7 @@ import unittest
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from td_controller.lease import TaskLeaseLedger
 from td_controller.task_contract import parse_task
 from td_controller.workflow_state import TaskStateLedger, WorkflowStateError
 
@@ -66,6 +67,11 @@ class TaskStateLedgerTests(unittest.TestCase):
         self.path = Path(self.temporary_directory.name) / "controller.sqlite3"
         self.clock = Clock()
         self.identifiers = Identifiers()
+        self.lease_ledger = TaskLeaseLedger(
+            self.path,
+            now=self.clock,
+            lease_id_factory=lambda: "lease-workflow-0001",
+        )
         self.ledger = TaskStateLedger(
             self.path,
             now=self.clock,
@@ -76,12 +82,19 @@ class TaskStateLedgerTests(unittest.TestCase):
         self.temporary_directory.cleanup()
 
     def register(self, *, status: str = "APPROVED", max_attempts: int = 2):
-        return self.ledger.register(
+        state = self.ledger.register(
             task(status=status, max_attempts=max_attempts),
             base_sha=BASE_SHA,
             actor="controller-primary",
             gate_id="task-admission",
         )
+        self.lease = self.lease_ledger.acquire(
+            task_id="DOC-001",
+            branch="agent/doc-001/attempt-1",
+            owner="controller-primary",
+            ttl_seconds=300,
+        )
+        return state
 
     def transition(
         self,
@@ -116,7 +129,7 @@ class TaskStateLedgerTests(unittest.TestCase):
             new_state=new_state,
             attempt=attempt,
             head_sha=head_sha,
-            actor="controller-primary",
+            lease_id=self.lease.lease_id,
             gate_id="test-gate",
             result=result,
             artifact_ids=artifact_ids,
@@ -240,29 +253,19 @@ class TaskStateLedgerTests(unittest.TestCase):
         self.assertEqual(restarted.active(), (expected,))
         self.assertEqual(len(restarted.history("DOC-001")), 2)
 
-    def test_duplicate_transition_identity_cannot_update_current_state(self) -> None:
-        self.register()
-        duplicate = TaskStateLedger(
-            self.path,
-            now=self.clock,
-            transition_id_factory=lambda: "transition-0001",
-        )
-
-        with self.assertRaisesRegex(WorkflowStateError, "identity conflicts"):
-            duplicate.transition(
-                "DOC-001",
-                expected_state="APPROVED",
-                expected_revision=1,
-                expected_head_sha=BASE_SHA,
-                new_state="QUEUED",
-                attempt=1,
-                head_sha=BASE_SHA,
-                actor="controller-primary",
-                gate_id="test-gate",
+    def test_transition_requires_exact_unexpired_task_lease(self) -> None:
+        registered = self.register()
+        with self.assertRaisesRegex(WorkflowStateError, "lease is unavailable"):
+            self.ledger.transition(
+                "DOC-001", expected_state="APPROVED", expected_revision=1,
+                expected_head_sha=BASE_SHA, new_state="QUEUED", attempt=1,
+                head_sha=BASE_SHA, lease_id="fabricated-lease", gate_id="test-gate",
                 result="PASS",
             )
-
-        self.assertEqual(self.ledger.current("DOC-001").state, "APPROVED")
+        self.clock.value += timedelta(seconds=301)
+        with self.assertRaisesRegex(WorkflowStateError, "lease is unavailable"):
+            self.transition("APPROVED", "QUEUED")
+        self.assertEqual(self.ledger.current("DOC-001"), registered)
 
 
 if __name__ == "__main__":
