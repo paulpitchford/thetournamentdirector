@@ -118,6 +118,9 @@ class TaskContractTests(unittest.TestCase):
                                   (["The feature performs correctly"], "vague"),
                                   (["The response is good enough"], "vague"),
                                   (["Fast and accurate"], "vague"),
+                                  (["It passes"], "vague"),
+                                  (["Everything returns"], "vague"),
+                                  (["The result validates"], "vague"),
                                   (["Exact result", "Exact result"], "duplicates"),
                                   ([], "bounded list")):
             with self.subTest(criteria=criteria):

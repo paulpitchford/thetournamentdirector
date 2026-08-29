@@ -38,6 +38,11 @@ VAGUE_CRITERION = re.compile(
     r"high quality)\b|\bworks?(?=\s*[.!]?\s*$)",
     re.IGNORECASE,
 )
+GENERIC_CRITERION = re.compile(
+    r"^(?:it|everything|the (?:api|app|feature|response|result|system))\s+"
+    r"(?!(?:is|are)\b)\w+(?:\s+(?:correctly|properly))?[.!]?$",
+    re.IGNORECASE,
+)
 OBSERVABLE_CRITERION = re.compile(
     r"\b(add(?:s|ed)?|accepts?|blocks?|calculates?|completes?|constructs?|creates?|"
     r"denies?|disables?|displays?|enforces?|executes?|fails?|invokes?|maps?|passes?|"
@@ -150,7 +155,8 @@ def parse_task(value: object) -> TaskContract:
         raise TaskContractError("task cannot depend on itself")
     criteria = _string_list(value["acceptanceCriteria"], "acceptanceCriteria")
     if any(
-        VAGUE_CRITERION.search(item) or not OBSERVABLE_CRITERION.search(item)
+        VAGUE_CRITERION.search(item) or GENERIC_CRITERION.search(item)
+        or not OBSERVABLE_CRITERION.search(item)
         for item in criteria
     ):
         raise TaskContractError("acceptance criterion is vague")
