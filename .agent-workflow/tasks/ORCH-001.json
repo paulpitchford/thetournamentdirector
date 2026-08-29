@@ -1,32 +1,36 @@
 {
-  "id": "ORCH-002F",
+  "id": "ORCH-003A",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Disambiguate planner evidence IDs from registered verification commands",
-  "nonGoals": ["Relax criterion validation", "Run ten planning trials", "Approve proposed tasks", "Change containment"],
-  "dependsOn": ["ORCH-002E"],
+  "objective": "Add durable exclusive task leases as the first controlled-write dispatch foundation",
+  "nonGoals": ["Create worktrees", "Run a write-capable provider", "Push branches", "Create or merge pull requests", "Change GitHub policy"],
+  "dependsOn": ["ORCH-002F"],
   "acceptanceCriteria": [
-    "evidence-token|WHEN planner criterion guidance is constructed|ASSERT TEST_PASS local-planner-context-tests",
-    "command-separation|WHEN planner evidence guidance is inspected|ASSERT TEST_PASS local-planner-context-tests",
-    "real-output|WHEN a real planner follows corrected criterion guidance|ASSERT TEST_PASS real-planner-context-smoke",
-    "no-model-tests|WHEN automated planner context tests execute|ASSERT TEST_PASS no-model-in-tests"
+    "exclusive-lease|WHEN concurrent task or branch acquisition is attempted|ASSERT TEST_PASS lease-ledger-tests",
+    "expiry-recovery|WHEN the controller restarts after lease expiry|ASSERT TEST_PASS lease-ledger-tests",
+    "owned-heartbeat|WHEN lease heartbeat or release is requested|ASSERT TEST_PASS lease-ledger-tests",
+    "injected-values|WHEN lease time and identifiers are generated|ASSERT TEST_PASS lease-ledger-tests",
+    "run-persistence|WHEN a provider run reaches terminal state|ASSERT TEST_PASS controller-ledger-tests"
   ],
   "acceptanceEvidenceIds": {
-    "evidence-token|WHEN planner criterion guidance is constructed|ASSERT TEST_PASS local-planner-context-tests": ["local-planner-context-tests"],
-    "command-separation|WHEN planner evidence guidance is inspected|ASSERT TEST_PASS local-planner-context-tests": ["local-planner-context-tests"],
-    "real-output|WHEN a real planner follows corrected criterion guidance|ASSERT TEST_PASS real-planner-context-smoke": ["real-planner-context-smoke"],
-    "no-model-tests|WHEN automated planner context tests execute|ASSERT TEST_PASS no-model-in-tests": ["no-model-in-tests"]
+    "exclusive-lease|WHEN concurrent task or branch acquisition is attempted|ASSERT TEST_PASS lease-ledger-tests": ["lease-ledger-tests"],
+    "expiry-recovery|WHEN the controller restarts after lease expiry|ASSERT TEST_PASS lease-ledger-tests": ["lease-ledger-tests"],
+    "owned-heartbeat|WHEN lease heartbeat or release is requested|ASSERT TEST_PASS lease-ledger-tests": ["lease-ledger-tests"],
+    "injected-values|WHEN lease time and identifiers are generated|ASSERT TEST_PASS lease-ledger-tests": ["lease-ledger-tests"],
+    "run-persistence|WHEN a provider run reaches terminal state|ASSERT TEST_PASS controller-ledger-tests": ["controller-ledger-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/planning_trial.py",
-    ".agent-workflow/controller/tests/test_planning_trial.py",
+    ".agent-workflow/controller/td_controller/lease.py",
+    ".agent-workflow/controller/td_controller/state.py",
+    ".agent-workflow/controller/tests/test_controller.py",
+    ".agent-workflow/controller/tests/test_lease.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
-  "protectedPaths": [".github/**", ".agent-workflow/policy/**", ".agent-workflow/scripts/**"],
+  "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 300,
+  "maxChangedLines": 700,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }

@@ -6,6 +6,7 @@ import math
 import sqlite3
 import uuid
 from collections.abc import Callable
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -56,7 +57,7 @@ class RunLedger:
         return connection
 
     def _migrate(self) -> None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             connection.execute("PRAGMA journal_mode = WAL")
             connection.execute(
                 """
@@ -139,21 +140,27 @@ class RunLedger:
         if status not in {"SUCCEEDED", "FAILED"}:
             raise ValueError(f"invalid terminal run status: {status}")
         finished_at = self._now().astimezone(UTC).isoformat()
-        with self._connect() as connection:
-            cursor = connection.execute(
-                """
-                UPDATE runs
-                SET status = ?, finished_at = ?, error = ?
-                WHERE run_id = ? AND status = 'RUNNING'
-                """,
-                (status, finished_at, error, run_id),
-            )
-            if cursor.rowcount != 1:
-                raise KeyError(f"active run not found: {run_id}")
+        with closing(self._connect()) as connection:
+            try:
+                connection.execute("BEGIN IMMEDIATE")
+                cursor = connection.execute(
+                    """
+                    UPDATE runs
+                    SET status = ?, finished_at = ?, error = ?
+                    WHERE run_id = ? AND status = 'RUNNING'
+                    """,
+                    (status, finished_at, error, run_id),
+                )
+                if cursor.rowcount != 1:
+                    raise KeyError(f"active run not found: {run_id}")
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
 
     def records(self) -> list[RunRecord]:
         """Return all records in deterministic start/run order."""
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             rows = connection.execute(
                 """
                 SELECT run_id, task_id, role, status, started_at, finished_at, error
@@ -165,7 +172,7 @@ class RunLedger:
     def summary(self) -> dict[str, int]:
         """Return run counts by status for operator display."""
         counts = {"RUNNING": 0, "SUCCEEDED": 0, "FAILED": 0}
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             rows = connection.execute(
                 "SELECT status, COUNT(*) AS count FROM runs GROUP BY status"
             ).fetchall()
