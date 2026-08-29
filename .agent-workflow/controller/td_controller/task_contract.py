@@ -34,8 +34,16 @@ REQUIRED_KEYS = frozenset(
 )
 VAGUE_CRITERION = re.compile(
     r"\b(works? (?:well|correctly)|(?:it|everything) works?|functions? correctly|"
-    r"properly|as expected|user[- ]friendly|robust|high quality)\b|"
-    r"\bworks?(?=\s*[.!]?\s*$)",
+    r"performs? correctly|properly|as expected|good enough|user[- ]friendly|robust|"
+    r"high quality)\b|\bworks?(?=\s*[.!]?\s*$)",
+    re.IGNORECASE,
+)
+OBSERVABLE_CRITERION = re.compile(
+    r"\b(add(?:s|ed)?|accepts?|blocks?|calculates?|completes?|constructs?|creates?|"
+    r"denies?|disables?|displays?|enforces?|executes?|fails?|invokes?|maps?|passes?|"
+    r"preserves?|produces?|references?|rejects?|rejected|requires?|returns?|terminates?|"
+    r"updates?|uses?|validates?|validated)\b|\b(?:is|are) (?:above|below|empty|equal|greater|"
+    r"less|non-empty|read-only)\b",
     re.IGNORECASE,
 )
 PROHIBITED_ROOTS = frozenset({".git", "downloads", "extracted", "analysis"})
@@ -82,14 +90,19 @@ def parse_task_json(payload: str | bytes) -> TaskContract:
     """Parse unambiguous JSON and return a validated immutable task."""
     if not isinstance(payload, (str, bytes)) or len(payload) > 256_000:
         raise TaskContractError("task payload exceeds the size limit")
-    if isinstance(payload, str) and len(payload.encode("utf-8")) > 256_000:
-        raise TaskContractError("task payload exceeds the size limit")
+    if isinstance(payload, str):
+        try:
+            encoded_size = len(payload.encode("utf-8"))
+        except UnicodeError as exc:
+            raise TaskContractError("task is not unambiguous JSON") from exc
+        if encoded_size > 256_000:
+            raise TaskContractError("task payload exceeds the size limit")
     try:
         value = json.loads(
             payload, object_pairs_hook=_unique_object,
             parse_int=lambda token: _bounded_json_integer(token),
         )
-    except (ValueError, UnicodeDecodeError, RecursionError) as exc:
+    except (ValueError, UnicodeError, RecursionError) as exc:
         raise TaskContractError("task is not unambiguous JSON") from exc
     return parse_task(value)
 
@@ -136,7 +149,10 @@ def parse_task(value: object) -> TaskContract:
     if task_id in depends_on:
         raise TaskContractError("task cannot depend on itself")
     criteria = _string_list(value["acceptanceCriteria"], "acceptanceCriteria")
-    if any(VAGUE_CRITERION.search(item) for item in criteria):
+    if any(
+        VAGUE_CRITERION.search(item) or not OBSERVABLE_CRITERION.search(item)
+        for item in criteria
+    ):
         raise TaskContractError("acceptance criterion is vague")
     required_tests = _string_list(value["requiredTests"], "requiredTests")
     allowed_paths = _path_list(value["allowedPaths"], "allowedPaths")
@@ -205,7 +221,7 @@ def _path_list(value: object, field: str) -> tuple[str, ...]:
         path = PurePosixPath(item)
         root = item.split("/", 1)[0]
         if (
-            item.startswith("/") or ".." in path.parts
+            item.startswith(("/", ":", "-", "!")) or ".." in path.parts
             or root in PROHIBITED_ROOTS or root == "."
             or any(character in root for character in "*?[{")
         ):

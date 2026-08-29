@@ -107,6 +107,9 @@ class TaskContractTests(unittest.TestCase):
                                   (["Everything works"], "vague"),
                                   (["The API works"], "vague"),
                                   (["The feature works."], "vague"),
+                                  (["The feature performs correctly"], "vague"),
+                                  (["The response is good enough"], "vague"),
+                                  (["Fast and accurate"], "vague"),
                                   (["Exact result", "Exact result"], "duplicates"),
                                   ([], "bounded list")):
             with self.subTest(criteria=criteria):
@@ -130,7 +133,8 @@ class TaskContractTests(unittest.TestCase):
             parse_task(value)
 
     def test_path_escape_ignored_roots_and_exact_overlap_are_rejected(self) -> None:
-        paths = ("/etc/passwd", "../parent", ".git/config", ".git/hooks/**",
+        paths = ("/etc/passwd", "../parent", ":(exclude).github/**", ":(top)foo",
+                 "-rf", "--", "!modern-app/**", ".git/config", ".git/hooks/**",
                  ".git/objects/**", "downloads/tool", "extracted/app",
                  "**", "*", "*/tool", ".")
         for path in paths:
@@ -175,6 +179,8 @@ class TaskContractTests(unittest.TestCase):
         with patch("td_controller.task_contract.json.loads", side_effect=RecursionError):
             with self.assertRaisesRegex(TaskContractError, "unambiguous JSON"):
                 parse_task_json("{}")
+        with self.assertRaisesRegex(TaskContractError, "unambiguous JSON"):
+            parse_task_json("\ud800")
         payload = json.dumps(valid_task()).replace(
             '"maxChangedLines": 500', '"maxChangedLines": ' + "9" * 5_000
         )
