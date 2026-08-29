@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import hashlib
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from td_controller.codex_planner import PlannerRequest
 from td_controller.planning_trial import (
     MAX_BACKLOG_BYTES,
     PlanningTrialError,
@@ -22,17 +21,6 @@ from td_controller.provider import ProviderResult
 
 BASE_SHA = "a" * 40
 BACKLOG = "# backlog\n"
-
-
-def request() -> PlannerRequest:
-    return PlannerRequest(
-        plan_id="PLAN-TRIAL-001",
-        base_sha=BASE_SHA,
-        backlog_sha256=hashlib.sha256(BACKLOG.encode()).hexdigest(),
-        backlog=BACKLOG,
-        planning_context=planner_contract_context(),
-        known_task_ids=frozenset({"HUM-001", "HUM-002"}),
-    )
 
 
 class FakePlanner:
@@ -52,12 +40,29 @@ class FakePlanner:
         return self.result
 
 
-class SnapshotSequence:
-    def __init__(self, *values: RepositorySnapshot) -> None:
-        self.values = list(values)
-
-    def __call__(self, _: Path) -> RepositorySnapshot:
-        return self.values.pop(0)
+def run_fake_trial(
+    planner: FakePlanner, *snapshots: RepositorySnapshot
+) -> tuple[object, object]:
+    with (
+        patch(
+            "td_controller.planning_trial.repository_snapshot",
+            side_effect=snapshots,
+        ),
+        patch(
+            "td_controller.planning_trial.load_reviewed_backlog",
+            return_value=BACKLOG,
+        ),
+        patch(
+            "td_controller.planning_trial.CodexPlannerProvider",
+            return_value=planner,
+        ) as factory,
+    ):
+        record = run_planning_trial(
+            "PLAN-TRIAL-001",
+            repository_root=Path("/trusted/repository"),
+            known_task_ids=frozenset({"HUM-001", "HUM-002"}),
+        )
+    return record, factory
 
 
 class PlanningTrialTests(unittest.TestCase):
@@ -86,68 +91,96 @@ class PlanningTrialTests(unittest.TestCase):
             with self.assertRaisesRegex(PlanningTrialError, "UTF-8"):
                 load_reviewed_backlog(root)
 
-    def test_clean_exact_snapshot_returns_trial_record(self) -> None:
+    def test_clean_snapshot_builds_request_from_controller_inputs(self) -> None:
         clean = RepositorySnapshot(BASE_SHA, b"")
         planner = FakePlanner()
 
-        record = run_planning_trial(
-            request(),
-            repository_root=Path("/trusted/repository"),
-            provider_factory=lambda _: planner,
-            snapshot=SnapshotSequence(clean, clean),
-        )
+        record, factory = run_fake_trial(planner, clean, clean)
 
         self.assertEqual(record.session_id, "planner-session")
         self.assertEqual(record.plan_id, "PLAN-TRIAL-001")
         self.assertEqual(planner.calls, [("PLAN-TRIAL-001", "planner")])
+        request = factory.call_args.args[0]
+        self.assertEqual(request.backlog, BACKLOG)
+        self.assertEqual(request.planning_context, planner_contract_context())
+        self.assertEqual(request.base_sha, BASE_SHA)
 
-    def test_dirty_or_stale_repository_prevents_provider_execution(self) -> None:
-        for before in (
-            RepositorySnapshot("b" * 40, b""),
-            RepositorySnapshot(BASE_SHA, b"?? unexpected"),
+    def test_dirty_repository_prevents_provider_construction(self) -> None:
+        dirty = RepositorySnapshot(BASE_SHA, b"?? unexpected")
+        with (
+            patch(
+                "td_controller.planning_trial.repository_snapshot",
+                return_value=dirty,
+            ),
+            patch("td_controller.planning_trial.CodexPlannerProvider") as factory,
         ):
-            planner = FakePlanner()
             with self.assertRaisesRegex(PlanningTrialError, "exact clean"):
                 run_planning_trial(
-                    request(),
+                    "PLAN-TRIAL-001",
                     repository_root=Path("/trusted/repository"),
-                    provider_factory=lambda _: planner,
-                    snapshot=SnapshotSequence(before),
+                    known_task_ids=frozenset(),
                 )
-            self.assertEqual(planner.calls, [])
+        factory.assert_not_called()
 
     def test_repository_mutation_is_rejected_after_success_or_failure(self) -> None:
         clean = RepositorySnapshot(BASE_SHA, b"")
         changed = RepositorySnapshot(BASE_SHA, b" M changed")
         for planner in (FakePlanner(), FakePlanner(error=RuntimeError("failed"))):
             with self.assertRaisesRegex(PlanningTrialError, "changed repository"):
+                run_fake_trial(planner, clean, changed)
+
+    def test_factory_mutation_is_always_rechecked(self) -> None:
+        clean = RepositorySnapshot(BASE_SHA, b"")
+        changed = RepositorySnapshot(BASE_SHA, b" M factory-change")
+        with (
+            patch(
+                "td_controller.planning_trial.repository_snapshot",
+                side_effect=(clean, changed),
+            ),
+            patch(
+                "td_controller.planning_trial.load_reviewed_backlog",
+                return_value=BACKLOG,
+            ),
+            patch(
+                "td_controller.planning_trial.CodexPlannerProvider",
+                side_effect=RuntimeError("factory failed"),
+            ),
+        ):
+            with self.assertRaisesRegex(PlanningTrialError, "changed repository"):
                 run_planning_trial(
-                    request(),
+                    "PLAN-TRIAL-001",
                     repository_root=Path("/trusted/repository"),
-                    provider_factory=lambda _, value=planner: value,
-                    snapshot=SnapshotSequence(clean, changed),
+                    known_task_ids=frozenset(),
                 )
 
-    def test_provider_failure_is_normalized_after_clean_recheck(self) -> None:
+    def test_factory_failure_is_normalized_after_clean_recheck(self) -> None:
         clean = RepositorySnapshot(BASE_SHA, b"")
-        with self.assertRaisesRegex(PlanningTrialError, "contained planner failed"):
-            run_planning_trial(
-                request(),
-                repository_root=Path("/trusted/repository"),
-                provider_factory=lambda _: FakePlanner(error=RuntimeError("secret")),
-                snapshot=SnapshotSequence(clean, clean),
-            )
+        with (
+            patch(
+                "td_controller.planning_trial.repository_snapshot",
+                side_effect=(clean, clean),
+            ),
+            patch(
+                "td_controller.planning_trial.load_reviewed_backlog",
+                return_value=BACKLOG,
+            ),
+            patch(
+                "td_controller.planning_trial.CodexPlannerProvider",
+                side_effect=RuntimeError("secret"),
+            ),
+        ):
+            with self.assertRaisesRegex(PlanningTrialError, "contained planner failed"):
+                run_planning_trial(
+                    "PLAN-TRIAL-001",
+                    repository_root=Path("/trusted/repository"),
+                    known_task_ids=frozenset(),
+                )
 
     def test_missing_session_identity_is_rejected(self) -> None:
         clean = RepositorySnapshot(BASE_SHA, b"")
         planner = FakePlanner(ProviderResult("{}", None))
         with self.assertRaisesRegex(PlanningTrialError, "session identity"):
-            run_planning_trial(
-                request(),
-                repository_root=Path("/trusted/repository"),
-                provider_factory=lambda _: planner,
-                snapshot=SnapshotSequence(clean, clean),
-            )
+            run_fake_trial(planner, clean, clean)
 
     def test_repository_snapshot_observes_head_and_untracked_files(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

@@ -26,7 +26,9 @@
   "allowedPaths": [
     ".agent-workflow/controller/td_controller/codex_planner.py",
     ".agent-workflow/controller/td_controller/planning_trial.py",
+    ".agent-workflow/controller/td_controller/review_runtime.py",
     ".agent-workflow/controller/tests/test_planning_trial.py",
+    ".agent-workflow/controller/tests/test_review_runtime.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**", ".agent-workflow/policy/**", ".agent-workflow/scripts/**"],

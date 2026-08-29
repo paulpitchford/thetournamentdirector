@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import stat
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Protocol
 
 from .codex_planner import CodexPlannerProvider, PlannerRequest
-from .provider import ProviderResult
 
 MAX_BACKLOG_BYTES = 100_000
 APPROVED_BACKLOG = Path("docs/DELIVERY_BACKLOG.md")
@@ -18,11 +17,6 @@ APPROVED_BACKLOG = Path("docs/DELIVERY_BACKLOG.md")
 
 class PlanningTrialError(RuntimeError):
     """Raised when a trial input, session, or repository boundary is invalid."""
-
-
-class PlannerFactory(Protocol):
-    def __call__(self, request: PlannerRequest) -> CodexPlannerProvider:
-        ...
 
 
 @dataclass(frozen=True)
@@ -127,25 +121,33 @@ def repository_snapshot(repository_root: Path) -> RepositorySnapshot:
 
 
 def run_planning_trial(
-    request: PlannerRequest,
+    plan_id: str,
     *,
     repository_root: Path,
-    provider_factory: PlannerFactory = CodexPlannerProvider,
-    snapshot: Callable[[Path], RepositorySnapshot] = repository_snapshot,
+    known_task_ids: frozenset[str],
 ) -> PlanningTrialRecord:
-    """Run one fresh planner and reject any controller-visible repository mutation."""
-    before = snapshot(repository_root)
-    if before.head_sha != request.base_sha or before.worktree_status:
+    """Run one fresh planner from controller-derived inputs inside a read-only boundary."""
+    before = repository_snapshot(repository_root)
+    if before.worktree_status:
         raise PlanningTrialError("planning trial requires the exact clean base revision")
-    provider = provider_factory(request)
+    backlog = load_reviewed_backlog(repository_root)
+    request = PlannerRequest(
+        plan_id=plan_id,
+        base_sha=before.head_sha,
+        backlog_sha256=hashlib.sha256(backlog.encode("utf-8")).hexdigest(),
+        backlog=backlog,
+        planning_context=planner_contract_context(),
+        known_task_ids=known_task_ids,
+    )
     provider_error: Exception | None = None
-    result: ProviderResult | None = None
+    result = None
     try:
+        provider = CodexPlannerProvider(request)
         result = provider.run(task_id=request.plan_id, role="planner")
     except Exception as exc:
         provider_error = exc
     finally:
-        after = snapshot(repository_root)
+        after = repository_snapshot(repository_root)
         if after != before:
             raise PlanningTrialError("planning trial changed repository state")
     if provider_error is not None:
