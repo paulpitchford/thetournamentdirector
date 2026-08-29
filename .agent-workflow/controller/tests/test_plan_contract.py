@@ -19,6 +19,7 @@ BACKLOG_SHA = "b" * 64
 def parse_plan(value: object, **kwargs: object):
     return _parse_plan(
         value,
+        expected_plan_id="PLAN-001",
         expected_base_sha=BASE_SHA,
         expected_backlog_sha256=BACKLOG_SHA,
         **kwargs,
@@ -28,6 +29,7 @@ def parse_plan(value: object, **kwargs: object):
 def parse_plan_json(payload: str | bytes):
     return _parse_plan_json(
         payload,
+        expected_plan_id="PLAN-001",
         expected_base_sha=BASE_SHA,
         expected_backlog_sha256=BACKLOG_SHA,
     )
@@ -108,11 +110,19 @@ class PlanContractTests(unittest.TestCase):
             parse_plan(value)
 
     def test_well_formed_stale_source_identity_is_rejected(self) -> None:
+        with self.assertRaisesRegex(PlanContractError, "trusted input"):
+            _parse_plan(
+                valid_plan(),
+                expected_plan_id="PLAN-002",
+                expected_base_sha=BASE_SHA,
+                expected_backlog_sha256=BACKLOG_SHA,
+            )
         for base_sha, backlog_sha in (("c" * 40, BACKLOG_SHA),
                                       (BASE_SHA, "d" * 64)):
             with self.assertRaisesRegex(PlanContractError, "trusted input"):
                 _parse_plan(
                     valid_plan(),
+                    expected_plan_id="PLAN-001",
                     expected_base_sha=base_sha,
                     expected_backlog_sha256=backlog_sha,
                 )

@@ -1,30 +1,32 @@
 {
-  "id": "ORCH-002B",
+  "id": "ORCH-002C",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Add strict planner output and dependency-graph validation before read-only trials",
-  "nonGoals": ["Dispatch a planner", "Approve proposed tasks", "Change workflow or pilot policy"],
-  "dependsOn": ["ORCH-002A"],
+  "objective": "Add an effect-contained read-only Codex planner provider for structured planning trials",
+  "nonGoals": ["Mutate the repository", "Approve proposed tasks", "Dispatch implementation work", "Run ten planning trials"],
+  "dependsOn": ["ORCH-002B"],
   "acceptanceCriteria": [
-    "plan-json|WHEN invalid planner JSON enters the parser|ASSERT ERROR PlanContractError",
-    "proposed-only|WHEN planner tasks enter the parser|ASSERT TEST_PASS local-plan-contract-tests",
-    "dependency-graph|WHEN task dependencies enter graph validation|ASSERT TEST_PASS local-plan-contract-tests",
-    "parallel-groups|WHEN parallel task groups enter validation|ASSERT TEST_PASS local-plan-contract-tests",
-    "fixture-tasks|WHEN nested proposed tasks enter validation|ASSERT TEST_PASS local-plan-contract-tests",
-    "no-model-tests|WHEN automated plan contract tests execute|ASSERT TEST_PASS no-model-in-tests"
+    "planner-contained|WHEN a planner process executes|ASSERT TEST_PASS local-planner-provider-tests",
+    "source-bound|WHEN planner input or output identities differ from trusted inputs|ASSERT ERROR CodexPlannerError",
+    "tools-disabled|WHEN a planner attempts a tool or emits stderr|ASSERT ERROR CodexPlannerError",
+    "proposal-only|WHEN planner output contains an approved task|ASSERT ERROR CodexPlannerError",
+    "bounded-io|WHEN planner input exceeds configured bounds|ASSERT ERROR CodexPlannerError",
+    "no-model-tests|WHEN automated planner provider tests execute|ASSERT TEST_PASS no-model-in-tests"
   ],
   "acceptanceEvidenceIds": {
-    "plan-json|WHEN invalid planner JSON enters the parser|ASSERT ERROR PlanContractError": ["local-plan-contract-tests"],
-    "proposed-only|WHEN planner tasks enter the parser|ASSERT TEST_PASS local-plan-contract-tests": ["local-plan-contract-tests"],
-    "dependency-graph|WHEN task dependencies enter graph validation|ASSERT TEST_PASS local-plan-contract-tests": ["local-plan-contract-tests"],
-    "parallel-groups|WHEN parallel task groups enter validation|ASSERT TEST_PASS local-plan-contract-tests": ["local-plan-contract-tests"],
-    "fixture-tasks|WHEN nested proposed tasks enter validation|ASSERT TEST_PASS local-plan-contract-tests": ["local-plan-contract-tests"],
-    "no-model-tests|WHEN automated plan contract tests execute|ASSERT TEST_PASS no-model-in-tests": ["no-model-in-tests"]
+    "planner-contained|WHEN a planner process executes|ASSERT TEST_PASS local-planner-provider-tests": ["local-planner-provider-tests"],
+    "source-bound|WHEN planner input or output identities differ from trusted inputs|ASSERT ERROR CodexPlannerError": ["local-planner-provider-tests"],
+    "tools-disabled|WHEN a planner attempts a tool or emits stderr|ASSERT ERROR CodexPlannerError": ["local-planner-provider-tests"],
+    "proposal-only|WHEN planner output contains an approved task|ASSERT ERROR CodexPlannerError": ["local-planner-provider-tests"],
+    "bounded-io|WHEN planner input exceeds configured bounds|ASSERT ERROR CodexPlannerError": ["local-planner-provider-tests"],
+    "no-model-tests|WHEN automated planner provider tests execute|ASSERT TEST_PASS no-model-in-tests": ["no-model-in-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
+    ".agent-workflow/controller/td_controller/codex_planner.py",
     ".agent-workflow/controller/td_controller/plan_contract.py",
+    ".agent-workflow/controller/tests/test_codex_planner.py",
     ".agent-workflow/controller/tests/test_plan_contract.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
