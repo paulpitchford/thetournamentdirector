@@ -14,8 +14,7 @@ from td_controller.task_contract import TaskContractError, load_task, parse_task
 
 def valid_task() -> dict[str, object]:
     criterion = (
-        "WHEN controller verification runs THEN the deterministic controller suite "
-        'passes registered check "controller-tests"'
+        'WHEN verification completes successfully THEN controller returns status "PASS"'
     )
     return {
         "id": "APP-001",
@@ -43,8 +42,7 @@ class TaskContractTests(unittest.TestCase):
 
         self.assertEqual(task.task_id, "APP-001")
         self.assertEqual(task.acceptance_criteria, (
-            "WHEN controller verification runs THEN the deterministic controller suite "
-            'passes registered check "controller-tests"',
+            'WHEN verification completes successfully THEN controller returns status "PASS"',
         ))
         self.assertEqual(task.acceptance_evidence_ids[task.acceptance_criteria[0]],
                          ("controller-tests",))
@@ -140,6 +138,10 @@ class TaskContractTests(unittest.TestCase):
                                    "vague"),
                                   (["WHEN any request arrives THEN service returns empty ``"],
                                    "vague"),
+                                  (['WHEN any request arrives THEN service does a thing '
+                                    'called "x"'], "vague"),
+                                  (['WHEN any request arrives THEN service returns status "READY" '
+                                    'and dangling "'], "vague"),
                                   (["It works well"], "vague"),
                                   (["The feature works correctly"], "vague"),
                                   (["It works"], "vague"),
@@ -226,7 +228,7 @@ class TaskContractTests(unittest.TestCase):
     def test_path_escape_ignored_roots_and_exact_overlap_are_rejected(self) -> None:
         paths = ("/etc/passwd", "../parent", ":(exclude).github/**", ":(top)foo",
                  "-rf", "--", "!modern-app/**", "^.github/**", ".git/config",
-                 ".git/hooks/**",
+                 ".git/hooks/**", "modern-app/.git/config", "modern-app/.git/hooks/**",
                  ".git/objects/**", "downloads/tool", "extracted/app",
                  "**", "*", "*/tool", ".")
         for path in paths:

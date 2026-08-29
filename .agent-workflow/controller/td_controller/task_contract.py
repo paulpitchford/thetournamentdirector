@@ -64,7 +64,9 @@ CONCRETE_OUTCOME = re.compile(
     r"\bagainst the same durable contract\b|\bdistinct from\b|"
     r"\b(?:is|are) (?:empty|non-empty|read-only)\b"
 )
-EXACT_MARKER = re.compile(r'`[^`\s][^`]*`|"[^"\s][^"]*"')
+EXACT_MARKER = re.compile(
+    r"\b(?:equals|is set to|returns status)\s+(?:`[^`\s][^`]*`|\"[^\"\s][^\"]*\")"
+)
 PROHIBITED_ROOTS = frozenset({".git", "downloads", "extracted", "analysis"})
 INVARIANT_PROTECTED_PATHS = (
     ".agent-workflow/policy/**", ".agent-workflow/scripts/**", ".github/**", "AGENTS.md",
@@ -255,7 +257,7 @@ def _path_list(value: object, field: str) -> tuple[str, ...]:
         root = item.split("/", 1)[0]
         if (
             item.startswith(("/", ":", "-", "!", "^")) or ".." in path.parts
-            or root in PROHIBITED_ROOTS or root == "."
+            or any(part in PROHIBITED_ROOTS for part in path.parts) or root == "."
             or any(character in root for character in "*?[{")
         ):
             raise TaskContractError(f"{field} contains a prohibited path")
@@ -277,9 +279,14 @@ def _criterion_is_vague(criterion: str) -> bool:
         or GENERIC_CRITERION.search(outcome) is not None
         or (
             CONCRETE_OUTCOME.search(outcome) is None
-            and EXACT_MARKER.search(outcome) is None
+            and not _exact_marker_is_concrete(outcome)
         )
     )
+
+
+def _exact_marker_is_concrete(outcome: str) -> bool:
+    delimiter_count = outcome.count('"') + outcome.count("`")
+    return delimiter_count == 2 and EXACT_MARKER.search(outcome) is not None
 
 
 def _path_claims_overlap(left: str, right: str) -> bool:
