@@ -43,7 +43,7 @@ GENERIC_CRITERION = re.compile(
     r"passes?|rejects?|returns?|uses?|validates?)\b|^(?:the\s+)?"
     r"(?:[\w./-]+\s+){0,2}(?:(?:is|are)\s+)?(?:accepts?|blocks?|completes?|fails?|"
     r"invokes?|maps?|passes?|rejects?|rejected|returns?|uses?|validates?|validated)"
-    r"[.!]?$",
+    r"(?:\s+(?:a result|configuration|data|input|something|successfully|values?))?[.!]?$",
     re.IGNORECASE,
 )
 OBSERVABLE_CRITERION = re.compile(

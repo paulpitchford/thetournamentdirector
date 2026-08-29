@@ -127,6 +127,9 @@ class TaskContractTests(unittest.TestCase):
                                   (["Returns values"], "vague"),
                                   (["Uses configuration"], "vague"),
                                   (["Everything returns a result"], "vague"),
+                                  (["The feature passes successfully"], "vague"),
+                                  (["The service returns something"], "vague"),
+                                  (["The controller validates data"], "vague"),
                                   (["Exact result", "Exact result"], "duplicates"),
                                   ([], "bounded list")):
             with self.subTest(criteria=criteria):
