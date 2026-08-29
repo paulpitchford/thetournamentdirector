@@ -129,6 +129,9 @@ def _parallel_groups(
         raise PlanContractError("parallelGroups must be a bounded list")
     groups: list[tuple[str, ...]] = []
     assigned: set[str] = set()
+    dependencies = {
+        task_id: _reachable_dependencies(task_id, tasks) for task_id in tasks
+    }
     for raw_group in value:
         group = _string_list(raw_group, "parallelGroups")
         if len(group) < 2 or not set(group).issubset(tasks) or assigned & set(group):
@@ -137,6 +140,8 @@ def _parallel_groups(
             for right_id in group[index + 1:]:
                 left = tasks[left_id]
                 right = tasks[right_id]
+                if right_id in dependencies[left_id] or left_id in dependencies[right_id]:
+                    raise PlanContractError("parallel tasks have a dependency relationship")
                 if any(
                     _path_claims_overlap(left_path, right_path)
                     for left_path in left.allowed_paths for right_path in right.allowed_paths
@@ -145,6 +150,23 @@ def _parallel_groups(
         assigned.update(group)
         groups.append(group)
     return tuple(groups)
+
+
+def _reachable_dependencies(
+    task_id: str, tasks: dict[str, TaskContract]
+) -> frozenset[str]:
+    reachable: set[str] = set()
+    pending = [dependency for dependency in tasks[task_id].depends_on if dependency in tasks]
+    while pending:
+        dependency = pending.pop()
+        if dependency in reachable:
+            continue
+        reachable.add(dependency)
+        pending.extend(
+            child for child in tasks[dependency].depends_on
+            if child in tasks and child not in reachable
+        )
+    return frozenset(reachable)
 
 
 def _required(value: object, field: str) -> str:

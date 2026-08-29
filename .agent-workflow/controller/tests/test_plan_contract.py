@@ -120,6 +120,23 @@ class PlanContractTests(unittest.TestCase):
 
         self.assertEqual(plan.tasks[0].depends_on, ("FOUNDATION-001",))
 
+    def test_parallel_groups_reject_dependency_relationships(self) -> None:
+        value = valid_plan()
+        value["tasks"][1]["dependsOn"] = ["APP-001"]
+        with self.assertRaisesRegex(PlanContractError, "dependency relationship"):
+            parse_plan(value)
+
+        value = valid_plan()
+        value["tasks"][1]["dependsOn"] = ["APP-001"]
+        value["tasks"].append(
+            proposed_task(
+                "APP-003", "modern-app/persistence/**", depends_on=["APP-002"]
+            )
+        )
+        value["parallelGroups"] = [["APP-001", "APP-003"]]
+        with self.assertRaisesRegex(PlanContractError, "dependency relationship"):
+            parse_plan(value)
+
     def test_parallel_groups_require_unique_known_disjoint_tasks(self) -> None:
         value = valid_plan()
         value["tasks"][1]["allowedPaths"] = ["modern-app/domain/subsystem/**"]
