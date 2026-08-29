@@ -33,7 +33,8 @@ REQUIRED_KEYS = frozenset(
     }
 )
 VAGUE_CRITERION = re.compile(
-    r"\b(works? well|properly|as expected|user[- ]friendly|robust|high quality)\b",
+    r"\b(works? (?:well|correctly)|functions? correctly|properly|as expected|"
+    r"user[- ]friendly|robust|high quality)\b",
     re.IGNORECASE,
 )
 PROHIBITED_ROOTS = frozenset({"downloads", "extracted", "analysis"})
@@ -90,7 +91,7 @@ def parse_task_json(payload: str | bytes) -> TaskContract:
 
 def load_task(path: Path) -> TaskContract:
     try:
-        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
         with os.fdopen(descriptor, "rb") as task_file:
             if not stat.S_ISREG(os.fstat(task_file.fileno()).st_mode):
                 raise TaskContractError("task file is not regular")

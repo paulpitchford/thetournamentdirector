@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -101,6 +102,7 @@ class TaskContractTests(unittest.TestCase):
 
     def test_vague_duplicate_and_empty_criteria_are_rejected(self) -> None:
         for criteria, message in ((["It works well"], "vague"),
+                                  (["The feature works correctly"], "vague"),
                                   (["Exact result", "Exact result"], "duplicates"),
                                   ([], "bounded list")):
             with self.subTest(criteria=criteria):
@@ -180,6 +182,10 @@ class TaskContractTests(unittest.TestCase):
             path.unlink()
             path.symlink_to(target)
             with self.assertRaisesRegex(TaskContractError, "unavailable"):
+                load_task(path)
+            path.unlink()
+            os.mkfifo(path)
+            with self.assertRaisesRegex(TaskContractError, "not regular"):
                 load_task(path)
 
 
