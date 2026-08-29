@@ -233,6 +233,7 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
         executor = SystemdCgroupExecutor(
             delegate=delegate,
             unit_name_factory=lambda: "td-codex-review-fixed123",
+            inaccessible_paths=(Path("/home"),),
         )
         with (
             patch.dict(os.environ, {"TD_SECRET_SENTINEL": "must-not-leak"}),
@@ -262,11 +263,15 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
         self.assertIn(
             f"--property=InaccessiblePaths=/run/user/{os.getuid()}", command
         )
-        launcher = str(Path(__file__).parents[1] / "bin" / "td-clean-env")
+        self.assertIn("--property=InaccessiblePaths=/home", command)
+        launcher = next(
+            item for item in command if item.startswith("/tmp/.td-clean-env-")
+        )
         self.assertIn(f"--property=ReadOnlyPaths={launcher}", command)
         self.assertIn("--property=ReadOnlyPaths=/pinned", command)
         launcher_index = command.index(launcher)
         self.assertEqual(command[launcher_index + 5], "--")
+        self.assertFalse(Path(launcher).exists())
         self.assertFalse(any("TD_SECRET_SENTINEL" in item for item in command))
         self.assertEqual(command[-2:], ["/pinned/codex", "exec"])
         self.assertEqual(delegate.timeout_seconds, 40)

@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .codex_planner import CodexPlannerProvider, PlannerRequest
+from .review_runtime import SystemdCgroupExecutor
 
 MAX_BACKLOG_BYTES = 100_000
 APPROVED_BACKLOG = Path("docs/DELIVERY_BACKLOG.md")
@@ -124,11 +125,17 @@ def run_planning_trial(
     plan_id: str,
     *,
     repository_root: Path,
+    expected_base_sha: str,
     known_task_ids: frozenset[str],
 ) -> PlanningTrialRecord:
     """Run one fresh planner from controller-derived inputs inside a read-only boundary."""
-    before = repository_snapshot(repository_root)
-    if before.worktree_status:
+    if len(expected_base_sha) != 40 or any(
+        character not in "0123456789abcdef" for character in expected_base_sha
+    ):
+        raise PlanningTrialError("approved planning base revision is invalid")
+    root = repository_root.resolve(strict=True)
+    before = repository_snapshot(root)
+    if before.head_sha != expected_base_sha or before.worktree_status:
         raise PlanningTrialError("planning trial requires the exact clean base revision")
     backlog = load_reviewed_backlog(repository_root)
     request = PlannerRequest(
@@ -142,12 +149,13 @@ def run_planning_trial(
     provider_error: Exception | None = None
     result = None
     try:
-        provider = CodexPlannerProvider(request)
+        executor = SystemdCgroupExecutor(inaccessible_paths=(root,))
+        provider = CodexPlannerProvider(request, executor=executor)
         result = provider.run(task_id=request.plan_id, role="planner")
     except Exception as exc:
         provider_error = exc
     finally:
-        after = repository_snapshot(repository_root)
+        after = repository_snapshot(root)
         if after != before:
             raise PlanningTrialError("planning trial changed repository state")
     if provider_error is not None:

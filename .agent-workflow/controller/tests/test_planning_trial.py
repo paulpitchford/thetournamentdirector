@@ -59,7 +59,8 @@ def run_fake_trial(
     ):
         record = run_planning_trial(
             "PLAN-TRIAL-001",
-            repository_root=Path("/trusted/repository"),
+            repository_root=Path.cwd(),
+            expected_base_sha=BASE_SHA,
             known_task_ids=frozenset({"HUM-001", "HUM-002"}),
         )
     return record, factory
@@ -104,6 +105,8 @@ class PlanningTrialTests(unittest.TestCase):
         self.assertEqual(request.backlog, BACKLOG)
         self.assertEqual(request.planning_context, planner_contract_context())
         self.assertEqual(request.base_sha, BASE_SHA)
+        executor = factory.call_args.kwargs["executor"]
+        self.assertEqual(executor._inaccessible_paths, (Path.cwd().resolve(),))
 
     def test_dirty_repository_prevents_provider_construction(self) -> None:
         dirty = RepositorySnapshot(BASE_SHA, b"?? unexpected")
@@ -117,10 +120,34 @@ class PlanningTrialTests(unittest.TestCase):
             with self.assertRaisesRegex(PlanningTrialError, "exact clean"):
                 run_planning_trial(
                     "PLAN-TRIAL-001",
-                    repository_root=Path("/trusted/repository"),
+                    repository_root=Path.cwd(),
+                    expected_base_sha=BASE_SHA,
                     known_task_ids=frozenset(),
                 )
         factory.assert_not_called()
+
+    def test_stale_or_malformed_approved_base_prevents_backlog_loading(self) -> None:
+        clean = RepositorySnapshot(BASE_SHA, b"")
+        for expected in ("b" * 40, "INVALID"):
+            with (
+                patch(
+                    "td_controller.planning_trial.repository_snapshot",
+                    return_value=clean,
+                ),
+                patch(
+                    "td_controller.planning_trial.load_reviewed_backlog"
+                ) as loader,
+                patch("td_controller.planning_trial.CodexPlannerProvider") as factory,
+            ):
+                with self.assertRaisesRegex(PlanningTrialError, "revision"):
+                    run_planning_trial(
+                        "PLAN-TRIAL-001",
+                        repository_root=Path.cwd(),
+                        expected_base_sha=expected,
+                        known_task_ids=frozenset(),
+                    )
+            loader.assert_not_called()
+            factory.assert_not_called()
 
     def test_repository_mutation_is_rejected_after_success_or_failure(self) -> None:
         clean = RepositorySnapshot(BASE_SHA, b"")
@@ -149,7 +176,8 @@ class PlanningTrialTests(unittest.TestCase):
             with self.assertRaisesRegex(PlanningTrialError, "changed repository"):
                 run_planning_trial(
                     "PLAN-TRIAL-001",
-                    repository_root=Path("/trusted/repository"),
+                    repository_root=Path.cwd(),
+                    expected_base_sha=BASE_SHA,
                     known_task_ids=frozenset(),
                 )
 
@@ -172,7 +200,8 @@ class PlanningTrialTests(unittest.TestCase):
             with self.assertRaisesRegex(PlanningTrialError, "contained planner failed"):
                 run_planning_trial(
                     "PLAN-TRIAL-001",
-                    repository_root=Path("/trusted/repository"),
+                    repository_root=Path.cwd(),
+                    expected_base_sha=BASE_SHA,
                     known_task_ids=frozenset(),
                 )
 

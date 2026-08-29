@@ -125,7 +125,7 @@ def _verify_staged_file(
         raise CodexReviewError("staged Codex runtime verification failed") from exc
 
 
-def _clean_environment_launcher() -> str:
+def _clean_environment_launcher_payload() -> bytes:
     try:
         descriptor = os.open(CLEAN_ENV_LAUNCHER, os.O_RDONLY | os.O_NOFOLLOW)
         with os.fdopen(descriptor, "rb") as launcher:
@@ -139,7 +139,29 @@ def _clean_environment_launcher() -> str:
         or hashlib.sha256(payload).hexdigest() != CLEAN_ENV_LAUNCHER_SHA256
     ):
         raise CodexReviewError("clean environment launcher does not match its pin")
+    return payload
+
+
+def _clean_environment_launcher() -> str:
+    _clean_environment_launcher_payload()
     return str(CLEAN_ENV_LAUNCHER.resolve(strict=True))
+
+
+def _stage_clean_environment_launcher(cwd: Path) -> Path:
+    destination = cwd / f".td-clean-env-{secrets.token_hex(8)}"
+    try:
+        with destination.open("xb") as staged:
+            staged.write(_clean_environment_launcher_payload())
+            staged.flush()
+            os.fsync(staged.fileno())
+        destination.chmod(0o500)
+    except CodexReviewError:
+        destination.unlink(missing_ok=True)
+        raise
+    except OSError as exc:
+        destination.unlink(missing_ok=True)
+        raise CodexReviewError("clean environment launcher staging failed") from exc
+    return destination
 
 
 def _minimal_systemd_environment() -> dict[str, str]:
@@ -377,6 +399,7 @@ class SystemdCgroupExecutor:
         *,
         delegate: CommandExecutor | None = None,
         unit_name_factory: Callable[[], str] | None = None,
+        inaccessible_paths: tuple[Path, ...] = (),
     ) -> None:
         self._delegate = delegate or SubprocessExecutor(
             environment_factory=lambda _: _minimal_systemd_environment()
@@ -384,6 +407,15 @@ class SystemdCgroupExecutor:
         self._unit_name_factory = unit_name_factory or (
             lambda: f"td-codex-review-{secrets.token_hex(8)}"
         )
+        if any(not isinstance(path, Path) or not path.is_absolute()
+               for path in inaccessible_paths):
+            raise CodexReviewError("inaccessible containment path is invalid")
+        try:
+            self._inaccessible_paths = tuple(
+                path.resolve(strict=True) for path in inaccessible_paths
+            )
+        except OSError as exc:
+            raise CodexReviewError("inaccessible containment path is invalid") from exc
 
     def run(
         self,
@@ -400,7 +432,7 @@ class SystemdCgroupExecutor:
         ).isalnum():
             raise CodexReviewError("invalid transient review unit name")
         service_environment = _minimal_codex_environment(command[0])
-        clean_launcher = _clean_environment_launcher()
+        clean_launcher = _stage_clean_environment_launcher(cwd)
         wrapped = [
             "/usr/bin/systemd-run",
             "--user",
@@ -430,10 +462,14 @@ class SystemdCgroupExecutor:
             "--property=PrivatePIDs=yes",
             "--property=PrivateUsers=yes",
             f"--property=InaccessiblePaths=/run/user/{os.getuid()}",
+            *(
+                f"--property=InaccessiblePaths={path}"
+                for path in self._inaccessible_paths
+            ),
             f"--property=ReadOnlyPaths={clean_launcher}",
             f"--property=ReadOnlyPaths={Path(command[0]).parent}",
             "--property=UMask=0077",
-            clean_launcher,
+            str(clean_launcher),
             *(f"{key}={value}" for key, value in sorted(service_environment.items())),
             "--",
             *command,
@@ -446,7 +482,10 @@ class SystemdCgroupExecutor:
                 timeout_seconds=timeout_seconds + 10,
             )
         finally:
-            self._kill_transient_unit(unit)
+            try:
+                self._kill_transient_unit(unit)
+            finally:
+                clean_launcher.unlink(missing_ok=True)
 
     @staticmethod
     def _kill_transient_unit(unit: str) -> None:
