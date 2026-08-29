@@ -39,9 +39,11 @@ VAGUE_CRITERION = re.compile(
     re.IGNORECASE,
 )
 GENERIC_CRITERION = re.compile(
-    r"^(?:the\s+)?(?:[\w./-]+\s+){0,2}(?:(?:is|are)\s+)?(?:accepts?|blocks?|"
-    r"completes?|fails?|invokes?|maps?|passes?|rejects?|rejected|returns?|uses?|"
-    r"validates?|validated)[.!]?$",
+    r"^(?:it|everything)\b|^(?:accepts?|blocks?|completes?|fails?|invokes?|maps?|"
+    r"passes?|rejects?|returns?|uses?|validates?)\b|^(?:the\s+)?"
+    r"(?:[\w./-]+\s+){0,2}(?:(?:is|are)\s+)?(?:accepts?|blocks?|completes?|fails?|"
+    r"invokes?|maps?|passes?|rejects?|rejected|returns?|uses?|validates?|validated)"
+    r"[.!]?$",
     re.IGNORECASE,
 )
 OBSERVABLE_CRITERION = re.compile(
