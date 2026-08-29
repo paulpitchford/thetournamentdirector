@@ -14,6 +14,7 @@ from td_controller.planning_trial import (
     PlanningTrialError,
     RepositorySnapshot,
     _read_bounded_process,
+    _validate_repository_root,
     load_reviewed_backlog,
     planner_contract_context,
     repository_snapshot,
@@ -208,6 +209,29 @@ class PlanningTrialTests(unittest.TestCase):
         planner = FakePlanner(ProviderResult("{}", None))
         with self.assertRaisesRegex(PlanningTrialError, "session identity"):
             run_fake_trial(planner, current, current)
+
+    def test_nested_and_linked_worktree_roots_are_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary)
+            main = parent / "main"
+            linked = parent / "linked"
+            main.mkdir()
+            initialize_repository(main, BACKLOG.encode())
+            nested = main / "nested"
+            nested.mkdir()
+            with self.assertRaisesRegex(PlanningTrialError, "self-contained"):
+                _validate_repository_root(nested)
+            subprocess.run(
+                [
+                    "/usr/bin/git", "worktree", "add", "-q", "-b",
+                    "linked-test", str(linked),
+                ],
+                cwd=main,
+                env={"HOME": temporary, "PATH": "/usr/bin:/bin"},
+                check=True,
+            )
+            with self.assertRaisesRegex(PlanningTrialError, "self-contained"):
+                _validate_repository_root(linked)
 
     def test_repository_identity_does_not_execute_worktree_filter(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

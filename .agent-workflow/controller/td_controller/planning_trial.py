@@ -138,6 +138,52 @@ def _read_bounded_process(
     return bytes(payload), returncode
 
 
+def _validate_repository_root(repository_root: Path) -> Path:
+    root = repository_root.resolve(strict=True)
+    environment = {
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_NO_REPLACE_OBJECTS": "1",
+        "GIT_OPTIONAL_LOCKS": "0",
+        "HOME": "/nonexistent",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "PATH": "/usr/bin:/bin",
+    }
+    try:
+        result = subprocess.run(
+            [
+                "/usr/bin/git", "rev-parse", "--show-toplevel",
+                "--absolute-git-dir", "--git-common-dir",
+            ],
+            cwd=root,
+            env=environment,
+            check=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+        )
+        lines = result.stdout.decode("utf-8", errors="strict").splitlines()
+        if len(result.stdout) > 12_288 or len(lines) != 3:
+            raise ValueError("invalid repository paths")
+        top_level = Path(lines[0]).resolve(strict=True)
+        git_dir = Path(lines[1]).resolve(strict=True)
+        common_value = Path(lines[2])
+        common_dir = (
+            common_value if common_value.is_absolute() else root / common_value
+        ).resolve(strict=True)
+    except (OSError, UnicodeError, ValueError, subprocess.SubprocessError) as exc:
+        raise PlanningTrialError("repository layout is invalid") from exc
+    if (
+        top_level != root
+        or not git_dir.is_relative_to(root)
+        or not common_dir.is_relative_to(root)
+    ):
+        raise PlanningTrialError("repository layout is not self-contained")
+    return root
+
+
 def repository_snapshot(repository_root: Path) -> RepositorySnapshot:
     """Capture only the approved Git identity; planner input comes from that commit."""
     root = repository_root.resolve(strict=True)
@@ -184,7 +230,7 @@ def run_planning_trial(
         character not in "0123456789abcdef" for character in expected_base_sha
     ):
         raise PlanningTrialError("approved planning base revision is invalid")
-    root = repository_root.resolve(strict=True)
+    root = _validate_repository_root(repository_root)
     before = repository_snapshot(root)
     if before.head_sha != expected_base_sha:
         raise PlanningTrialError("planning trial requires the exact approved base revision")
