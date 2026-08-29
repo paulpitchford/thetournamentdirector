@@ -6,6 +6,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from td_controller.task_contract import TaskContractError, load_task, parse_task, parse_task_json
 
@@ -123,12 +124,19 @@ class TaskContractTests(unittest.TestCase):
             parse_task(value)
 
     def test_path_escape_ignored_roots_and_exact_overlap_are_rejected(self) -> None:
-        for path in ("/etc/passwd", "../parent", "downloads/tool", "extracted/app"):
+        paths = ("/etc/passwd", "../parent", "downloads/tool", "extracted/app",
+                 "**", "*", "*/tool", ".")
+        for path in paths:
             with self.subTest(path=path):
                 value = valid_task()
                 value["allowedPaths"] = [path]
                 with self.assertRaisesRegex(TaskContractError, "prohibited path"):
                     parse_task(value)
+        for alias in (".github/./**", "modern-app/src/**/"):
+            value = valid_task()
+            value["allowedPaths"] = [alias]
+            with self.assertRaisesRegex(TaskContractError, "non-canonical"):
+                parse_task(value)
         value = valid_task()
         value["protectedPaths"] = ["modern-app/src/**"]
         with self.assertRaisesRegex(TaskContractError, "overlap"):
@@ -147,12 +155,31 @@ class TaskContractTests(unittest.TestCase):
         with self.assertRaisesRegex(TaskContractError, "bounded list"):
             parse_task(value)
 
-    def test_task_file_size_is_bounded_before_json_parsing(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            path = Path(temporary) / "task.json"
-            path.write_bytes(b" " * 256_001)
+    def test_json_resource_failures_use_contract_error_boundary(self) -> None:
+        deeply_nested = "[" * 1_100 + "0" + "]" * 1_100
+        with self.assertRaises(TaskContractError):
+            parse_task_json(deeply_nested)
+        with patch("td_controller.task_contract.json.loads", side_effect=RecursionError):
+            with self.assertRaisesRegex(TaskContractError, "unambiguous JSON"):
+                parse_task_json("{}")
+        payload = json.dumps(valid_task()).replace(
+            '"maxChangedLines": 500', '"maxChangedLines": ' + "9" * 5_000
+        )
+        with self.assertRaisesRegex(TaskContractError, "unambiguous JSON"):
+            parse_task_json(payload)
 
+    def test_task_file_size_and_file_type_are_bounded(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path = root / "task.json"
+            path.write_bytes(b" " * 1_000_000)
             with self.assertRaisesRegex(TaskContractError, "size limit"):
+                load_task(path)
+            target = root / "target.json"
+            target.write_text(json.dumps(valid_task()))
+            path.unlink()
+            path.symlink_to(target)
+            with self.assertRaisesRegex(TaskContractError, "unavailable"):
                 load_task(path)
 
 

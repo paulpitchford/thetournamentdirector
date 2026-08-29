@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import stat
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -77,20 +79,33 @@ def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 def parse_task_json(payload: str | bytes) -> TaskContract:
     """Parse unambiguous JSON and return a validated immutable task."""
     try:
-        value = json.loads(payload, object_pairs_hook=_unique_object)
-    except (json.JSONDecodeError, UnicodeDecodeError, _DuplicateKey) as exc:
+        value = json.loads(
+            payload, object_pairs_hook=_unique_object,
+            parse_int=lambda token: _bounded_json_integer(token),
+        )
+    except (ValueError, UnicodeDecodeError, RecursionError) as exc:
         raise TaskContractError("task is not unambiguous JSON") from exc
     return parse_task(value)
 
 
 def load_task(path: Path) -> TaskContract:
     try:
-        payload = path.read_bytes()
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        with os.fdopen(descriptor, "rb") as task_file:
+            if not stat.S_ISREG(os.fstat(task_file.fileno()).st_mode):
+                raise TaskContractError("task file is not regular")
+            payload = task_file.read(256_001)
     except OSError as exc:
         raise TaskContractError("task file is unavailable") from exc
     if len(payload) > 256_000:
         raise TaskContractError("task file exceeds the size limit")
     return parse_task_json(payload)
+
+
+def _bounded_json_integer(token: str) -> int:
+    if len(token.lstrip("-")) > 10:
+        raise ValueError("oversized JSON integer")
+    return int(token)
 
 
 def parse_task(value: object) -> TaskContract:
@@ -180,9 +195,13 @@ def _path_list(value: object, field: str) -> tuple[str, ...]:
     for item in items:
         path = PurePosixPath(item)
         root = item.split("/", 1)[0]
-        if item.startswith("/") or ".." in path.parts or root in PROHIBITED_ROOTS:
+        if (
+            item.startswith("/") or ".." in path.parts
+            or root in PROHIBITED_ROOTS or root == "."
+            or any(character in root for character in "*?[{")
+        ):
             raise TaskContractError(f"{field} contains a prohibited path")
-        if item.startswith("./") or "//" in item or "\\" in item:
+        if item != path.as_posix() or "\\" in item:
             raise TaskContractError(f"{field} contains a non-canonical path")
     return items
 
