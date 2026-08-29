@@ -62,6 +62,7 @@ class CodexPlannerProvider:
 
     def run(self, *, task_id: str, role: str) -> ProviderResult:
         """Execute a contained planning run and return canonical validated JSON."""
+        self.plan = None
         if task_id != self.request.plan_id or role != "planner":
             raise CodexPlannerError("provider invocation does not match its planner request")
         try:
@@ -95,8 +96,10 @@ class CodexPlannerProvider:
             raise CodexPlannerError("local Codex planner emitted unexpected stderr")
         try:
             session_id, message = _parse_event_stream(output.stdout)
+            normalized = _normalize_wire_plan(message)
+            canonical = json.dumps(normalized, sort_keys=True)
             plan = parse_plan_json(
-                message,
+                canonical,
                 expected_plan_id=self.request.plan_id,
                 expected_base_sha=self.request.base_sha,
                 expected_backlog_sha256=self.request.backlog_sha256,
@@ -105,10 +108,7 @@ class CodexPlannerProvider:
         except (PlanContractError, RuntimeError) as exc:
             raise CodexPlannerError("local Codex planner returned an invalid plan") from exc
         self.plan = plan
-        return ProviderResult(
-            summary=json.dumps(json.loads(message), sort_keys=True),
-            session_id=session_id,
-        )
+        return ProviderResult(summary=canonical, session_id=session_id)
 
     def _validate_request(self) -> None:
         try:
@@ -175,13 +175,70 @@ class CodexPlannerProvider:
         ]
 
 
-TEXT = {"type": "string", "minLength": 1, "maxLength": 2_000}
-TEXT_LIST = {"type": "array", "items": TEXT, "maxItems": 200, "uniqueItems": True}
-EVIDENCE_MAP = {
+WIRE_TASK_KEYS = frozenset(
+    {
+        "id", "status", "parentEpic", "objective", "nonGoals", "dependsOn",
+        "acceptanceCriteria", "acceptanceEvidence", "requiredTests", "allowedPaths",
+        "protectedPaths", "riskClass", "maxChangedLines", "maxAttempts",
+        "humanApprovalRequired",
+    }
+)
+
+
+def _normalize_wire_plan(message: str) -> dict[str, object]:
+    def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in pairs:
+            if key in result:
+                raise CodexPlannerError("planner output contains duplicate JSON keys")
+            result[key] = value
+        return result
+
+    try:
+        value = json.loads(message, object_pairs_hook=unique_object)
+    except (ValueError, UnicodeError, RecursionError) as exc:
+        raise CodexPlannerError("planner output is not unambiguous JSON") from exc
+    if not isinstance(value, dict) or not isinstance(value.get("tasks"), list):
+        raise CodexPlannerError("planner wire output has an invalid shape")
+    normalized = dict(value)
+    normalized_tasks: list[dict[str, object]] = []
+    for raw_task in value["tasks"]:
+        if not isinstance(raw_task, dict) or set(raw_task) != WIRE_TASK_KEYS:
+            raise CodexPlannerError("planner wire task has an invalid shape")
+        records = raw_task["acceptanceEvidence"]
+        if not isinstance(records, list):
+            raise CodexPlannerError("planner wire evidence has an invalid shape")
+        evidence_ids: dict[str, object] = {}
+        requirements: dict[str, object] = {}
+        for record in records:
+            if not isinstance(record, dict) or set(record) != {
+                "criterion", "evidenceIds", "requiredSources"
+            }:
+                raise CodexPlannerError("planner wire evidence has an invalid shape")
+            criterion = record["criterion"]
+            if not isinstance(criterion, str) or criterion in evidence_ids:
+                raise CodexPlannerError("planner wire evidence is ambiguous")
+            evidence_ids[criterion] = record["evidenceIds"]
+            if record["requiredSources"]:
+                requirements[criterion] = record["requiredSources"]
+        task = {key: item for key, item in raw_task.items() if key != "acceptanceEvidence"}
+        task["acceptanceEvidenceIds"] = evidence_ids
+        task["acceptanceEvidenceRequirements"] = requirements
+        normalized_tasks.append(task)
+    normalized["tasks"] = normalized_tasks
+    return normalized
+
+
+TEXT = {"type": "string"}
+TEXT_LIST = {"type": "array", "items": TEXT}
+EVIDENCE_SCHEMA = {
     "type": "object",
-    "additionalProperties": {
-        "type": "array", "items": TEXT, "minItems": 1,
-        "maxItems": 100, "uniqueItems": True,
+    "additionalProperties": False,
+    "required": ["criterion", "evidenceIds", "requiredSources"],
+    "properties": {
+        "criterion": TEXT,
+        "evidenceIds": TEXT_LIST,
+        "requiredSources": TEXT_LIST,
     },
 }
 TASK_SCHEMA = {
@@ -189,23 +246,21 @@ TASK_SCHEMA = {
     "additionalProperties": False,
     "required": [
         "id", "status", "parentEpic", "objective", "nonGoals", "dependsOn",
-        "acceptanceCriteria", "acceptanceEvidenceIds",
-        "acceptanceEvidenceRequirements", "requiredTests", "allowedPaths",
+        "acceptanceCriteria", "acceptanceEvidence", "requiredTests", "allowedPaths",
         "protectedPaths", "riskClass", "maxChangedLines", "maxAttempts",
         "humanApprovalRequired",
     ],
     "properties": {
-        "id": TEXT, "status": {"type": "string", "const": "PROPOSED"},
+        "id": TEXT, "status": {"type": "string", "enum": ["PROPOSED"]},
         "parentEpic": TEXT, "objective": TEXT, "nonGoals": TEXT_LIST,
         "dependsOn": TEXT_LIST, "acceptanceCriteria": TEXT_LIST,
-        "acceptanceEvidenceIds": EVIDENCE_MAP,
-        "acceptanceEvidenceRequirements": EVIDENCE_MAP,
+        "acceptanceEvidence": {"type": "array", "items": EVIDENCE_SCHEMA},
         "requiredTests": TEXT_LIST, "allowedPaths": TEXT_LIST,
         "protectedPaths": TEXT_LIST,
         "riskClass": {"type": "string", "enum": ["R0", "R1", "R2", "R3"]},
-        "maxChangedLines": {"type": "integer", "minimum": 1, "maximum": 50_000},
-        "maxAttempts": {"type": "integer", "minimum": 1, "maximum": 10},
-        "humanApprovalRequired": {"type": "boolean", "const": True},
+        "maxChangedLines": {"type": "integer"},
+        "maxAttempts": {"type": "integer"},
+        "humanApprovalRequired": {"type": "boolean", "enum": [True]},
     },
 }
 PLAN_OUTPUT_SCHEMA = {
@@ -217,14 +272,10 @@ PLAN_OUTPUT_SCHEMA = {
     ],
     "properties": {
         "planId": TEXT, "baseSha": TEXT, "backlogSha256": TEXT,
-        "tasks": {"type": "array", "items": TASK_SCHEMA, "minItems": 1,
-                  "maxItems": 100},
+        "tasks": {"type": "array", "items": TASK_SCHEMA},
         "parallelGroups": {
-            "type": "array", "maxItems": 50,
-            "items": {"type": "array", "items": TEXT, "minItems": 2,
-                      "maxItems": 100, "uniqueItems": True},
+            "type": "array", "items": {"type": "array", "items": TEXT},
         },
-        "assumptions": {"type": "array", "items": TEXT, "maxItems": 100,
-                        "uniqueItems": True},
+        "assumptions": {"type": "array", "items": TEXT},
     },
 }

@@ -70,8 +70,13 @@ def proposed_task() -> dict[str, object]:
         "nonGoals": [],
         "dependsOn": [],
         "acceptanceCriteria": [criterion],
-        "acceptanceEvidenceIds": {criterion: ["domain-tests"]},
-        "acceptanceEvidenceRequirements": {},
+        "acceptanceEvidence": [
+            {
+                "criterion": criterion,
+                "evidenceIds": ["domain-tests"],
+                "requiredSources": [],
+            }
+        ],
         "requiredTests": ["python3 .agent-workflow/scripts/check_repository.py"],
         "allowedPaths": ["modern-app/src/domain/**"],
         "protectedPaths": [".github/**"],
@@ -144,9 +149,32 @@ class CodexPlannerProviderTests(unittest.TestCase):
         )
         self.assertIn("untrusted inert", developer)
         self.assertTrue(executor.input_bytes.startswith(b"UNTRUSTED_PLANNING"))
-        self.assertEqual(
-            executor.schemas[0]["properties"]["tasks"]["maxItems"], 100
+        task_schema = executor.schemas[0]["properties"]["tasks"]["items"]
+        self.assertIn("acceptanceEvidence", task_schema["required"])
+        self.assertNotIn("acceptanceEvidenceIds", task_schema["properties"])
+
+    def test_output_schema_uses_the_pinned_supported_subset(self) -> None:
+        executor = FakeExecutor(ProcessOutput(0, event_stream(plan()), b""))
+        CodexPlannerProvider(planner_request(), executor=executor).run(
+            task_id="PLAN-001", role="planner"
         )
+        allowed = {
+            "type", "additionalProperties", "required", "properties", "items", "enum"
+        }
+
+        def verify(schema: object) -> None:
+            if isinstance(schema, dict):
+                self.assertTrue(set(schema).issubset(allowed))
+                if schema.get("type") == "object":
+                    self.assertIs(schema.get("additionalProperties"), False)
+                for key, value in schema.items():
+                    if key == "properties":
+                        for child in value.values():
+                            verify(child)
+                    elif key == "items":
+                        verify(value)
+
+        verify(executor.schemas[0])
 
     def test_backlog_digest_is_verified_before_execution(self) -> None:
         with self.assertRaisesRegex(CodexPlannerError, "trusted digest"):
@@ -198,6 +226,18 @@ class CodexPlannerProviderTests(unittest.TestCase):
             )
             with self.assertRaises(CodexPlannerError):
                 provider.run(task_id="PLAN-001", role="planner")
+
+    def test_failed_reuse_clears_the_previous_validated_plan(self) -> None:
+        executor = FakeExecutor(ProcessOutput(0, event_stream(plan()), b""))
+        provider = CodexPlannerProvider(planner_request(), executor=executor)
+        provider.run(task_id="PLAN-001", role="planner")
+        self.assertIsNotNone(provider.plan)
+
+        executor.output = ProcessOutput(0, event_stream(plan()), b"failure")
+        with self.assertRaises(CodexPlannerError):
+            provider.run(task_id="PLAN-001", role="planner")
+
+        self.assertIsNone(provider.plan)
 
     def test_provider_failure_does_not_expose_diagnostics(self) -> None:
         provider = CodexPlannerProvider(
