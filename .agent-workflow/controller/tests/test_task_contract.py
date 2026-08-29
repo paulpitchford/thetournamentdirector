@@ -121,6 +121,8 @@ class TaskContractTests(unittest.TestCase):
                                   (["It passes"], "vague"),
                                   (["Everything returns"], "vague"),
                                   (["The result validates"], "vague"),
+                                  (["The controller passes"], "vague"),
+                                  (["The service is validated"], "vague"),
                                   (["Exact result", "Exact result"], "duplicates"),
                                   ([], "bounded list")):
             with self.subTest(criteria=criteria):
@@ -130,6 +132,13 @@ class TaskContractTests(unittest.TestCase):
                 value["acceptanceEvidenceRequirements"] = {}
                 with self.assertRaisesRegex(TaskContractError, message):
                     parse_task(value)
+        value = valid_task()
+        value["acceptanceCriteria"] = ["Controller returns exit code 2",
+                                       " Controller returns exit code 2"]
+        value["acceptanceEvidenceIds"] = {}
+        value["acceptanceEvidenceRequirements"] = {}
+        with self.assertRaisesRegex(TaskContractError, "canonical"):
+            parse_task(value)
 
     def test_evidence_mappings_require_known_criteria_and_sources(self) -> None:
         value = valid_task()

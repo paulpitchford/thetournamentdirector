@@ -39,8 +39,9 @@ VAGUE_CRITERION = re.compile(
     re.IGNORECASE,
 )
 GENERIC_CRITERION = re.compile(
-    r"^(?:it|everything|the (?:api|app|feature|response|result|system))\s+"
-    r"(?!(?:is|are)\b)\w+(?:\s+(?:correctly|properly))?[.!]?$",
+    r"^(?:the\s+)?(?:[\w./-]+\s+){0,2}(?:(?:is|are)\s+)?(?:accepts?|blocks?|"
+    r"completes?|fails?|invokes?|maps?|passes?|rejects?|rejected|returns?|uses?|"
+    r"validates?|validated)[.!]?$",
     re.IGNORECASE,
 )
 OBSERVABLE_CRITERION = re.compile(
@@ -191,8 +192,11 @@ def parse_task(value: object) -> TaskContract:
 
 
 def _text(value: object, field: str) -> str:
-    if not isinstance(value, str) or not value.strip() or len(value) > 2_000:
-        raise TaskContractError(f"{field} must be bounded non-empty text")
+    if (
+        not isinstance(value, str) or not value.strip() or len(value) > 2_000
+        or value != value.strip()
+    ):
+        raise TaskContractError(f"{field} must be canonical bounded non-empty text")
     if "\x00" in value:
         raise TaskContractError(f"{field} contains a null byte")
     try:
