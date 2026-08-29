@@ -10,6 +10,7 @@ import shutil
 import signal
 import stat
 import subprocess
+import tempfile
 import threading
 import time
 from dataclasses import dataclass
@@ -54,6 +55,21 @@ def _absolute_command(command: list[str]) -> list[str]:
     if not command or not Path(command[0]).is_absolute():
         raise CodexReviewError("review executable path must be absolute")
     return [str(Path(command[0]).resolve(strict=False)), *command[1:]]
+
+
+def _systemd_property_path(path: Path, *, require_exists: bool = True) -> Path:
+    safe_characters = frozenset(
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._/+:-"
+    )
+    if not isinstance(path, Path) or not path.is_absolute():
+        raise CodexReviewError("systemd containment path is invalid")
+    try:
+        resolved = path.resolve(strict=require_exists)
+    except OSError as exc:
+        raise CodexReviewError("systemd containment path is invalid") from exc
+    if any(character not in safe_characters for character in str(resolved)):
+        raise CodexReviewError("systemd containment path is invalid")
+    return resolved
 
 
 def _minimal_codex_environment(executable: str) -> dict[str, str]:
@@ -125,7 +141,7 @@ def _verify_staged_file(
         raise CodexReviewError("staged Codex runtime verification failed") from exc
 
 
-def _clean_environment_launcher() -> str:
+def _clean_environment_launcher_payload() -> bytes:
     try:
         descriptor = os.open(CLEAN_ENV_LAUNCHER, os.O_RDONLY | os.O_NOFOLLOW)
         with os.fdopen(descriptor, "rb") as launcher:
@@ -139,7 +155,67 @@ def _clean_environment_launcher() -> str:
         or hashlib.sha256(payload).hexdigest() != CLEAN_ENV_LAUNCHER_SHA256
     ):
         raise CodexReviewError("clean environment launcher does not match its pin")
+    return payload
+
+
+def _clean_environment_launcher() -> str:
+    _clean_environment_launcher_payload()
     return str(CLEAN_ENV_LAUNCHER.resolve(strict=True))
+
+
+def _stage_clean_environment_launcher() -> Path:
+    try:
+        staging_root = Path(
+            tempfile.mkdtemp(prefix="td-controller-launcher-", dir="/tmp")
+        )
+    except OSError as exc:
+        raise CodexReviewError("clean environment launcher staging failed") from exc
+    destination = staging_root / "td-clean-env"
+    try:
+        with destination.open("xb") as staged:
+            staged.write(_clean_environment_launcher_payload())
+            staged.flush()
+            os.fsync(staged.fileno())
+        destination.chmod(0o500)
+        staging_root.chmod(0o500)
+        _verify_clean_environment_launcher(destination)
+    except CodexReviewError:
+        _remove_launcher_staging(staging_root)
+        raise
+    except OSError as exc:
+        _remove_launcher_staging(staging_root)
+        raise CodexReviewError("clean environment launcher staging failed") from exc
+    return destination
+
+
+def _remove_launcher_staging(staging_root: Path) -> None:
+    try:
+        staging_root.chmod(0o700)
+    except OSError:
+        pass
+    shutil.rmtree(staging_root, ignore_errors=True)
+
+
+def _verify_clean_environment_launcher(path: Path) -> None:
+    try:
+        root_stat = path.parent.stat(follow_symlinks=False)
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        with os.fdopen(descriptor, "rb") as launcher:
+            launcher_stat = os.fstat(launcher.fileno())
+            payload = launcher.read(CLEAN_ENV_LAUNCHER_SIZE + 1)
+    except OSError as exc:
+        raise CodexReviewError("staged clean environment launcher is invalid") from exc
+    if (
+        not stat.S_ISDIR(root_stat.st_mode)
+        or root_stat.st_uid != os.getuid()
+        or stat.S_IMODE(root_stat.st_mode) != 0o500
+        or not stat.S_ISREG(launcher_stat.st_mode)
+        or launcher_stat.st_uid != os.getuid()
+        or stat.S_IMODE(launcher_stat.st_mode) != 0o500
+        or len(payload) != CLEAN_ENV_LAUNCHER_SIZE
+        or hashlib.sha256(payload).hexdigest() != CLEAN_ENV_LAUNCHER_SHA256
+    ):
+        raise CodexReviewError("staged clean environment launcher is invalid")
 
 
 def _minimal_systemd_environment() -> dict[str, str]:
@@ -377,6 +453,7 @@ class SystemdCgroupExecutor:
         *,
         delegate: CommandExecutor | None = None,
         unit_name_factory: Callable[[], str] | None = None,
+        inaccessible_paths: tuple[Path, ...] = (),
     ) -> None:
         self._delegate = delegate or SubprocessExecutor(
             environment_factory=lambda _: _minimal_systemd_environment()
@@ -384,6 +461,12 @@ class SystemdCgroupExecutor:
         self._unit_name_factory = unit_name_factory or (
             lambda: f"td-codex-review-{secrets.token_hex(8)}"
         )
+        try:
+            self._inaccessible_paths = tuple(
+                _systemd_property_path(path) for path in inaccessible_paths
+            )
+        except CodexReviewError as exc:
+            raise CodexReviewError("inaccessible containment path is invalid") from exc
 
     def run(
         self,
@@ -394,13 +477,23 @@ class SystemdCgroupExecutor:
         timeout_seconds: int,
     ) -> ProcessOutput:
         command = _absolute_command(command)
+        cwd = _systemd_property_path(cwd)
+        _systemd_property_path(Path(command[0]).parent, require_exists=False)
         unit = self._unit_name_factory()
         if not unit.startswith("td-codex-review-") or not unit.removeprefix(
             "td-codex-review-"
         ).isalnum():
             raise CodexReviewError("invalid transient review unit name")
         service_environment = _minimal_codex_environment(command[0])
-        clean_launcher = _clean_environment_launcher()
+        clean_launcher = _stage_clean_environment_launcher()
+        launcher_root = _systemd_property_path(clean_launcher.parent)
+        overlaps = (cwd, *self._inaccessible_paths)
+        if any(
+            launcher_root.is_relative_to(path) or path.is_relative_to(launcher_root)
+            for path in overlaps
+        ):
+            _remove_launcher_staging(launcher_root)
+            raise CodexReviewError("launcher staging overlaps a containment path")
         wrapped = [
             "/usr/bin/systemd-run",
             "--user",
@@ -424,18 +517,26 @@ class SystemdCgroupExecutor:
             "--property=CPUQuota=200%",
             "--property=NoNewPrivileges=yes",
             "--property=ProtectControlGroups=yes",
+            "--property=ProtectSystem=strict",
+            "--property=ProtectHome=read-only",
+            f"--property=ReadWritePaths={cwd}",
             "--property=PrivatePIDs=yes",
             "--property=PrivateUsers=yes",
             f"--property=InaccessiblePaths=/run/user/{os.getuid()}",
-            f"--property=ReadOnlyPaths={clean_launcher}",
+            *(
+                f"--property=InaccessiblePaths={path}"
+                for path in self._inaccessible_paths
+            ),
+            f"--property=ReadOnlyPaths={launcher_root}",
             f"--property=ReadOnlyPaths={Path(command[0]).parent}",
             "--property=UMask=0077",
-            clean_launcher,
+            str(clean_launcher),
             *(f"{key}={value}" for key, value in sorted(service_environment.items())),
             "--",
             *command,
         ]
         try:
+            _verify_clean_environment_launcher(clean_launcher)
             return self._delegate.run(
                 wrapped,
                 input_bytes=input_bytes,
@@ -443,7 +544,10 @@ class SystemdCgroupExecutor:
                 timeout_seconds=timeout_seconds + 10,
             )
         finally:
-            self._kill_transient_unit(unit)
+            try:
+                self._kill_transient_unit(unit)
+            finally:
+                _remove_launcher_staging(clean_launcher.parent)
 
     @staticmethod
     def _kill_transient_unit(unit: str) -> None:

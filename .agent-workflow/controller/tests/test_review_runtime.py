@@ -233,15 +233,18 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
         executor = SystemdCgroupExecutor(
             delegate=delegate,
             unit_name_factory=lambda: "td-codex-review-fixed123",
+            inaccessible_paths=(Path("/home"),),
         )
         with (
+            tempfile.TemporaryDirectory(prefix="td-cwd-") as temporary,
             patch.dict(os.environ, {"TD_SECRET_SENTINEL": "must-not-leak"}),
             patch.object(SystemdCgroupExecutor, "_kill_transient_unit") as cleanup,
         ):
+            cwd = Path(temporary)
             result = executor.run(
                 ["/pinned/codex", "exec"],
                 input_bytes=b"prompt",
-                cwd=Path("/tmp"),
+                cwd=cwd,
                 timeout_seconds=30,
             )
 
@@ -254,21 +257,149 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
         self.assertIn("--property=MemorySwapMax=0", command)
         self.assertIn("--property=CPUQuota=200%", command)
         self.assertIn("--property=ProtectControlGroups=yes", command)
+        self.assertIn("--property=ProtectSystem=strict", command)
+        self.assertIn("--property=ProtectHome=read-only", command)
+        self.assertIn(f"--property=ReadWritePaths={cwd}", command)
         self.assertIn("--property=PrivatePIDs=yes", command)
         self.assertIn("--property=PrivateUsers=yes", command)
         self.assertIn(
             f"--property=InaccessiblePaths=/run/user/{os.getuid()}", command
         )
-        launcher = str(Path(__file__).parents[1] / "bin" / "td-clean-env")
-        self.assertIn(f"--property=ReadOnlyPaths={launcher}", command)
+        self.assertIn("--property=InaccessiblePaths=/home", command)
+        launcher = next(
+            item for item in command
+            if item.startswith("/tmp/td-controller-launcher-")
+            and item.endswith("/td-clean-env")
+        )
+        self.assertIn(
+            f"--property=ReadOnlyPaths={Path(launcher).parent}", command
+        )
         self.assertIn("--property=ReadOnlyPaths=/pinned", command)
         launcher_index = command.index(launcher)
         self.assertEqual(command[launcher_index + 5], "--")
+        self.assertFalse(Path(launcher).exists())
         self.assertFalse(any("TD_SECRET_SENTINEL" in item for item in command))
         self.assertEqual(command[-2:], ["/pinned/codex", "exec"])
         self.assertEqual(delegate.timeout_seconds, 40)
         cleanup.assert_called_once_with("td-codex-review-fixed123")
         self.assertEqual(result.stdout, b"ok")
+
+    def test_systemd_property_paths_reject_unsafe_characters(self) -> None:
+        delegate = FakeExecutor(ProcessOutput(0, b"", b""))
+        executor = SystemdCgroupExecutor(delegate=delegate)
+        for prefix in ("td path ", "td%h-"):
+            with tempfile.TemporaryDirectory(prefix=prefix) as temporary:
+                with self.assertRaisesRegex(CodexReviewError, "containment path"):
+                    executor.run(
+                        ["/pinned/codex", "exec"], input_bytes=b"",
+                        cwd=Path(temporary), timeout_seconds=5,
+                    )
+        with (
+            tempfile.TemporaryDirectory(prefix="td-safe-") as safe,
+            tempfile.TemporaryDirectory(prefix="td target ") as target,
+        ):
+            link = Path(safe) / "safe-link"
+            link.symlink_to(target, target_is_directory=True)
+            with self.assertRaisesRegex(CodexReviewError, "inaccessible containment"):
+                SystemdCgroupExecutor(inaccessible_paths=(link,))
+        self.assertEqual(delegate.commands, [])
+
+    def test_launcher_ignores_tmpdir_and_rejects_containment_overlap(self) -> None:
+        delegate = FakeExecutor(ProcessOutput(0, b"", b""))
+        with (
+            tempfile.TemporaryDirectory(prefix="td-cwd-") as cwd_name,
+            tempfile.TemporaryDirectory(prefix="td TMPDIR ") as tmpdir,
+            patch.dict(os.environ, {"TMPDIR": tmpdir}),
+            patch.object(SystemdCgroupExecutor, "_kill_transient_unit"),
+        ):
+            SystemdCgroupExecutor(delegate=delegate).run(
+                ["/pinned/codex", "exec"], input_bytes=b"",
+                cwd=Path(cwd_name), timeout_seconds=5,
+            )
+        launcher = next(
+            item for item in delegate.commands[0]
+            if item.startswith("/tmp/td-controller-launcher-")
+            and item.endswith("/td-clean-env")
+        )
+        self.assertFalse(launcher.startswith(tmpdir))
+
+        blocked_delegate = FakeExecutor(ProcessOutput(0, b"", b""))
+        executor = SystemdCgroupExecutor(
+            delegate=blocked_delegate, inaccessible_paths=(Path("/tmp"),)
+        )
+        with tempfile.TemporaryDirectory(dir="/var/tmp") as cwd_name:
+            with self.assertRaisesRegex(CodexReviewError, "overlaps"):
+                executor.run(
+                    ["/pinned/codex", "exec"], input_bytes=b"",
+                    cwd=Path(cwd_name), timeout_seconds=5,
+                )
+        self.assertEqual(blocked_delegate.commands, [])
+
+    def test_launcher_is_staged_outside_writable_service_cwd(self) -> None:
+        observed: dict[str, object] = {}
+
+        class InspectingExecutor(FakeExecutor):
+            def run(self, command, *, input_bytes, cwd, timeout_seconds):
+                launcher = Path(next(
+                    item for item in command
+                    if item.startswith("/tmp/td-controller-launcher-")
+                    and item.endswith("/td-clean-env")
+                ))
+                observed["launcher"] = launcher
+                observed["exists"] = launcher.exists()
+                observed["outside"] = not launcher.is_relative_to(cwd)
+                observed["cwdEntries"] = tuple(cwd.iterdir())
+                return super().run(
+                    command, input_bytes=input_bytes, cwd=cwd,
+                    timeout_seconds=timeout_seconds,
+                )
+
+        delegate = InspectingExecutor(ProcessOutput(0, b"", b""))
+        executor = SystemdCgroupExecutor(
+            delegate=delegate,
+            unit_name_factory=lambda: "td-codex-review-fixed123",
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch.object(SystemdCgroupExecutor, "_kill_transient_unit"):
+                executor.run(
+                    ["/pinned/codex", "exec"], input_bytes=b"",
+                    cwd=Path(temporary), timeout_seconds=5,
+                )
+        self.assertIs(observed["exists"], True)
+        self.assertIs(observed["outside"], True)
+        self.assertEqual(observed["cwdEntries"], ())
+        self.assertFalse(observed["launcher"].exists())
+
+    def test_replaced_staged_launcher_is_rejected_before_delegate(self) -> None:
+        delegate = FakeExecutor(ProcessOutput(0, b"", b""))
+        executor = SystemdCgroupExecutor(
+            delegate=delegate,
+            unit_name_factory=lambda: "td-codex-review-fixed123",
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            cwd = Path(temporary)
+
+            def replaced() -> Path:
+                root = Path(tempfile.mkdtemp(prefix="td-replaced-", dir="/tmp"))
+                launcher = root / "td-clean-env"
+                launcher.write_bytes(b"replaced")
+                launcher.chmod(0o500)
+                root.chmod(0o500)
+                return launcher
+
+            with (
+                patch(
+                    "td_controller.review_runtime._stage_clean_environment_launcher",
+                    side_effect=replaced,
+                ),
+                patch.object(SystemdCgroupExecutor, "_kill_transient_unit"),
+            ):
+                with self.assertRaisesRegex(CodexReviewError, "staged clean"):
+                    executor.run(
+                        ["/pinned/codex", "exec"], input_bytes=b"",
+                        cwd=cwd, timeout_seconds=5,
+                    )
+        self.assertEqual(delegate.commands, [])
 
     def test_clean_environment_launcher_matches_reviewed_source(self) -> None:
         source = Path(__file__).parents[1] / "bin" / "td-clean-env.S"
