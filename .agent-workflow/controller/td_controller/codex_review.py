@@ -202,6 +202,10 @@ def _parse_event_stream(stdout: bytes) -> tuple[str, str]:
     if len(stdout) > MAX_OUTPUT_BYTES:
         raise CodexReviewError("event stream exceeds the output limit")
     session_id: str | None = None
+    thread_seen = False
+    turn_started = False
+    turn_completed = False
+    final_message_seen = False
     messages: list[str] = []
     allowed_events = {
         "thread.started",
@@ -223,14 +227,31 @@ def _parse_event_stream(stdout: bytes) -> tuple[str, str]:
             raise CodexReviewError("Codex emitted an unknown event shape")
         event_type = event["type"]
         if event_type == "thread.started":
-            if session_id is not None:
+            if thread_seen:
                 raise CodexReviewError("Codex emitted duplicate thread identity")
+            thread_seen = True
             session_id = event.get("thread_id")
+            if (
+                not isinstance(session_id, str)
+                or not session_id.strip()
+                or "item" in event
+            ):
+                raise CodexReviewError("Codex thread event has an invalid shape")
             continue
-        if event_type in {"turn.started", "turn.completed"}:
-            if "item" in event:
-                raise CodexReviewError("Codex lifecycle event contained an item")
+        if not thread_seen or turn_completed:
+            raise CodexReviewError("Codex emitted an invalid lifecycle order")
+        if event_type == "turn.started":
+            if "item" in event or turn_started or final_message_seen:
+                raise CodexReviewError("Codex lifecycle event has an invalid shape")
+            turn_started = True
             continue
+        if event_type == "turn.completed":
+            if "item" in event or not final_message_seen:
+                raise CodexReviewError("Codex lifecycle event has an invalid shape")
+            turn_completed = True
+            continue
+        if final_message_seen:
+            raise CodexReviewError("Codex emitted activity after its final message")
 
         item = event.get("item")
         if not isinstance(item, dict) or not isinstance(item.get("type"), str):
@@ -241,8 +262,10 @@ def _parse_event_stream(stdout: bytes) -> tuple[str, str]:
             raise CodexReviewError(f"Codex attempted forbidden tool: {item['type']}")
         if event_type == "item.completed" and item["type"] == "agent_message":
             text = item.get("text")
-            if isinstance(text, str):
-                messages.append(text)
+            if not isinstance(text, str):
+                raise CodexReviewError("Codex agent message has an invalid shape")
+            messages.append(text)
+            final_message_seen = True
     if not isinstance(session_id, str) or not session_id.strip():
         raise CodexReviewError("Codex returned no session identity")
     if len(messages) != 1:

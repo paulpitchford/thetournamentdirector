@@ -205,6 +205,15 @@ class CodexReviewProviderTests(unittest.TestCase):
         with self.assertRaisesRegex(CodexReviewError, "unknown event shape"):
             provider.run(task_id="TASK-001", role="code_review")
 
+    def test_thread_lifecycle_cannot_hide_tool_item(self) -> None:
+        event = {"type": "thread.started", "thread_id": "fresh-session",
+                 "item": {"type": "command_execution"}}
+        provider = CodexReviewProvider(
+            request(), executor=FakeExecutor(ProcessOutput(
+                0, (json.dumps(event) + "\n").encode(), b"")))
+        with self.assertRaisesRegex(CodexReviewError, "thread event"):
+            provider.run(task_id="TASK-001", role="code_review")
+
     def test_duplicate_thread_identity_is_rejected(self) -> None:
         events = [
             {"type": "thread.started", "thread_id": "first"},
@@ -217,6 +226,23 @@ class CodexReviewProviderTests(unittest.TestCase):
         )
 
         with self.assertRaisesRegex(CodexReviewError, "duplicate thread"):
+            provider.run(task_id="TASK-001", role="code_review")
+
+    def test_null_thread_identity_cannot_hide_duplicate(self) -> None:
+        events = [{"type": "thread.started", "thread_id": None},
+                  {"type": "thread.started", "thread_id": "fresh-session"}]
+        output = ("\n".join(json.dumps(item) for item in events) + "\n").encode()
+        provider = CodexReviewProvider(
+            request(), executor=FakeExecutor(ProcessOutput(0, output, b"")))
+        with self.assertRaisesRegex(CodexReviewError, "thread event"):
+            provider.run(task_id="TASK-001", role="code_review")
+
+    def test_activity_after_final_message_is_rejected(self) -> None:
+        event = {"type": "item.completed", "item": {"type": "reasoning"}}
+        output = event_stream(artifact()) + (json.dumps(event) + "\n").encode()
+        provider = CodexReviewProvider(
+            request(), executor=FakeExecutor(ProcessOutput(0, output, b"")))
+        with self.assertRaisesRegex(CodexReviewError, "after its final"):
             provider.run(task_id="TASK-001", role="code_review")
 
     def test_duplicate_event_keys_are_rejected_recursively(self) -> None:
