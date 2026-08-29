@@ -109,6 +109,7 @@ def _pinned_runtime_sources() -> tuple[Path, Path]:
 
 
 def _attest_codex_runtime(destination_dir: Path) -> str:
+    destination_dir = destination_dir.resolve(strict=False)
     source, host_source = _pinned_runtime_sources()
     destination_dir.mkdir(mode=0o700)
     staged = destination_dir / "codex"
