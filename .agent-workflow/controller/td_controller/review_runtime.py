@@ -148,20 +148,46 @@ def _clean_environment_launcher() -> str:
 
 
 def _stage_clean_environment_launcher(cwd: Path) -> Path:
-    destination = cwd / f".td-clean-env-{secrets.token_hex(8)}"
+    staging_root = cwd / f".td-launcher-{secrets.token_hex(8)}"
+    destination = staging_root / "td-clean-env"
     try:
+        staging_root.mkdir(mode=0o700)
         with destination.open("xb") as staged:
             staged.write(_clean_environment_launcher_payload())
             staged.flush()
             os.fsync(staged.fileno())
         destination.chmod(0o500)
+        staging_root.chmod(0o500)
+        _verify_clean_environment_launcher(destination)
     except CodexReviewError:
-        destination.unlink(missing_ok=True)
+        shutil.rmtree(staging_root, ignore_errors=True)
         raise
     except OSError as exc:
-        destination.unlink(missing_ok=True)
+        shutil.rmtree(staging_root, ignore_errors=True)
         raise CodexReviewError("clean environment launcher staging failed") from exc
     return destination
+
+
+def _verify_clean_environment_launcher(path: Path) -> None:
+    try:
+        root_stat = path.parent.stat(follow_symlinks=False)
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        with os.fdopen(descriptor, "rb") as launcher:
+            launcher_stat = os.fstat(launcher.fileno())
+            payload = launcher.read(CLEAN_ENV_LAUNCHER_SIZE + 1)
+    except OSError as exc:
+        raise CodexReviewError("staged clean environment launcher is invalid") from exc
+    if (
+        not stat.S_ISDIR(root_stat.st_mode)
+        or root_stat.st_uid != os.getuid()
+        or stat.S_IMODE(root_stat.st_mode) != 0o500
+        or not stat.S_ISREG(launcher_stat.st_mode)
+        or launcher_stat.st_uid != os.getuid()
+        or stat.S_IMODE(launcher_stat.st_mode) != 0o500
+        or len(payload) != CLEAN_ENV_LAUNCHER_SIZE
+        or hashlib.sha256(payload).hexdigest() != CLEAN_ENV_LAUNCHER_SHA256
+    ):
+        raise CodexReviewError("staged clean environment launcher is invalid")
 
 
 def _minimal_systemd_environment() -> dict[str, str]:
@@ -466,7 +492,7 @@ class SystemdCgroupExecutor:
                 f"--property=InaccessiblePaths={path}"
                 for path in self._inaccessible_paths
             ),
-            f"--property=ReadOnlyPaths={clean_launcher}",
+            f"--property=ReadOnlyPaths={clean_launcher.parent}",
             f"--property=ReadOnlyPaths={Path(command[0]).parent}",
             "--property=UMask=0077",
             str(clean_launcher),
@@ -475,6 +501,7 @@ class SystemdCgroupExecutor:
             *command,
         ]
         try:
+            _verify_clean_environment_launcher(clean_launcher)
             return self._delegate.run(
                 wrapped,
                 input_bytes=input_bytes,
@@ -485,7 +512,11 @@ class SystemdCgroupExecutor:
             try:
                 self._kill_transient_unit(unit)
             finally:
-                clean_launcher.unlink(missing_ok=True)
+                try:
+                    clean_launcher.parent.chmod(0o700)
+                except OSError:
+                    pass
+                shutil.rmtree(clean_launcher.parent, ignore_errors=True)
 
     @staticmethod
     def _kill_transient_unit(unit: str) -> None:

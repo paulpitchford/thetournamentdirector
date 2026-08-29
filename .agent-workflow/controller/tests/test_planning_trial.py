@@ -23,6 +23,29 @@ BASE_SHA = "a" * 40
 BACKLOG = "# backlog\n"
 
 
+def initialize_repository(root: Path, backlog: bytes) -> str:
+    environment = {
+        "HOME": str(root),
+        "PATH": "/usr/bin:/bin",
+        "GIT_AUTHOR_NAME": "test",
+        "GIT_AUTHOR_EMAIL": "test@example.invalid",
+        "GIT_COMMITTER_NAME": "test",
+        "GIT_COMMITTER_EMAIL": "test@example.invalid",
+    }
+    subprocess.run(["/usr/bin/git", "init", "-q"], cwd=root,
+                   env=environment, check=True)
+    (root / "docs").mkdir()
+    (root / "docs" / "DELIVERY_BACKLOG.md").write_bytes(backlog)
+    subprocess.run(["/usr/bin/git", "add", "docs/DELIVERY_BACKLOG.md"], cwd=root,
+                   env=environment, check=True)
+    subprocess.run(["/usr/bin/git", "commit", "-qm", "backlog"], cwd=root,
+                   env=environment, check=True)
+    return subprocess.check_output(
+        ["/usr/bin/git", "rev-parse", "HEAD"], cwd=root, env=environment,
+        text=True,
+    ).strip()
+
+
 class FakePlanner:
     def __init__(
         self,
@@ -67,30 +90,27 @@ def run_fake_trial(
 
 
 class PlanningTrialTests(unittest.TestCase):
-    def test_reviewed_backlog_loader_accepts_only_bounded_regular_direct_file(self) -> None:
+    def test_reviewed_backlog_is_loaded_from_approved_commit_not_worktree(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            (root / "docs").mkdir()
+            base_sha = initialize_repository(root, BACKLOG.encode())
             backlog = root / "docs" / "DELIVERY_BACKLOG.md"
-            backlog.write_text(BACKLOG)
-            self.assertEqual(load_reviewed_backlog(root), BACKLOG)
-
             backlog.unlink()
             backlog.symlink_to(root / "missing")
-            with self.assertRaisesRegex(PlanningTrialError, "unavailable"):
-                load_reviewed_backlog(root)
+
+            self.assertEqual(load_reviewed_backlog(root, base_sha), BACKLOG)
 
     def test_reviewed_backlog_size_and_utf8_are_bounded(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            (root / "docs").mkdir()
-            backlog = root / "docs" / "DELIVERY_BACKLOG.md"
-            backlog.write_bytes(b"x" * (MAX_BACKLOG_BYTES + 1))
-            with self.assertRaisesRegex(PlanningTrialError, "size limit"):
-                load_reviewed_backlog(root)
-            backlog.write_bytes(b"\xff")
-            with self.assertRaisesRegex(PlanningTrialError, "UTF-8"):
-                load_reviewed_backlog(root)
+        cases = (
+            (b"x" * (MAX_BACKLOG_BYTES + 1), "size limit"),
+            (b"\xff", "UTF-8"),
+        )
+        for payload, error in cases:
+            with tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                base_sha = initialize_repository(root, payload)
+                with self.assertRaisesRegex(PlanningTrialError, error):
+                    load_reviewed_backlog(root, base_sha)
 
     def test_clean_snapshot_builds_request_from_controller_inputs(self) -> None:
         clean = RepositorySnapshot(BASE_SHA, b"")

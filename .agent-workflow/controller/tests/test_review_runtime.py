@@ -265,9 +265,12 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
         )
         self.assertIn("--property=InaccessiblePaths=/home", command)
         launcher = next(
-            item for item in command if item.startswith("/tmp/.td-clean-env-")
+            item for item in command
+            if item.startswith("/tmp/.td-launcher-") and item.endswith("/td-clean-env")
         )
-        self.assertIn(f"--property=ReadOnlyPaths={launcher}", command)
+        self.assertIn(
+            f"--property=ReadOnlyPaths={Path(launcher).parent}", command
+        )
         self.assertIn("--property=ReadOnlyPaths=/pinned", command)
         launcher_index = command.index(launcher)
         self.assertEqual(command[launcher_index + 5], "--")
@@ -277,6 +280,38 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
         self.assertEqual(delegate.timeout_seconds, 40)
         cleanup.assert_called_once_with("td-codex-review-fixed123")
         self.assertEqual(result.stdout, b"ok")
+
+    def test_replaced_staged_launcher_is_rejected_before_delegate(self) -> None:
+        delegate = FakeExecutor(ProcessOutput(0, b"", b""))
+        executor = SystemdCgroupExecutor(
+            delegate=delegate,
+            unit_name_factory=lambda: "td-codex-review-fixed123",
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            cwd = Path(temporary)
+
+            def replaced(_: Path) -> Path:
+                root = cwd / ".td-launcher-replaced"
+                root.mkdir(mode=0o700)
+                launcher = root / "td-clean-env"
+                launcher.write_bytes(b"replaced")
+                launcher.chmod(0o500)
+                root.chmod(0o500)
+                return launcher
+
+            with (
+                patch(
+                    "td_controller.review_runtime._stage_clean_environment_launcher",
+                    side_effect=replaced,
+                ),
+                patch.object(SystemdCgroupExecutor, "_kill_transient_unit"),
+            ):
+                with self.assertRaisesRegex(CodexReviewError, "staged clean"):
+                    executor.run(
+                        ["/pinned/codex", "exec"], input_bytes=b"",
+                        cwd=cwd, timeout_seconds=5,
+                    )
+        self.assertEqual(delegate.commands, [])
 
     def test_clean_environment_launcher_matches_reviewed_source(self) -> None:
         source = Path(__file__).parents[1] / "bin" / "td-clean-env.S"

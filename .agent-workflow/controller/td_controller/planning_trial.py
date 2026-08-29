@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import os
-import stat
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,36 +33,38 @@ class PlanningTrialRecord:
     summary: str
 
 
-def load_reviewed_backlog(repository_root: Path) -> str:
-    """Load the approved backlog through bounded descriptor-relative no-follow opens."""
+def load_reviewed_backlog(repository_root: Path, expected_base_sha: str) -> str:
+    """Load the exact approved backlog blob from the expected Git commit."""
+    root = repository_root.resolve(strict=True)
+    environment = {
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_NO_REPLACE_OBJECTS": "1",
+        "GIT_OPTIONAL_LOCKS": "0",
+        "HOME": "/nonexistent",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "PATH": "/usr/bin:/bin",
+    }
     try:
-        root = repository_root.resolve(strict=True)
-        root_descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-        try:
-            docs_descriptor = os.open(
-                "docs",
-                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
-                dir_fd=root_descriptor,
-            )
-        finally:
-            os.close(root_descriptor)
-        try:
-            descriptor = os.open(
-                APPROVED_BACKLOG.name,
-                os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW,
-                dir_fd=docs_descriptor,
-            )
-        finally:
-            os.close(docs_descriptor)
-        with os.fdopen(descriptor, "rb") as backlog_file:
-            file_stat = os.fstat(backlog_file.fileno())
-            if not stat.S_ISREG(file_stat.st_mode):
-                raise PlanningTrialError("reviewed backlog is not a regular file")
-            payload = backlog_file.read(MAX_BACKLOG_BYTES + 1)
-    except PlanningTrialError:
-        raise
-    except OSError as exc:
+        result = subprocess.run(
+            [
+                "/usr/bin/git", "-c", "core.hooksPath=/dev/null", "cat-file",
+                "blob", f"{expected_base_sha}:{APPROVED_BACKLOG.as_posix()}",
+            ],
+            cwd=root,
+            env=environment,
+            check=False,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
         raise PlanningTrialError("reviewed backlog is unavailable") from exc
+    payload = result.stdout
+    if result.returncode != 0:
+        raise PlanningTrialError("reviewed backlog is unavailable")
     if len(payload) > MAX_BACKLOG_BYTES:
         raise PlanningTrialError("reviewed backlog exceeds the size limit")
     try:
@@ -137,7 +137,7 @@ def run_planning_trial(
     before = repository_snapshot(root)
     if before.head_sha != expected_base_sha or before.worktree_status:
         raise PlanningTrialError("planning trial requires the exact clean base revision")
-    backlog = load_reviewed_backlog(repository_root)
+    backlog = load_reviewed_backlog(root, expected_base_sha)
     request = PlannerRequest(
         plan_id=plan_id,
         base_sha=before.head_sha,

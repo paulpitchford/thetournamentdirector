@@ -2,13 +2,13 @@
   "id": "ORCH-002D",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Add a mutation-detecting coordinator and controller-owned grammar for read-only planning trials",
+  "objective": "Add a repository-inaccessible coordinator and controller-owned grammar for read-only planning trials",
   "nonGoals": ["Mutate the repository", "Approve proposed tasks", "Dispatch implementation work", "Persist model output in Git", "Complete ten real planning runs"],
   "dependsOn": ["ORCH-002C"],
   "acceptanceCriteria": [
     "backlog-load|WHEN the reviewed backlog enters a trial|ASSERT TEST_PASS local-planning-trial-tests",
     "clean-base|WHEN a trial starts from a dirty or stale repository|ASSERT ERROR PlanningTrialError",
-    "mutation-detect|WHEN repository state changes during any trial outcome|ASSERT ERROR PlanningTrialError",
+    "repository-hidden|WHEN the contained planner attempts repository access|ASSERT TEST_PASS repository-inaccessible-smoke",
     "fresh-session|WHEN a planner omits its session identity|ASSERT ERROR PlanningTrialError",
     "contract-context|WHEN a planner receives controller constraints|ASSERT TEST_PASS local-planning-trial-tests",
     "no-model-tests|WHEN automated planning trial tests execute|ASSERT TEST_PASS no-model-in-tests"
@@ -16,7 +16,7 @@
   "acceptanceEvidenceIds": {
     "backlog-load|WHEN the reviewed backlog enters a trial|ASSERT TEST_PASS local-planning-trial-tests": ["local-planning-trial-tests"],
     "clean-base|WHEN a trial starts from a dirty or stale repository|ASSERT ERROR PlanningTrialError": ["local-planning-trial-tests"],
-    "mutation-detect|WHEN repository state changes during any trial outcome|ASSERT ERROR PlanningTrialError": ["local-planning-trial-tests"],
+    "repository-hidden|WHEN the contained planner attempts repository access|ASSERT TEST_PASS repository-inaccessible-smoke": ["repository-inaccessible-smoke"],
     "fresh-session|WHEN a planner omits its session identity|ASSERT ERROR PlanningTrialError": ["local-planning-trial-tests"],
     "contract-context|WHEN a planner receives controller constraints|ASSERT TEST_PASS local-planning-trial-tests": ["local-planning-trial-tests"],
     "no-model-tests|WHEN automated planning trial tests execute|ASSERT TEST_PASS no-model-in-tests": ["no-model-in-tests"]
