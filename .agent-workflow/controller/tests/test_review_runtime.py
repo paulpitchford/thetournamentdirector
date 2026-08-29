@@ -21,6 +21,8 @@ from td_controller.review_runtime import (
     SubprocessExecutor,
     SystemdCgroupExecutor,
     _attest_codex_runtime,
+    _minimal_codex_environment,
+    _minimal_systemd_environment,
 )
 
 class FakeExecutor:
@@ -48,6 +50,44 @@ class FakeExecutor:
 
 class SubprocessExecutorTests(unittest.TestCase):
     """Prove output floods, environment leaks, and timeouts fail closed."""
+
+    def test_ambient_home_cannot_change_allowlisted_environments(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            account = Mock(pw_dir=temporary)
+            with (
+                patch.dict(os.environ, {"HOME": "/attacker-controlled"}),
+                patch("td_controller.review_runtime.pwd.getpwuid", return_value=account),
+            ):
+                parent = _minimal_codex_environment("/runtime/codex")
+                service = _minimal_systemd_environment()
+
+        self.assertEqual(parent["HOME"], temporary)
+        self.assertEqual(service["HOME"], temporary)
+
+    def test_input_limit_is_enforced_before_dispatch(self) -> None:
+        executor = SubprocessExecutor()
+        with patch("td_controller.review_runtime.subprocess.Popen") as popen:
+            with patch("td_controller.review_runtime.MAX_INPUT_BYTES", 1):
+                with self.assertRaisesRegex(CodexReviewError, "input limit"):
+                    executor.run(
+                        ["/pinned/codex"],
+                        input_bytes=b"xx",
+                        cwd=Path("/tmp"),
+                        timeout_seconds=1,
+                    )
+        popen.assert_not_called()
+
+    def test_input_at_limit_is_accepted(self) -> None:
+        executor = SubprocessExecutor()
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch("td_controller.review_runtime.MAX_INPUT_BYTES", 4):
+                output = executor.run(
+                    [sys.executable, "-c", "import sys; print(len(sys.stdin.buffer.read()))"],
+                    input_bytes=b"1234",
+                    cwd=Path(temporary),
+                    timeout_seconds=5,
+                )
+        self.assertEqual(output.stdout.strip(), b"4")
 
     def test_child_receives_only_minimal_environment(self) -> None:
         executor = SubprocessExecutor()
