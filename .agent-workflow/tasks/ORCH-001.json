@@ -1,32 +1,32 @@
 {
-  "id": "ORCH-003C",
+  "id": "ORCH-003D",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Authorize workflow gates only with immutable evidence bound to the exact leased task revision",
-  "nonGoals": ["Create worktrees", "Run a write-capable provider", "Push branches", "Create or merge pull requests", "Change GitHub policy"],
-  "dependsOn": ["ORCH-003B"],
+  "objective": "Reserve isolated branch-bound task worktrees without executing repository checkout behavior",
+  "nonGoals": ["Materialize tracked files", "Run a write-capable provider", "Push branches", "Create or merge pull requests", "Change GitHub policy"],
+  "dependsOn": ["ORCH-003C"],
   "acceptanceCriteria": [
-    "immutable-evidence|WHEN trusted gate evidence is recorded|ASSERT TEST_PASS workflow-evidence-tests",
-    "exact-binding|WHEN evidence-gated progression is requested|ASSERT TEST_PASS workflow-evidence-tests",
-    "replay-rejection|WHEN old-head or failed evidence is reused|ASSERT TEST_PASS workflow-evidence-tests",
-    "lease-authority|WHEN gate evidence is recorded or consumed|ASSERT TEST_PASS workflow-evidence-tests"
+    "metadata-only|WHEN a task worktree is reserved|ASSERT TEST_PASS worktree-reservation-tests",
+    "exact-binding|WHEN lease branch attempt and base are validated|ASSERT TEST_PASS worktree-reservation-tests",
+    "no-checkout-code|WHEN repository checkout hooks are present|ASSERT TEST_PASS worktree-reservation-tests",
+    "private-root|WHEN worktree storage roots are inspected|ASSERT TEST_PASS worktree-reservation-tests"
   ],
   "acceptanceEvidenceIds": {
-    "immutable-evidence|WHEN trusted gate evidence is recorded|ASSERT TEST_PASS workflow-evidence-tests": ["workflow-evidence-tests"],
-    "exact-binding|WHEN evidence-gated progression is requested|ASSERT TEST_PASS workflow-evidence-tests": ["workflow-evidence-tests"],
-    "replay-rejection|WHEN old-head or failed evidence is reused|ASSERT TEST_PASS workflow-evidence-tests": ["workflow-evidence-tests"],
-    "lease-authority|WHEN gate evidence is recorded or consumed|ASSERT TEST_PASS workflow-evidence-tests": ["workflow-evidence-tests"]
+    "metadata-only|WHEN a task worktree is reserved|ASSERT TEST_PASS worktree-reservation-tests": ["worktree-reservation-tests"],
+    "exact-binding|WHEN lease branch attempt and base are validated|ASSERT TEST_PASS worktree-reservation-tests": ["worktree-reservation-tests"],
+    "no-checkout-code|WHEN repository checkout hooks are present|ASSERT TEST_PASS worktree-reservation-tests": ["worktree-reservation-tests"],
+    "private-root|WHEN worktree storage roots are inspected|ASSERT TEST_PASS worktree-reservation-tests": ["worktree-reservation-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/workflow_state.py",
-    ".agent-workflow/controller/tests/test_workflow_state.py",
+    ".agent-workflow/controller/td_controller/worktree.py",
+    ".agent-workflow/controller/tests/test_worktree.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 600,
+  "maxChangedLines": 500,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
