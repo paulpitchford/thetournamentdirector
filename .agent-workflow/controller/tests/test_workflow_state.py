@@ -88,15 +88,19 @@ class TaskStateLedgerTests(unittest.TestCase):
         expected_state: str,
         new_state: str,
         *,
+        expected_revision: int | None = None,
         attempt: int = 1,
         head_sha: str = HEAD_SHA,
         result: str = "PASS",
         artifact_ids: tuple[str, ...] = (),
     ):
+        if expected_revision is None:
+            expected_revision = self.ledger.current("DOC-001").revision
         self.clock.advance()
         return self.ledger.transition(
             "DOC-001",
             expected_state=expected_state,
+            expected_revision=expected_revision,
             new_state=new_state,
             attempt=attempt,
             head_sha=head_sha,
@@ -110,6 +114,7 @@ class TaskStateLedgerTests(unittest.TestCase):
         state = self.register()
 
         self.assertEqual(state.state, "APPROVED")
+        self.assertEqual(state.revision, 1)
         self.assertEqual(state.attempt, 1)
         self.assertEqual(state.max_attempts, 2)
         self.assertEqual(state.base_sha, BASE_SHA)
@@ -165,6 +170,7 @@ class TaskStateLedgerTests(unittest.TestCase):
 
     def test_review_remediation_loop_returns_to_verification(self) -> None:
         self.register(status="QUEUED")
+        first_verifying_revision = 0
         for prior, new in (
             ("QUEUED", "LEASED"),
             ("LEASED", "IMPLEMENTING"),
@@ -174,9 +180,17 @@ class TaskStateLedgerTests(unittest.TestCase):
             ("REVIEWING", "REMEDIATING"),
             ("REMEDIATING", "VERIFYING"),
         ):
-            self.transition(prior, new)
+            state = self.transition(prior, new)
+            if new == "VERIFYING" and first_verifying_revision == 0:
+                first_verifying_revision = state.revision
 
-        self.assertEqual(self.ledger.current("DOC-001").state, "VERIFYING")
+        current = self.ledger.current("DOC-001")
+        self.assertEqual(current.state, "VERIFYING")
+        with self.assertRaisesRegex(WorkflowStateError, "changed before"):
+            self.transition(
+                "VERIFYING", "PR_DRAFT", expected_revision=first_verifying_revision
+            )
+        self.assertEqual(self.ledger.current("DOC-001"), current)
 
     def test_stale_or_illegal_transition_rolls_back(self) -> None:
         self.register()
@@ -258,6 +272,7 @@ class TaskStateLedgerTests(unittest.TestCase):
             duplicate.transition(
                 "DOC-001",
                 expected_state="APPROVED",
+                expected_revision=1,
                 new_state="QUEUED",
                 attempt=1,
                 head_sha=HEAD_SHA,
@@ -276,6 +291,7 @@ class TaskStateLedgerTests(unittest.TestCase):
             self.ledger.transition(
                 "DOC-001",
                 expected_state="APPROVED",
+                expected_revision=1,
                 new_state="QUEUED",
                 attempt=1,
                 head_sha=HEAD_SHA,
@@ -301,6 +317,7 @@ class TaskStateLedgerTests(unittest.TestCase):
             arguments = {
                 "task_id": "DOC-001",
                 "expected_state": "APPROVED",
+                "expected_revision": 1,
                 "new_state": "QUEUED",
                 "attempt": 1,
                 "head_sha": HEAD_SHA,

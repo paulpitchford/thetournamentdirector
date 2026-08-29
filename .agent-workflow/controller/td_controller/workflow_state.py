@@ -62,6 +62,7 @@ class TaskState:
 
     task_id: str
     state: str
+    revision: int
     attempt: int
     max_attempts: int
     base_sha: str
@@ -118,6 +119,7 @@ class TaskStateLedger:
                 CREATE TABLE IF NOT EXISTS task_states (
                     task_id TEXT PRIMARY KEY,
                     state TEXT NOT NULL,
+                    revision INTEGER NOT NULL,
                     attempt INTEGER NOT NULL,
                     max_attempts INTEGER NOT NULL,
                     base_sha TEXT NOT NULL,
@@ -176,9 +178,9 @@ class TaskStateLedger:
             connection.execute(
                 """
                 INSERT INTO task_states(
-                    task_id, state, attempt, max_attempts, base_sha, head_sha,
-                    updated_at
-                ) VALUES (?, ?, 1, ?, ?, ?, ?)
+                    task_id, state, revision, attempt, max_attempts, base_sha,
+                    head_sha, updated_at
+                ) VALUES (?, ?, 1, 1, ?, ?, ?, ?)
                 """,
                 (
                     task.task_id,
@@ -221,6 +223,7 @@ class TaskStateLedger:
         task_id: str,
         *,
         expected_state: str,
+        expected_revision: int,
         new_state: str,
         attempt: int,
         head_sha: str,
@@ -233,6 +236,12 @@ class TaskStateLedger:
         _validate_task_id(task_id)
         _validate_state(expected_state)
         _validate_state(new_state)
+        if (
+            isinstance(expected_revision, bool)
+            or not isinstance(expected_revision, int)
+            or expected_revision < 1
+        ):
+            raise WorkflowStateError("task revision is invalid")
         _validate_sha(head_sha)
         _validate_token(actor, "actor")
         _validate_token(gate_id, "gate ID")
@@ -249,7 +258,7 @@ class TaskStateLedger:
             ).fetchone()
             if row is None:
                 raise WorkflowStateError("task state is unavailable")
-            if row["state"] != expected_state:
+            if row["state"] != expected_state or row["revision"] != expected_revision:
                 raise WorkflowStateError("task state changed before transition")
             if _parse_timestamp(row["updated_at"]) > _parse_timestamp(timestamp):
                 raise WorkflowStateError("workflow clock moved backwards")
@@ -263,8 +272,9 @@ class TaskStateLedger:
             cursor = connection.execute(
                 """
                 UPDATE task_states
-                SET state = ?, attempt = ?, head_sha = ?, updated_at = ?
-                WHERE task_id = ? AND state = ? AND attempt = ?
+                SET state = ?, revision = revision + 1, attempt = ?,
+                    head_sha = ?, updated_at = ?
+                WHERE task_id = ? AND state = ? AND revision = ? AND attempt = ?
                 """,
                 (
                     new_state,
@@ -273,6 +283,7 @@ class TaskStateLedger:
                     timestamp,
                     task_id,
                     expected_state,
+                    expected_revision,
                     row["attempt"],
                 ),
             )
@@ -283,10 +294,7 @@ class TaskStateLedger:
                 transition_id=transition_id,
                 task_id=task_id,
                 event_order=connection.execute(
-                    """
-                    SELECT COUNT(*) + 1 FROM task_transitions
-                    WHERE task_id = ?
-                    """,
+                    "SELECT COUNT(*) + 1 FROM task_transitions WHERE task_id = ?",
                     (task_id,),
                 ).fetchone()[0],
                 attempt=attempt,
@@ -470,6 +478,7 @@ def _task_state(row: sqlite3.Row) -> TaskState:
     return TaskState(
         task_id=row["task_id"],
         state=row["state"],
+        revision=row["revision"],
         attempt=row["attempt"],
         max_attempts=row["max_attempts"],
         base_sha=row["base_sha"],
