@@ -31,8 +31,6 @@ PINNED_CODE_MODE_HOST_SHA256 = (
 
 @dataclass(frozen=True)
 class ProcessOutput:
-    """Bounded process result returned by the execution boundary."""
-
     returncode: int
     stdout: bytes
     stderr: bytes
@@ -138,8 +136,6 @@ def _attest_codex_runtime(destination_dir: Path) -> str:
 
 
 class CommandExecutor(Protocol):
-    """Subprocess boundary replaced by a deterministic fake in tests."""
-
     def run(
         self,
         command: list[str],
@@ -148,13 +144,10 @@ class CommandExecutor(Protocol):
         cwd: Path,
         timeout_seconds: int,
     ) -> ProcessOutput:
-        """Execute one finite command without invoking a shell."""
         ...
 
 
 class SubprocessExecutor:
-    """Execute one process group with bounded captured output."""
-
     def __init__(
         self,
         environment_factory: Callable[[str], dict[str, str]] | None = None,
@@ -169,7 +162,6 @@ class SubprocessExecutor:
         cwd: Path,
         timeout_seconds: int,
     ) -> ProcessOutput:
-        """Run a command and return captured bytes or fail on timeout."""
         if len(input_bytes) > MAX_INPUT_BYTES:
             raise CodexReviewError("local Codex review exceeded the input limit")
         process = subprocess.Popen(
@@ -280,8 +272,6 @@ class SubprocessExecutor:
 
 
 class SystemdCgroupExecutor:
-    """Run Codex in a transient user service that owns every descendant."""
-
     def __init__(
         self,
         *,
@@ -433,3 +423,15 @@ class SystemdCgroupExecutor:
                 raise CodexReviewError("invalid transient review cgroup state") from exc
             if cgroup.exists() and "populated 0" not in populated:
                 raise CodexReviewError("transient review cgroup remained populated")
+
+
+def execute_attested_codex(
+    destination_dir: Path, arguments: list[str], *, input_bytes: bytes, cwd: Path,
+    timeout_seconds: int, executor: CommandExecutor | None = None,
+) -> ProcessOutput:
+    executable = _attest_codex_runtime(destination_dir)
+    boundary = executor or SystemdCgroupExecutor()
+    return boundary.run(
+        [executable, *arguments], input_bytes=input_bytes, cwd=cwd,
+        timeout_seconds=timeout_seconds,
+    )

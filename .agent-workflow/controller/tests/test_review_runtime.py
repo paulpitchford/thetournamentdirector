@@ -24,6 +24,7 @@ from td_controller.review_runtime import (
     _minimal_codex_environment,
     _minimal_systemd_environment,
     _stage_file,
+    execute_attested_codex,
 )
 
 class FakeExecutor:
@@ -322,6 +323,18 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
 
 
 class RuntimeAttestationTests(unittest.TestCase):
+    def test_integrated_api_executes_only_attested_path(self) -> None:
+        executor = FakeExecutor(ProcessOutput(0, b"ok", b""))
+        with patch(
+            "td_controller.review_runtime._attest_codex_runtime",
+            return_value="/controller/runtime/codex",
+        ):
+            execute_attested_codex(
+                Path("/controller/runtime"), ["exec"], input_bytes=b"prompt",
+                cwd=Path("/tmp"), timeout_seconds=5, executor=executor,
+            )
+        self.assertEqual(executor.commands, [["/controller/runtime/codex", "exec"]])
+
     def test_attested_copy_is_bound_after_source_replacement(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             source = Path(temporary) / "codex"

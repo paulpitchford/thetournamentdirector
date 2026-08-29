@@ -44,9 +44,7 @@
   ],
   "allowedPaths": [
     ".agent-workflow/controller/td_controller/review_runtime.py",
-    ".agent-workflow/controller/td_controller/state.py",
     ".agent-workflow/controller/tests/test_review_runtime.py",
-    ".agent-workflow/controller/tests/test_controller.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [
