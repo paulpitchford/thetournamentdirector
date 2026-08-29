@@ -24,13 +24,27 @@
     "Automated provider tests use a fake executor and do not invoke a model"
   ],
   "acceptanceEvidenceIds": {
-    "The provider constructs a bounded inert-data prompt from trusted task, diff, SHA, and deterministic evidence inputs": ["local-provider-tests"],
-    "Every model tool, hosted search, network permission, approval path, ambient environment, and persistent session is disabled": ["local-provider-tests"],
-    "Role-specific output schemas require code-security or QA artifacts and code review requires empty acceptance evidence": ["local-provider-tests"],
-    "The JSONL parser accepts only allowlisted lifecycle, reasoning, and one final agent-message event while rejecting tool, error, malformed, duplicate-session, and invalid-UTF8 events": ["local-provider-tests"],
-    "Nonzero exits and stderr fail closed with bounded secret-safe classifications rather than raw provider output": ["local-provider-tests"],
-    "Production provider execution uses the attested runtime through SystemdCgroupExecutor": ["local-provider-tests"],
-    "Automated provider tests use a fake executor and do not invoke a model": ["no-model-in-tests"]
+    "The provider constructs a bounded inert-data prompt from trusted task, diff, SHA, and deterministic evidence inputs": [
+      "local-provider-tests"
+    ],
+    "Every model tool, hosted search, network permission, approval path, ambient environment, and persistent session is disabled": [
+      "local-provider-tests"
+    ],
+    "Role-specific output schemas require code-security or QA artifacts and code review requires empty acceptance evidence": [
+      "local-provider-tests"
+    ],
+    "The JSONL parser accepts only allowlisted lifecycle, reasoning, and one final agent-message event while rejecting tool, error, malformed, duplicate-session, and invalid-UTF8 events": [
+      "local-provider-tests"
+    ],
+    "Nonzero exits and stderr fail closed with bounded secret-safe classifications rather than raw provider output": [
+      "local-provider-tests"
+    ],
+    "Production provider execution uses the attested runtime through SystemdCgroupExecutor": [
+      "local-provider-tests"
+    ],
+    "Automated provider tests use a fake executor and do not invoke a model": [
+      "no-model-in-tests"
+    ]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [
@@ -38,6 +52,7 @@
     "python3 .agent-workflow/scripts/check_repository.py"
   ],
   "allowedPaths": [
+    ".agent-workflow/controller/codex-0.150.1-features.txt",
     ".agent-workflow/controller/td_controller/__init__.py",
     ".agent-workflow/controller/td_controller/codex_review.py",
     ".agent-workflow/controller/tests/test_codex_review.py",

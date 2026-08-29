@@ -11,32 +11,19 @@ from pathlib import Path
 
 from .provider import ProviderResult
 from .review_contract import (
-    ALLOWED_ROLES,
-    REVIEW_OUTPUT_SCHEMA,
-    CodexReviewError,
-    AcceptanceEvidence,
-    Finding,
-    ReviewArtifact,
-    ReviewRequest,
-    TrustedEvidence,
-    _artifact_to_dict,
-    _parse_artifact,
-    _validate_trusted_evidence,
+    ALLOWED_ROLES, REVIEW_OUTPUT_SCHEMA, CodexReviewError, AcceptanceEvidence,
+    Finding, ReviewArtifact, ReviewRequest, TrustedEvidence, _artifact_to_dict,
+    _parse_artifact, _validate_trusted_evidence,
 )
 from .review_runtime import (
-    MAX_OUTPUT_BYTES,
-    CommandExecutor,
-    ProcessOutput,
-    SubprocessExecutor,
-    SystemdCgroupExecutor,
-    execute_attested_codex,
+    MAX_OUTPUT_BYTES, CommandExecutor, ProcessOutput, SubprocessExecutor,
+    SystemdCgroupExecutor, execute_attested_codex,
 )
 
 MAX_PROMPT_BYTES = 512_000
 FEATURE_MANIFEST = Path(__file__).parent.parent / "codex-0.150.1-features.txt"
 FEATURE_MANIFEST_SHA256 = "32db8c07dcf04b796e6b3f52da6fa0729dd6982b05e2025af9ee8eaec2ca3297"
 ALLOWED_ITEM_TYPES = frozenset({"agent_message", "reasoning"})
-
 class CodexReviewProvider:
     """Run one fresh local Codex review with every model tool disabled."""
 
@@ -107,9 +94,7 @@ class CodexReviewProvider:
             for argument in ("--disable", feature)
         ]
         return [
-            "-a",
-            "never",
-            "exec",
+            "-a", "never", "exec",
             "--ignore-user-config",
             "--ignore-rules",
             "--strict-config",
