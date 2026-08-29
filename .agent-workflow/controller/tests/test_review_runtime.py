@@ -292,6 +292,14 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
                         ["/pinned/codex", "exec"], input_bytes=b"",
                         cwd=Path(temporary), timeout_seconds=5,
                     )
+        with (
+            tempfile.TemporaryDirectory(prefix="td-safe-") as safe,
+            tempfile.TemporaryDirectory(prefix="td target ") as target,
+        ):
+            link = Path(safe) / "safe-link"
+            link.symlink_to(target, target_is_directory=True)
+            with self.assertRaisesRegex(CodexReviewError, "inaccessible containment"):
+                SystemdCgroupExecutor(inaccessible_paths=(link,))
         self.assertEqual(delegate.commands, [])
 
     def test_launcher_is_staged_outside_writable_service_cwd(self) -> None:

@@ -61,14 +61,15 @@ def _systemd_property_path(path: Path, *, require_exists: bool = True) -> Path:
     safe_characters = frozenset(
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._/+:-"
     )
-    if not isinstance(path, Path) or not path.is_absolute() or any(
-        character not in safe_characters for character in str(path)
-    ):
+    if not isinstance(path, Path) or not path.is_absolute():
         raise CodexReviewError("systemd containment path is invalid")
     try:
-        return path.resolve(strict=require_exists)
+        resolved = path.resolve(strict=require_exists)
     except OSError as exc:
         raise CodexReviewError("systemd containment path is invalid") from exc
+    if any(character not in safe_characters for character in str(resolved)):
+        raise CodexReviewError("systemd containment path is invalid")
+    return resolved
 
 
 def _minimal_codex_environment(executable: str) -> dict[str, str]:

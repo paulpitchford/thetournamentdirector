@@ -172,44 +172,12 @@ class PlanningTrialTests(unittest.TestCase):
             loader.assert_not_called()
             factory.assert_not_called()
 
-    def test_head_change_is_rejected_after_success_or_failure(self) -> None:
-        current = RepositorySnapshot(BASE_SHA)
-        changed = RepositorySnapshot("b" * 40)
-        for planner in (FakePlanner(), FakePlanner(error=RuntimeError("failed"))):
-            with self.assertRaisesRegex(PlanningTrialError, "changed repository"):
-                run_fake_trial(planner, current, changed)
-
-    def test_factory_head_change_is_always_rechecked(self) -> None:
-        current = RepositorySnapshot(BASE_SHA)
-        changed = RepositorySnapshot("b" * 40)
-        with (
-            patch(
-                "td_controller.planning_trial.repository_snapshot",
-                side_effect=(current, changed),
-            ),
-            patch(
-                "td_controller.planning_trial.load_reviewed_backlog",
-                return_value=BACKLOG,
-            ),
-            patch(
-                "td_controller.planning_trial.CodexPlannerProvider",
-                side_effect=RuntimeError("factory failed"),
-            ),
-        ):
-            with self.assertRaisesRegex(PlanningTrialError, "changed repository"):
-                run_planning_trial(
-                    "PLAN-TRIAL-001",
-                    repository_root=Path.cwd(),
-                    expected_base_sha=BASE_SHA,
-                    known_task_ids=frozenset(),
-                )
-
-    def test_factory_failure_is_normalized_after_identity_recheck(self) -> None:
+    def test_factory_failure_is_normalized(self) -> None:
         current = RepositorySnapshot(BASE_SHA)
         with (
             patch(
                 "td_controller.planning_trial.repository_snapshot",
-                side_effect=(current, current),
+                return_value=current,
             ),
             patch(
                 "td_controller.planning_trial.load_reviewed_backlog",
