@@ -111,8 +111,11 @@ class MetadataWorktreeManager:
             raise WorktreeError("task worktree path is already reserved")
         self._git("cat-file", "-e", f"{base_sha}^{{commit}}")
         reference = f"refs/heads/{lease.branch}"
-        self._git("update-ref", reference, base_sha, "0" * 40)
+        existing = self._run_git("show-ref", "--quiet", "--verify", reference)
+        if existing.returncode != 1 or existing.stdout or existing.stderr:
+            raise WorktreeError("task branch is already reserved or cannot be inspected")
         try:
+            self._git("update-ref", reference, base_sha, "0" * 40)
             self._git(
                 "worktree", "add", "--quiet", "--no-checkout",
                 str(target), lease.branch,

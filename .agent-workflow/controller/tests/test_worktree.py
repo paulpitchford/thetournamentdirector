@@ -136,6 +136,21 @@ class MetadataWorktreeManagerTests(unittest.TestCase):
 
         self.assertEqual(tuple(self.worktrees.iterdir()), ())
 
+    def test_ambiguous_branch_creation_failure_is_rolled_back(self) -> None:
+        manager = self.manager()
+        original = manager._git
+
+        def ambiguous(*arguments: str) -> None:
+            original(*arguments)
+            if arguments[0] == "update-ref":
+                raise WorktreeError("ambiguous update")
+
+        with patch.object(manager, "_git", side_effect=ambiguous):
+            with self.assertRaisesRegex(WorktreeError, "ambiguous"):
+                manager.reserve(self.lease, attempt=1, base_sha=self.base_sha)
+        self.assertNotIn(self.lease.branch, self.git("branch", "--list").stdout)
+        self.assertTrue(manager.reserve(self.lease, attempt=1, base_sha=self.base_sha))
+
     def test_post_creation_failure_rolls_back_branch_path_and_registration(self) -> None:
         manager = self.manager()
         with patch.object(Path, "iterdir", side_effect=OSError("inspection failed")):
