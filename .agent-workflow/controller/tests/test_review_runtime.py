@@ -265,6 +265,24 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
         cleanup.assert_called_once_with("td-codex-review-fixed123")
         self.assertEqual(result.stdout, b"ok")
 
+    def test_clean_environment_launcher_matches_reviewed_source(self) -> None:
+        source = Path(__file__).parents[1] / "bin" / "td-clean-env.S"
+        expected = source.with_suffix("")
+        with tempfile.TemporaryDirectory() as temporary:
+            object_file = Path(temporary) / "td-clean-env.o"
+            executable = Path(temporary) / "td-clean-env"
+            subprocess.run(
+                ["/usr/bin/as", str(source), "-o", str(object_file)], check=True
+            )
+            subprocess.run(
+                [
+                    "/usr/bin/ld", "-static", "-s", "--build-id=none",
+                    str(object_file), "-o", str(executable),
+                ],
+                check=True,
+            )
+            self.assertEqual(executable.read_bytes(), expected.read_bytes())
+
     def test_modified_clean_environment_launcher_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             launcher = Path(temporary) / "launcher"
