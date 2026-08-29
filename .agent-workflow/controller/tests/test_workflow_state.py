@@ -118,9 +118,17 @@ class TaskStateLedgerTests(unittest.TestCase):
             ("REVIEWING", "CI_PENDING"),
             ("CI_PENDING", "READY_FOR_POLICY_MERGE"),
         }
-        if artifact_ids is None:
-            artifact_ids = ("gate-evidence",) if gate else ()
-        self.clock.advance()
+        if artifact_ids is None and gate:
+            evidence_id = f"evidence-{current.revision}-{new_state.lower()}"
+            self.ledger.record_evidence(
+                "DOC-001", evidence_id=evidence_id,
+                expected_revision=current.revision, expected_head_sha=current.head_sha,
+                attempt=attempt, lease_id=self.lease.lease_id, gate_id="test-gate",
+                source="local_controller", result="PASS", artifact_sha256="d" * 64,
+            )
+            artifact_ids = (evidence_id,)
+        elif artifact_ids is None:
+            artifact_ids = ()
         return self.ledger.transition(
             "DOC-001",
             expected_state=expected_state,
@@ -182,6 +190,56 @@ class TaskStateLedgerTests(unittest.TestCase):
             [record.event_order for record in history],
             list(range(1, len(history) + 1)),
         )
+
+    def test_gate_evidence_is_immutable_and_cannot_be_replayed_after_remediation(self) -> None:
+        self.register(status="QUEUED")
+        for prior, new in (
+            ("QUEUED", "LEASED"),
+            ("LEASED", "IMPLEMENTING"),
+            ("IMPLEMENTING", "VERIFYING"),
+            ("VERIFYING", "PR_DRAFT"),
+            ("PR_DRAFT", "REVIEWING"),
+            ("REVIEWING", "REMEDIATING"),
+        ):
+            self.transition(prior, new)
+        old_evidence = "evidence-4-pr_draft"
+        stored = self.ledger.evidence(old_evidence)
+        self.assertEqual(stored.head_sha, HEAD_SHA)
+        self.transition("REMEDIATING", "VERIFYING", head_sha="c" * 40)
+        with self.assertRaisesRegex(WorkflowStateError, "authoritative"):
+            self.transition(
+                "VERIFYING", "PR_DRAFT", artifact_ids=(old_evidence,)
+            )
+        current = self.ledger.current("DOC-001")
+        failed = self.ledger.record_evidence(
+            "DOC-001", evidence_id="failed-evidence",
+            expected_revision=current.revision, expected_head_sha=current.head_sha,
+            attempt=1, lease_id=self.lease.lease_id, gate_id="test-gate",
+            source="local_controller", result="FAIL", artifact_sha256="e" * 64,
+        )
+        with self.assertRaisesRegex(WorkflowStateError, "authoritative"):
+            self.transition(
+                "VERIFYING", "PR_DRAFT", artifact_ids=(failed.evidence_id,)
+            )
+        advanced = self.transition("VERIFYING", "PR_DRAFT")
+        self.assertEqual(advanced.state, "PR_DRAFT")
+
+    def test_evidence_identity_is_immutable_and_requires_active_lease(self) -> None:
+        state = self.register()
+        arguments = {
+            "task_id": "DOC-001", "evidence_id": "immutable-evidence",
+            "expected_revision": state.revision, "expected_head_sha": state.head_sha,
+            "attempt": 1, "lease_id": self.lease.lease_id,
+            "gate_id": "test-gate", "source": "local_controller",
+            "result": "PASS", "artifact_sha256": "f" * 64,
+        }
+        evidence = self.ledger.record_evidence(**arguments)
+        with self.assertRaisesRegex(WorkflowStateError, "identity conflicts"):
+            self.ledger.record_evidence(**{**arguments, "artifact_sha256": "0" * 64})
+        self.assertEqual(self.ledger.evidence(evidence.evidence_id), evidence)
+        self.clock.value += timedelta(seconds=301)
+        with self.assertRaisesRegex(WorkflowStateError, "context is unavailable"):
+            self.ledger.record_evidence(**{**arguments, "evidence_id": "expired"})
 
     def test_stale_identity_and_illegal_transition_roll_back(self) -> None:
         self.register()

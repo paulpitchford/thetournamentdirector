@@ -10,9 +10,15 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from .task_contract import DISPATCHABLE_STATES, TASK_ID_PATTERN, TaskContract
+from .task_contract import (
+    DISPATCHABLE_STATES,
+    EVIDENCE_SOURCES,
+    TASK_ID_PATTERN,
+    TaskContract,
+)
 
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+DIGEST_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 TOKEN_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]{0,127}$")
 NORMAL_TRANSITIONS = {
     "APPROVED": frozenset({"QUEUED"}),
@@ -107,6 +113,23 @@ class TransitionRecord:
     artifact_ids: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class GateEvidence:
+    """One immutable gate result bound to an exact task revision."""
+
+    evidence_id: str
+    task_id: str
+    attempt: int
+    revision: int
+    gate_id: str
+    head_sha: str
+    source: str
+    result: str
+    artifact_sha256: str
+    recorded_at: str
+    actor: str
+
+
 class TaskStateLedger:
     """SQLite task state with optimistic transitions and append-only history."""
 
@@ -171,6 +194,24 @@ class TaskStateLedger:
                 """
                 CREATE INDEX IF NOT EXISTS task_transitions_task
                 ON task_transitions(task_id, timestamp, transition_id)
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS gate_evidence (
+                    evidence_id TEXT PRIMARY KEY,
+                    task_id TEXT NOT NULL,
+                    attempt INTEGER NOT NULL,
+                    revision INTEGER NOT NULL,
+                    gate_id TEXT NOT NULL,
+                    head_sha TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    result TEXT NOT NULL,
+                    artifact_sha256 TEXT NOT NULL,
+                    recorded_at TEXT NOT NULL,
+                    actor TEXT NOT NULL,
+                    FOREIGN KEY(task_id) REFERENCES task_states(task_id)
+                )
                 """
             )
 
@@ -239,6 +280,96 @@ class TaskStateLedger:
             connection.close()
         return committed
 
+    def record_evidence(
+        self,
+        task_id: str,
+        *,
+        evidence_id: str,
+        expected_revision: int,
+        expected_head_sha: str,
+        attempt: int,
+        lease_id: str,
+        gate_id: str,
+        source: str,
+        result: str,
+        artifact_sha256: str,
+    ) -> GateEvidence:
+        """Append one immutable gate result under the active task lease."""
+        _validate_task_id(task_id)
+        for value, field in (
+            (evidence_id, "evidence ID"),
+            (lease_id, "lease ID"),
+            (gate_id, "gate ID"),
+        ):
+            _validate_token(value, field)
+        _validate_sha(expected_head_sha)
+        if any(
+            isinstance(value, bool) or not isinstance(value, int) or value < 1
+            for value in (expected_revision, attempt)
+        ):
+            raise WorkflowStateError("gate evidence version is invalid")
+        if (
+            not isinstance(source, str)
+            or source not in EVIDENCE_SOURCES
+            or not isinstance(result, str)
+            or result not in {"PASS", "FAIL"}
+        ):
+            raise WorkflowStateError("gate evidence classification is invalid")
+        if not isinstance(artifact_sha256, str) or not DIGEST_PATTERN.fullmatch(
+            artifact_sha256
+        ):
+            raise WorkflowStateError("gate evidence digest is invalid")
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            timestamp = self._timestamp()
+            row = connection.execute(
+                "SELECT * FROM task_states WHERE task_id = ?", (task_id,)
+            ).fetchone()
+            lease = connection.execute(
+                """
+                SELECT owner FROM task_leases
+                WHERE lease_id = ? AND task_id = ? AND state = 'ACTIVE'
+                    AND expires_at > ?
+                """,
+                (lease_id, task_id, timestamp),
+            ).fetchone()
+            if row is None or lease is None:
+                raise WorkflowStateError("authoritative evidence context is unavailable")
+            if (
+                row["revision"] != expected_revision
+                or row["head_sha"] != expected_head_sha
+                or row["attempt"] != attempt
+            ):
+                raise WorkflowStateError("task state changed before evidence")
+            connection.execute(
+                """
+                INSERT INTO gate_evidence(
+                    evidence_id, task_id, attempt, revision, gate_id, head_sha,
+                    source, result, artifact_sha256, recorded_at, actor
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    evidence_id, task_id, attempt, expected_revision, gate_id,
+                    expected_head_sha, source, result, artifact_sha256,
+                    timestamp, lease["owner"],
+                ),
+            )
+            committed = connection.execute(
+                "SELECT * FROM gate_evidence WHERE evidence_id = ?",
+                (evidence_id,),
+            ).fetchone()
+            connection.commit()
+        except sqlite3.IntegrityError as exc:
+            connection.rollback()
+            raise WorkflowStateError("evidence identity conflicts") from exc
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+        return _gate_evidence(committed)
+
     def transition(
         self,
         task_id: str,
@@ -268,7 +399,7 @@ class TaskStateLedger:
         _validate_sha(head_sha)
         _validate_token(lease_id, "lease ID")
         _validate_token(gate_id, "gate ID")
-        if result not in {"PASS", "FAIL", "NONE"}:
+        if not isinstance(result, str) or result not in {"PASS", "FAIL", "NONE"}:
             raise WorkflowStateError("transition result is invalid")
         artifacts = _validate_artifact_ids(artifact_ids)
         transition_id = self._transition_id()
@@ -299,6 +430,21 @@ class TaskStateLedger:
                 raise WorkflowStateError("task state changed before transition")
             if _parse_timestamp(row["updated_at"]) > _parse_timestamp(timestamp):
                 raise WorkflowStateError("workflow clock moved backwards")
+            evidence_authorized = bool(artifacts) and all(
+                connection.execute(
+                    """
+                    SELECT 1 FROM gate_evidence
+                    WHERE evidence_id = ? AND task_id = ? AND attempt = ?
+                        AND revision = ? AND gate_id = ? AND head_sha = ?
+                        AND result = 'PASS'
+                    """,
+                    (
+                        evidence_id, task_id, attempt, expected_revision,
+                        gate_id, expected_head_sha,
+                    ),
+                ).fetchone() is not None
+                for evidence_id in artifacts
+            )
             _validate_transition(
                 expected_state,
                 new_state,
@@ -308,6 +454,7 @@ class TaskStateLedger:
                 head_changed=head_sha != expected_head_sha,
                 result=result,
                 has_artifacts=bool(artifacts),
+                evidence_authorized=evidence_authorized,
             )
             cursor = connection.execute(
                 """
@@ -401,6 +548,17 @@ class TaskStateLedger:
             ).fetchall()
         return tuple(_transition(row) for row in rows)
 
+    def evidence(self, evidence_id: str) -> GateEvidence:
+        """Return one immutable evidence record."""
+        _validate_token(evidence_id, "evidence ID")
+        with closing(self._connect()) as connection:
+            row = connection.execute(
+                "SELECT * FROM gate_evidence WHERE evidence_id = ?", (evidence_id,)
+            ).fetchone()
+        if row is None:
+            raise WorkflowStateError("gate evidence is unavailable")
+        return _gate_evidence(row)
+
     def _timestamp(self) -> str:
         value = self._now()
         if not isinstance(value, datetime) or value.tzinfo is None:
@@ -476,6 +634,7 @@ def _validate_transition(
     head_changed: bool,
     result: str,
     has_artifacts: bool,
+    evidence_authorized: bool,
 ) -> None:
     allowed = set(NORMAL_TRANSITIONS.get(prior, ()))
     if prior in INTERRUPTIBLE_STATES:
@@ -487,9 +646,10 @@ def _validate_transition(
     if head_changed and edge not in HEAD_CHANGE_TRANSITIONS:
         raise WorkflowStateError("task head change is not allowed")
     if edge in EVIDENCE_GATE_TRANSITIONS:
-        raise WorkflowStateError("authoritative gate evidence is unavailable")
-    if has_artifacts:
-        raise WorkflowStateError("authoritative artifact evidence is unavailable")
+        if result != "PASS" or not evidence_authorized:
+            raise WorkflowStateError("authoritative gate evidence is unavailable")
+    elif has_artifacts:
+        raise WorkflowStateError("gate evidence is not allowed for this transition")
     expected_result = (
         "FAIL" if new in FAILURE_STATES
         else "NONE" if new in {"CANCELLED", "SUPERSEDED"}
@@ -546,6 +706,22 @@ def _task_state(row: sqlite3.Row) -> TaskState:
         base_sha=row["base_sha"],
         head_sha=row["head_sha"],
         updated_at=row["updated_at"],
+    )
+
+
+def _gate_evidence(row: sqlite3.Row) -> GateEvidence:
+    return GateEvidence(
+        evidence_id=row["evidence_id"],
+        task_id=row["task_id"],
+        attempt=row["attempt"],
+        revision=row["revision"],
+        gate_id=row["gate_id"],
+        head_sha=row["head_sha"],
+        source=row["source"],
+        result=row["result"],
+        artifact_sha256=row["artifact_sha256"],
+        recorded_at=row["recorded_at"],
+        actor=row["actor"],
     )
 
 
