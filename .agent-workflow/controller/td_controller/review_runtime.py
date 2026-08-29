@@ -318,6 +318,9 @@ class SystemdCgroupExecutor:
             "--property=TimeoutStopSec=2s",
             f"--property=RuntimeMaxSec={max(1, timeout_seconds)}s",
             "--property=TasksMax=64",
+            "--property=MemoryMax=2G",
+            "--property=MemorySwapMax=0",
+            "--property=CPUQuota=200%",
             "--property=NoNewPrivileges=yes",
             (
                 "--property=InaccessiblePaths="

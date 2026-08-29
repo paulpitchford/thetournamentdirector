@@ -231,6 +231,9 @@ class SystemdCgroupExecutorTests(unittest.TestCase):
         self.assertIn("--property=KillMode=control-group", command)
         self.assertIn("--property=RuntimeMaxSec=30s", command)
         self.assertIn("--property=TasksMax=64", command)
+        self.assertIn("--property=MemoryMax=2G", command)
+        self.assertIn("--property=MemorySwapMax=0", command)
+        self.assertIn("--property=CPUQuota=200%", command)
         runtime_dir = f"/run/user/{os.getuid()}"
         self.assertIn(
             f"--property=InaccessiblePaths={runtime_dir}/bus {runtime_dir}/systemd",
