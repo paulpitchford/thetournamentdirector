@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from td_controller.task_contract import (
     TaskContractError, load_task, parse_dispatch_task_json, parse_task, parse_task_json,
-    validate_for_dispatch,
+    path_is_allowed, validate_for_dispatch,
 )
 
 
@@ -54,7 +54,9 @@ class TaskContractTests(unittest.TestCase):
 
     def test_repository_task_fixtures_remain_valid(self) -> None:
         root = Path(__file__).parents[2] / "tasks"
-        tasks = [load_task(path) for path in sorted(root.glob("*.json"))]
+        tasks = [
+            load_task(path, trusted_root=root) for path in sorted(root.glob("*.json"))
+        ]
 
         self.assertGreaterEqual(len(tasks), 2)
         self.assertEqual(len({task.task_id for task in tasks}), len(tasks))
@@ -278,7 +280,8 @@ class TaskContractTests(unittest.TestCase):
 
     def test_path_escape_ignored_roots_and_exact_overlap_are_rejected(self) -> None:
         paths = ("/etc/passwd", "../parent", ":(exclude).github/**", ":(top)foo",
-                 "-rf", "--", "!modern-app/**", "^.github/**", ".git/config",
+                 "-rf", "--", "!modern-app/**", "^.github/**", "modern-app/[.]git/**",
+                 ".git/config",
                  ".git/hooks/**", "modern-app/.git/config", "modern-app/.git/hooks/**",
                  ".git/objects/**", "downloads/tool", "extracted/app",
                  "**", "*", "*/tool", ".")
@@ -286,7 +289,9 @@ class TaskContractTests(unittest.TestCase):
             with self.subTest(path=path):
                 value = valid_task()
                 value["allowedPaths"] = [path]
-                with self.assertRaisesRegex(TaskContractError, "prohibited path"):
+                with self.assertRaisesRegex(
+                    TaskContractError, "prohibited path|unsupported glob"
+                ):
                     parse_task(value)
         for alias in (".github/./**", "modern-app/src/**/"):
             value = valid_task()
@@ -310,6 +315,28 @@ class TaskContractTests(unittest.TestCase):
             value["protectedPaths"] = [protected]
             with self.assertRaisesRegex(TaskContractError, "overlap"):
                 parse_task(value)
+
+    def test_concrete_path_authorization_applies_denies_first(self) -> None:
+        task = parse_task(valid_task())
+        self.assertTrue(path_is_allowed(task, "modern-app/src/domain/model.py"))
+        for candidate in (
+            "modern-app/src/.git/hooks/pre-commit",
+            "modern-app/src/downloads/tool",
+            ".github/workflows/change.yml",
+            "modern-app/src/**",
+        ):
+            self.assertFalse(path_is_allowed(task, candidate))
+
+    def test_trusted_task_root_rejects_parent_symlink_traversal(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "tasks"
+            external = Path(temporary) / "external"
+            root.mkdir()
+            external.mkdir()
+            (external / "task.json").write_text(json.dumps(valid_task()))
+            (root / "link").symlink_to(external, target_is_directory=True)
+            with self.assertRaisesRegex(TaskContractError, "trusted task root"):
+                load_task(root / "link" / "task.json", trusted_root=root)
 
     def test_limits_and_collection_bounds_are_enforced(self) -> None:
         for field, invalid in (("maxChangedLines", 0), ("maxChangedLines", 5_001),
@@ -350,17 +377,17 @@ class TaskContractTests(unittest.TestCase):
             path = root / "task.json"
             path.write_bytes(b" " * 1_000_000)
             with self.assertRaisesRegex(TaskContractError, "size limit"):
-                load_task(path)
+                load_task(path, trusted_root=root)
             target = root / "target.json"
             target.write_text(json.dumps(valid_task()))
             path.unlink()
             path.symlink_to(target)
             with self.assertRaisesRegex(TaskContractError, "unavailable"):
-                load_task(path)
+                load_task(path, trusted_root=root)
             path.unlink()
             os.mkfifo(path)
             with self.assertRaisesRegex(TaskContractError, "not regular"):
-                load_task(path)
+                load_task(path, trusted_root=root)
 
 
 if __name__ == "__main__":

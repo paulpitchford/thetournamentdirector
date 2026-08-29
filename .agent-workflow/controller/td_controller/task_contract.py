@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import os
 import re
@@ -108,9 +109,23 @@ def parse_task_json(payload: str | bytes) -> TaskContract:
     return parse_task(value)
 
 
-def load_task(path: Path) -> TaskContract:
+def load_task(path: Path, *, trusted_root: Path) -> TaskContract:
+    """Load one direct child of an explicit no-follow trusted task directory."""
     try:
-        descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+        relative = path.relative_to(trusted_root)
+        if len(relative.parts) != 1:
+            raise TaskContractError("task file is outside the trusted task root")
+        root_descriptor = os.open(
+            trusted_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        )
+        try:
+            descriptor = os.open(
+                relative.name,
+                os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW,
+                dir_fd=root_descriptor,
+            )
+        finally:
+            os.close(root_descriptor)
         with os.fdopen(descriptor, "rb") as task_file:
             if not stat.S_ISREG(os.fstat(task_file.fileno()).st_mode):
                 raise TaskContractError("task file is not regular")
@@ -126,8 +141,8 @@ def parse_dispatch_task_json(payload: str | bytes) -> TaskContract:
     return validate_for_dispatch(parse_task_json(payload))
 
 
-def load_dispatch_task(path: Path) -> TaskContract:
-    return validate_for_dispatch(load_task(path))
+def load_dispatch_task(path: Path, *, trusted_root: Path) -> TaskContract:
+    return validate_for_dispatch(load_task(path, trusted_root=trusted_root))
 
 
 def validate_for_dispatch(task: TaskContract) -> TaskContract:
@@ -261,6 +276,8 @@ def _path_list(value: object, field: str) -> tuple[str, ...]:
             raise TaskContractError(f"{field} contains a prohibited path")
         if item != path.as_posix() or "\\" in item:
             raise TaskContractError(f"{field} contains a non-canonical path")
+        if any(character in item for character in "?[{"):
+            raise TaskContractError(f"{field} contains an unsupported glob")
     return items
 
 
@@ -298,6 +315,21 @@ def _path_claims_overlap(left: str, right: str) -> bool:
         left_prefix == right_prefix[:len(left_prefix)]
         or right_prefix == left_prefix[:len(right_prefix)]
     )
+
+
+def path_is_allowed(task: TaskContract, candidate: str) -> bool:
+    """Match one concrete path with invariant and task deny rules taking precedence."""
+    try:
+        concrete = _path_list([candidate], "candidatePath")[0]
+    except TaskContractError:
+        return False
+    if "*" in concrete:
+        return False
+    if any(_path_claims_overlap(concrete, denied) for denied in INVARIANT_PROTECTED_PATHS):
+        return False
+    if any(fnmatch.fnmatchcase(concrete, denied) for denied in task.protected_paths):
+        return False
+    return any(fnmatch.fnmatchcase(concrete, allowed) for allowed in task.allowed_paths)
 
 
 def _bounded_int(value: object, field: str, minimum: int, maximum: int) -> int:
