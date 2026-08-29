@@ -103,6 +103,8 @@ class TaskContractTests(unittest.TestCase):
     def test_vague_duplicate_and_empty_criteria_are_rejected(self) -> None:
         for criteria, message in ((["It works well"], "vague"),
                                   (["The feature works correctly"], "vague"),
+                                  (["It works"], "vague"),
+                                  (["Everything works"], "vague"),
                                   (["Exact result", "Exact result"], "duplicates"),
                                   ([], "bounded list")):
             with self.subTest(criteria=criteria):
@@ -139,10 +141,16 @@ class TaskContractTests(unittest.TestCase):
             value["allowedPaths"] = [alias]
             with self.assertRaisesRegex(TaskContractError, "non-canonical"):
                 parse_task(value)
-        value = valid_task()
-        value["protectedPaths"] = ["modern-app/src/**"]
-        with self.assertRaisesRegex(TaskContractError, "overlap"):
-            parse_task(value)
+        for allowed, protected in (
+            ("modern-app/**", "modern-app/secrets/**"),
+            ("modern-app/secrets/**", "modern-app/**"),
+            ("modern-app/src/**", "modern-app/src/**"),
+        ):
+            value = valid_task()
+            value["allowedPaths"] = [allowed]
+            value["protectedPaths"] = [protected]
+            with self.assertRaisesRegex(TaskContractError, "overlap"):
+                parse_task(value)
 
     def test_limits_and_collection_bounds_are_enforced(self) -> None:
         for field, invalid in (("maxChangedLines", 0), ("maxChangedLines", 5_001),
@@ -169,6 +177,11 @@ class TaskContractTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(TaskContractError, "unambiguous JSON"):
             parse_task_json(payload)
+
+    def test_direct_task_payload_size_is_bounded(self) -> None:
+        for payload in (b" " * 256_001, " " * 256_001, "😀" * 100_000):
+            with self.assertRaisesRegex(TaskContractError, "size limit"):
+                parse_task_json(payload)
 
     def test_task_file_size_and_file_type_are_bounded(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

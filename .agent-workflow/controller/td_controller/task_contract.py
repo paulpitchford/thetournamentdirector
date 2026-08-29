@@ -33,8 +33,8 @@ REQUIRED_KEYS = frozenset(
     }
 )
 VAGUE_CRITERION = re.compile(
-    r"\b(works? (?:well|correctly)|functions? correctly|properly|as expected|"
-    r"user[- ]friendly|robust|high quality)\b",
+    r"\b(works? (?:well|correctly)|(?:it|everything) works?|functions? correctly|"
+    r"properly|as expected|user[- ]friendly|robust|high quality)\b",
     re.IGNORECASE,
 )
 PROHIBITED_ROOTS = frozenset({"downloads", "extracted", "analysis"})
@@ -79,6 +79,10 @@ def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 def parse_task_json(payload: str | bytes) -> TaskContract:
     """Parse unambiguous JSON and return a validated immutable task."""
+    if not isinstance(payload, (str, bytes)) or len(payload) > 256_000:
+        raise TaskContractError("task payload exceeds the size limit")
+    if isinstance(payload, str) and len(payload.encode("utf-8")) > 256_000:
+        raise TaskContractError("task payload exceeds the size limit")
     try:
         value = json.loads(
             payload, object_pairs_hook=_unique_object,
@@ -136,8 +140,11 @@ def parse_task(value: object) -> TaskContract:
     required_tests = _string_list(value["requiredTests"], "requiredTests")
     allowed_paths = _path_list(value["allowedPaths"], "allowedPaths")
     protected_paths = _path_list(value["protectedPaths"], "protectedPaths")
-    if set(allowed_paths) & set(protected_paths):
-        raise TaskContractError("allowed and protected paths overlap exactly")
+    if any(
+        _path_claims_overlap(allowed, protected)
+        for allowed in allowed_paths for protected in protected_paths
+    ):
+        raise TaskContractError("allowed and protected paths overlap")
     max_lines = _bounded_int(value["maxChangedLines"], "maxChangedLines", 1, 5_000)
     max_attempts = _bounded_int(value["maxAttempts"], "maxAttempts", 1, 5)
     approval = value["humanApprovalRequired"]
@@ -205,6 +212,23 @@ def _path_list(value: object, field: str) -> tuple[str, ...]:
         if item != path.as_posix() or "\\" in item:
             raise TaskContractError(f"{field} contains a non-canonical path")
     return items
+
+
+def _path_claims_overlap(left: str, right: str) -> bool:
+    def literal_prefix(claim: str) -> tuple[str, ...]:
+        prefix: list[str] = []
+        for part in PurePosixPath(claim).parts:
+            if any(character in part for character in "*?[{"):
+                break
+            prefix.append(part)
+        return tuple(prefix)
+
+    left_prefix = literal_prefix(left)
+    right_prefix = literal_prefix(right)
+    return (
+        left_prefix == right_prefix[:len(left_prefix)]
+        or right_prefix == left_prefix[:len(right_prefix)]
+    )
 
 
 def _bounded_int(value: object, field: str, minimum: int, maximum: int) -> int:
