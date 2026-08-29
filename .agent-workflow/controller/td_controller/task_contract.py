@@ -38,35 +38,12 @@ REQUIRED_KEYS = frozenset(
         "riskClass", "maxChangedLines", "maxAttempts", "humanApprovalRequired",
     }
 )
-CRITERION_STRUCTURE = re.compile(r"^WHEN (?P<condition>.+) THEN (?P<outcome>.+)$")
-VAGUE_CRITERION = re.compile(
-    r"\b(works? (?:well|correctly)|(?:it|everything) works?|functions? correctly|"
-    r"performs? correctly|properly|as expected|expected (?:output|response|result)|"
-    r"all data|every test|good enough|something|unspecified|user[- ]friendly|robust|"
-    r"high quality)\b|"
-    r"\bworks?(?=\s*[.!]?\s*$)",
-    re.IGNORECASE,
+CRITERION_STRUCTURE = re.compile(
+    r"^(?P<id>[a-z][a-z0-9-]{2,63})\|WHEN (?P<condition>[^|]+)\|ASSERT "
+    r"(?P<kind>ERROR|TEST_PASS|VALUE|STATE|ABSENT) (?P<expected>[^|]+)$"
 )
-GENERIC_CRITERION = re.compile(
-    r"\b(?:accepts?|blocks?|completes?|fails?|invokes?|maps?|passes?|produces?|"
-    r"rejects?|rejected|returns?|uses?|validates?|validated)\s+(?:(?:a|an|the)\s+)?"
-    r"(?:error|all data|configuration|data|every test|expected (?:output|response|result)|"
-    r"input|invalid input|output|response|result|something|values?)[.!]?$|"
-    r"^(?:the\s+)?(?:[\w./-]+\s+){0,2}(?:(?:is|are)\s+)?(?:accepts?|blocks?|"
-    r"completes?|fails?|invokes?|maps?|passes?|produces?|rejects?|rejected|returns?|"
-    r"uses?|validates?|validated)(?:\s+successfully)?[.!]?$",
-    re.IGNORECASE,
-)
-CONCRETE_OUTCOME = re.compile(
-    r"\bHTTP\s+\d{3}\b|\bexit code\s+\d+\b|\bexactly\s+(?:one|two|\d+)\b|"
-    r"\b[A-Z][A-Za-z0-9_]*(?:Error|Exception)\b|\bcurrent (?:head )?SHA\b|"
-    r"\bwithout (?:type )?coercion\b|\bwithout invoking a model\b|"
-    r"\bagainst the same durable contract\b|\bdistinct from\b|"
-    r"\b(?:is|are) (?:empty|non-empty|read-only)\b"
-)
-EXACT_MARKER = re.compile(
-    r"\b(?:equals|is set to|returns status)\s+(?:`[^`\s][^`]*`|\"[^\"\s][^\"]*\")"
-)
+SAFE_CRITERION_TOKEN = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]{0,127}$")
+DISPATCHABLE_STATES = frozenset({"APPROVED", "QUEUED"})
 PROHIBITED_ROOTS = frozenset({".git", "downloads", "extracted", "analysis"})
 INVARIANT_PROTECTED_PATHS = (
     ".agent-workflow/policy/**", ".agent-workflow/scripts/**", ".github/**", "AGENTS.md",
@@ -74,7 +51,7 @@ INVARIANT_PROTECTED_PATHS = (
 
 
 class TaskContractError(ValueError):
-    """Raised when a task cannot be trusted for dispatch."""
+    """Raised when a task is structurally invalid or is not dispatchable."""
 
 
 class _DuplicateKey(ValueError):
@@ -145,6 +122,20 @@ def load_task(path: Path) -> TaskContract:
     return parse_task_json(payload)
 
 
+def parse_dispatch_task_json(payload: str | bytes) -> TaskContract:
+    return validate_for_dispatch(parse_task_json(payload))
+
+
+def load_dispatch_task(path: Path) -> TaskContract:
+    return validate_for_dispatch(load_task(path))
+
+
+def validate_for_dispatch(task: TaskContract) -> TaskContract:
+    if task.status not in DISPATCHABLE_STATES:
+        raise TaskContractError("task state is not dispatchable")
+    return task
+
+
 def _bounded_json_integer(token: str) -> int:
     if len(token.lstrip("-")) > 10:
         raise ValueError("oversized JSON integer")
@@ -173,8 +164,10 @@ def parse_task(value: object) -> TaskContract:
     if task_id in depends_on:
         raise TaskContractError("task cannot depend on itself")
     criteria = _string_list(value["acceptanceCriteria"], "acceptanceCriteria")
-    if any(_criterion_is_vague(item) for item in criteria):
-        raise TaskContractError("acceptance criterion is vague or unstructured")
+    parsed_criteria = tuple(_parse_criterion(item) for item in criteria)
+    criterion_ids = tuple(item[0] for item in parsed_criteria)
+    if len(criterion_ids) != len(set(criterion_ids)):
+        raise TaskContractError("acceptance criteria contain duplicate IDs")
     required_tests = _string_list(value["requiredTests"], "requiredTests")
     if not set(required_tests).issubset(REGISTERED_TESTS):
         raise TaskContractError("requiredTests contains an unregistered test")
@@ -204,6 +197,11 @@ def parse_task(value: object) -> TaskContract:
         "acceptanceEvidenceRequirements",
         allowed_values=EVIDENCE_SOURCES,
     )
+    if set(evidence_ids) != set(criteria):
+        raise TaskContractError("every criterion requires selected evidence")
+    for criterion, (_, kind, expected) in zip(criteria, parsed_criteria):
+        if kind == "TEST_PASS" and expected not in evidence_ids[criterion]:
+            raise TaskContractError("TEST_PASS assertion is not selected evidence")
     return TaskContract(
         task_id, status, parent_epic, objective, non_goals, depends_on, criteria,
         required_tests, allowed_paths, protected_paths, risk_class, max_lines,
@@ -266,27 +264,23 @@ def _path_list(value: object, field: str) -> tuple[str, ...]:
     return items
 
 
-def _criterion_is_vague(criterion: str) -> bool:
+def _parse_criterion(criterion: str) -> tuple[str, str, str]:
     match = CRITERION_STRUCTURE.fullmatch(criterion)
-    if match is None:
-        return True
-    condition = match.group("condition")
-    outcome = match.group("outcome")
-    return (
-        len(re.findall(r"\b[\w-]+\b", condition)) < 3
-        or len(re.findall(r"\b[\w-]+\b", outcome)) < 4
-        or VAGUE_CRITERION.search(criterion) is not None
-        or GENERIC_CRITERION.search(outcome) is not None
-        or (
-            CONCRETE_OUTCOME.search(outcome) is None
-            and not _exact_marker_is_concrete(outcome)
-        )
-    )
-
-
-def _exact_marker_is_concrete(outcome: str) -> bool:
-    delimiter_count = outcome.count('"') + outcome.count("`")
-    return delimiter_count == 2 and EXACT_MARKER.search(outcome) is not None
+    if match is None or len(re.findall(r"\b[\w-]+\b", match.group("condition"))) < 3:
+        raise TaskContractError("acceptance criterion is not machine-verifiable")
+    criterion_id = match.group("id")
+    kind = match.group("kind")
+    expected = match.group("expected")
+    valid = {
+        "ERROR": re.fullmatch(r"[A-Z][A-Za-z0-9_]*(?:Error|Exception)", expected),
+        "TEST_PASS": SAFE_CRITERION_TOKEN.fullmatch(expected),
+        "VALUE": re.fullmatch(r'"[^"\s][^"]*"', expected),
+        "STATE": re.fullmatch(r"[A-Z][A-Z0-9_]{1,63}", expected),
+        "ABSENT": SAFE_CRITERION_TOKEN.fullmatch(expected),
+    }
+    if valid[kind] is None:
+        raise TaskContractError("acceptance criterion assertion is invalid")
+    return criterion_id, kind, expected
 
 
 def _path_claims_overlap(left: str, right: str) -> bool:

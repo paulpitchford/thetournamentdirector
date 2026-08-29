@@ -9,10 +9,10 @@
   ],
   "dependsOn": [],
   "acceptanceCriteria": [
-    "WHEN the approved documentation task is applied THEN exactly one approved status sentence is added to the orchestration plan",
-    "WHEN the repository policy job runs THEN repository policy CI passes at the current SHA",
-    "WHEN local review sessions finish THEN fresh code/security and QA evidence references the current head SHA",
-    "WHEN required review sessions finish THEN both review roles use sessions distinct from implementation and each other"
+    "status-sentence|WHEN the approved documentation task is applied|ASSERT VALUE \"one-status-sentence\"",
+    "repository-policy|WHEN the repository policy job finishes|ASSERT TEST_PASS repository-policy",
+    "current-reviews|WHEN local review sessions finish for the task|ASSERT STATE CURRENT_SHA",
+    "session-separation|WHEN required review sessions finish for the task|ASSERT TEST_PASS session-separation"
   ],
   "requiredTests": [
     "python3 .agent-workflow/scripts/check_repository.py"
@@ -30,5 +30,19 @@
   "riskClass": "R0",
   "maxChangedLines": 8,
   "maxAttempts": 2,
-  "humanApprovalRequired": false
+  "humanApprovalRequired": false,
+  "acceptanceEvidenceIds": {
+    "status-sentence|WHEN the approved documentation task is applied|ASSERT VALUE \"one-status-sentence\"": [
+      "pilot-doc-diff"
+    ],
+    "repository-policy|WHEN the repository policy job finishes|ASSERT TEST_PASS repository-policy": [
+      "repository-policy"
+    ],
+    "current-reviews|WHEN local review sessions finish for the task|ASSERT STATE CURRENT_SHA": [
+      "local-reviews"
+    ],
+    "session-separation|WHEN required review sessions finish for the task|ASSERT TEST_PASS session-separation": [
+      "session-separation"
+    ]
+  }
 }

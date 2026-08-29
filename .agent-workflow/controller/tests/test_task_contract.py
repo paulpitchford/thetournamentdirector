@@ -9,12 +9,15 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from td_controller.task_contract import TaskContractError, load_task, parse_task, parse_task_json
+from td_controller.task_contract import (
+    TaskContractError, load_task, parse_dispatch_task_json, parse_task, parse_task_json,
+    validate_for_dispatch,
+)
 
 
 def valid_task() -> dict[str, object]:
     criterion = (
-        'WHEN verification completes successfully THEN controller returns status "PASS"'
+        "controller-tests|WHEN controller verification runs|ASSERT TEST_PASS controller-tests"
     )
     return {
         "id": "APP-001",
@@ -42,7 +45,8 @@ class TaskContractTests(unittest.TestCase):
 
         self.assertEqual(task.task_id, "APP-001")
         self.assertEqual(task.acceptance_criteria, (
-            'WHEN verification completes successfully THEN controller returns status "PASS"',
+            "controller-tests|WHEN controller verification runs|ASSERT TEST_PASS "
+            "controller-tests",
         ))
         self.assertEqual(task.acceptance_evidence_ids[task.acceptance_criteria[0]],
                          ("controller-tests",))
@@ -175,6 +179,8 @@ class TaskContractTests(unittest.TestCase):
                                   (["Exact result", "Exact result"], "duplicates"),
                                   ([], "bounded list")):
             with self.subTest(criteria=criteria):
+                if message == "vague":
+                    message = "acceptance criterion"
                 value = valid_task()
                 value["acceptanceCriteria"] = criteria
                 value["acceptanceEvidenceIds"] = {}
@@ -183,27 +189,72 @@ class TaskContractTests(unittest.TestCase):
                     parse_task(value)
         value = valid_task()
         value["acceptanceCriteria"] = [
-            "WHEN malformed JSON is parsed THEN controller returns exit code 2",
-            " WHEN malformed JSON is parsed THEN controller returns exit code 2",
+            "malformed-json|WHEN malformed JSON is parsed|ASSERT STATE REJECTED",
+            " malformed-json|WHEN malformed JSON is parsed|ASSERT STATE REJECTED",
         ]
         value["acceptanceEvidenceIds"] = {}
         value["acceptanceEvidenceRequirements"] = {}
         with self.assertRaisesRegex(TaskContractError, "canonical"):
             parse_task(value)
 
-    def test_concrete_action_led_criteria_are_accepted(self) -> None:
+    def test_machine_verifiable_criteria_are_accepted(self) -> None:
         for criterion in (
-            "WHEN a request contains path traversal THEN parser rejects it with TaskContractError",
-            "WHEN a valid request is submitted THEN API returns HTTP 201 for the request",
-            "WHEN a valid request is submitted THEN it returns HTTP 201 for the request",
-            "WHEN invalid credentials are submitted THEN server responds with HTTP 401",
-            'WHEN processing completes successfully THEN API returns status "READY"',
+            "path-traversal|WHEN a request contains traversal|ASSERT ERROR TaskContractError",
+            "created-status|WHEN a valid request is submitted|ASSERT STATE CREATED",
+            'ready-value|WHEN processing completes successfully|ASSERT VALUE "READY"',
+            "model-absent|WHEN automated contract tests execute|ASSERT ABSENT model",
         ):
             value = valid_task()
             value["acceptanceCriteria"] = [criterion]
-            value["acceptanceEvidenceIds"] = {}
+            value["acceptanceEvidenceIds"] = {criterion: ["criterion-evidence"]}
             value["acceptanceEvidenceRequirements"] = {}
             self.assertEqual(parse_task(value).acceptance_criteria, (criterion,))
+
+    def test_assertion_kinds_and_values_are_strict(self) -> None:
+        criteria = (
+            "bad-kind|WHEN a request is processed|ASSERT UNKNOWN value",
+            "bad-error|WHEN a request is processed|ASSERT ERROR failure",
+            'bad-value|WHEN a request is processed|ASSERT VALUE ""',
+            "bad-state|WHEN a request is processed|ASSERT STATE ready",
+            "bad-absent|WHEN a request is processed|ASSERT ABSENT two words",
+        )
+        for criterion in criteria:
+            value = valid_task()
+            value["acceptanceCriteria"] = [criterion]
+            value["acceptanceEvidenceIds"] = {criterion: ["evidence"]}
+            with self.assertRaisesRegex(TaskContractError, "acceptance criterion"):
+                parse_task(value)
+
+    def test_criterion_ids_and_evidence_binding_are_exact(self) -> None:
+        first = "same-id|WHEN a request is processed|ASSERT STATE READY"
+        second = "same-id|WHEN another request is processed|ASSERT STATE FAILED"
+        value = valid_task()
+        value["acceptanceCriteria"] = [first, second]
+        value["acceptanceEvidenceIds"] = {first: ["one"], second: ["two"]}
+        with self.assertRaisesRegex(TaskContractError, "duplicate IDs"):
+            parse_task(value)
+
+        value = valid_task()
+        value["acceptanceEvidenceIds"] = {}
+        with self.assertRaisesRegex(TaskContractError, "requires selected evidence"):
+            parse_task(value)
+
+        value = valid_task()
+        criterion = value["acceptanceCriteria"][0]
+        value["acceptanceEvidenceIds"] = {criterion: ["other-test"]}
+        with self.assertRaisesRegex(TaskContractError, "not selected evidence"):
+            parse_task(value)
+
+    def test_dispatch_validation_rejects_non_dispatchable_states(self) -> None:
+        self.assertEqual(
+            parse_dispatch_task_json(json.dumps(valid_task())).status, "APPROVED"
+        )
+        for status in ("CANCELLED", "QUARANTINED", "MERGED", "DONE", "SUPERSEDED"):
+            value = valid_task()
+            value["status"] = status
+            structural = parse_task(value)
+            with self.assertRaisesRegex(TaskContractError, "not dispatchable"):
+                validate_for_dispatch(structural)
 
     def test_required_tests_use_the_trusted_registry(self) -> None:
         for command in ("sh -c 'malicious-command'", "python3 unknown.py",
