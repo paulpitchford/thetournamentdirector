@@ -263,7 +263,7 @@ def _parse_event_stream(stdout: bytes) -> tuple[str, str]:
         if item["type"] == "error":
             raise CodexReviewError("Codex returned a structured error")
         if item["type"] not in ALLOWED_ITEM_TYPES:
-            raise CodexReviewError(f"Codex attempted forbidden tool: {item['type']}")
+            raise CodexReviewError("Codex attempted a forbidden tool")
         if event_type == "item.completed" and item["type"] == "agent_message":
             text = item.get("text")
             if not isinstance(text, str):

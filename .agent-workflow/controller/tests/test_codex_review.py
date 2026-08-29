@@ -294,14 +294,15 @@ class CodexReviewProviderTests(unittest.TestCase):
         executor = FakeExecutor(
             ProcessOutput(
                 returncode=0,
-                stdout=event_stream(artifact(), tool="command_execution"),
+                stdout=event_stream(artifact(), tool="secret-marker\x1b[31m"),
                 stderr=b"",
             )
         )
         provider = CodexReviewProvider(request(), executor=executor)
 
-        with self.assertRaisesRegex(CodexReviewError, "forbidden tool"):
+        with self.assertRaisesRegex(CodexReviewError, "forbidden tool") as raised:
             provider.run(task_id="TASK-001", role="code_review")
+        self.assertNotIn("secret-marker", str(raised.exception))
 
     def test_stale_head_sha_is_rejected(self) -> None:
         value = artifact()
