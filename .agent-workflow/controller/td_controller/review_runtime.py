@@ -244,10 +244,8 @@ class SystemdCgroupExecutor:
             "--property=MemorySwapMax=0",
             "--property=CPUQuota=200%",
             "--property=NoNewPrivileges=yes",
-            (
-                "--property=InaccessiblePaths="
-                f"/run/user/{os.getuid()}/bus /run/user/{os.getuid()}/systemd"
-            ),
+            "--property=ProtectControlGroups=yes",
+            f"--property=InaccessiblePaths=/run/user/{os.getuid()}",
             "--property=UMask=0077",
             "/usr/bin/env",
             "-i",
