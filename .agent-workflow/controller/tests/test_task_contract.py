@@ -134,6 +134,12 @@ class TaskContractTests(unittest.TestCase):
                                     "the request with care"], "vague"),
                                   (["WHEN any request arrives THEN service returns response "
                                     "labelled FOO"], "vague"),
+                                  (["WHEN any request arrives THEN service returns response "
+                                    "with \"information"], "vague"),
+                                  (["WHEN any request arrives THEN service returns empty \"\""],
+                                   "vague"),
+                                  (["WHEN any request arrives THEN service returns empty ``"],
+                                   "vague"),
                                   (["It works well"], "vague"),
                                   (["The feature works correctly"], "vague"),
                                   (["It works"], "vague"),
@@ -189,6 +195,7 @@ class TaskContractTests(unittest.TestCase):
             "WHEN a valid request is submitted THEN API returns HTTP 201 for the request",
             "WHEN a valid request is submitted THEN it returns HTTP 201 for the request",
             "WHEN invalid credentials are submitted THEN server responds with HTTP 401",
+            'WHEN processing completes successfully THEN API returns status "READY"',
         ):
             value = valid_task()
             value["acceptanceCriteria"] = [criterion]
@@ -218,7 +225,8 @@ class TaskContractTests(unittest.TestCase):
 
     def test_path_escape_ignored_roots_and_exact_overlap_are_rejected(self) -> None:
         paths = ("/etc/passwd", "../parent", ":(exclude).github/**", ":(top)foo",
-                 "-rf", "--", "!modern-app/**", ".git/config", ".git/hooks/**",
+                 "-rf", "--", "!modern-app/**", "^.github/**", ".git/config",
+                 ".git/hooks/**",
                  ".git/objects/**", "downloads/tool", "extracted/app",
                  "**", "*", "*/tool", ".")
         for path in paths:
@@ -231,6 +239,13 @@ class TaskContractTests(unittest.TestCase):
             value = valid_task()
             value["allowedPaths"] = [alias]
             with self.assertRaisesRegex(TaskContractError, "non-canonical"):
+                parse_task(value)
+        for protected_root in (".github/**", ".agent-workflow/policy/**",
+                               ".agent-workflow/scripts/**", "AGENTS.md"):
+            value = valid_task()
+            value["allowedPaths"] = [protected_root]
+            value["protectedPaths"] = ["docs/**"]
+            with self.assertRaisesRegex(TaskContractError, "controller-owned"):
                 parse_task(value)
         for allowed, protected in (
             ("modern-app/**", "modern-app/secrets/**"),

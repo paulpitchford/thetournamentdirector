@@ -62,9 +62,13 @@ CONCRETE_OUTCOME = re.compile(
     r"\b[A-Z][A-Za-z0-9_]*(?:Error|Exception)\b|\bcurrent (?:head )?SHA\b|"
     r"\bwithout (?:type )?coercion\b|\bwithout invoking a model\b|"
     r"\bagainst the same durable contract\b|\bdistinct from\b|"
-    r"\b(?:is|are) (?:empty|non-empty|read-only)\b|[`\"]"
+    r"\b(?:is|are) (?:empty|non-empty|read-only)\b"
 )
+EXACT_MARKER = re.compile(r'`[^`\s][^`]*`|"[^"\s][^"]*"')
 PROHIBITED_ROOTS = frozenset({".git", "downloads", "extracted", "analysis"})
+INVARIANT_PROTECTED_PATHS = (
+    ".agent-workflow/policy/**", ".agent-workflow/scripts/**", ".github/**", "AGENTS.md",
+)
 
 
 class TaskContractError(ValueError):
@@ -179,6 +183,11 @@ def parse_task(value: object) -> TaskContract:
         for allowed in allowed_paths for protected in protected_paths
     ):
         raise TaskContractError("allowed and protected paths overlap")
+    if any(
+        _path_claims_overlap(allowed, protected)
+        for allowed in allowed_paths for protected in INVARIANT_PROTECTED_PATHS
+    ):
+        raise TaskContractError("allowed path overlaps controller-owned protection")
     max_lines = _bounded_int(value["maxChangedLines"], "maxChangedLines", 1, 5_000)
     max_attempts = _bounded_int(value["maxAttempts"], "maxAttempts", 1, 5)
     approval = value["humanApprovalRequired"]
@@ -245,7 +254,7 @@ def _path_list(value: object, field: str) -> tuple[str, ...]:
         path = PurePosixPath(item)
         root = item.split("/", 1)[0]
         if (
-            item.startswith(("/", ":", "-", "!")) or ".." in path.parts
+            item.startswith(("/", ":", "-", "!", "^")) or ".." in path.parts
             or root in PROHIBITED_ROOTS or root == "."
             or any(character in root for character in "*?[{")
         ):
@@ -266,7 +275,10 @@ def _criterion_is_vague(criterion: str) -> bool:
         or len(re.findall(r"\b[\w-]+\b", outcome)) < 4
         or VAGUE_CRITERION.search(criterion) is not None
         or GENERIC_CRITERION.search(outcome) is not None
-        or CONCRETE_OUTCOME.search(outcome) is None
+        or (
+            CONCRETE_OUTCOME.search(outcome) is None
+            and EXACT_MARKER.search(outcome) is None
+        )
     )
 
 
