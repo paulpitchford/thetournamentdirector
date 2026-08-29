@@ -477,7 +477,7 @@ class CodexReviewProviderTests(unittest.TestCase):
         with self.assertRaisesRegex(CodexReviewError, "rate_limit") as raised:
             provider.run(task_id="TASK-001", role="code_review")
         message = str(raised.exception)
-        self.assertRegex(message, r"diagnostic=\d+:[0-9a-f]{12}")
+        self.assertIn("diagnostic_bytes=44", message)
         self.assertNotIn("secret-value", message)
 
     def test_nonzero_process_exit_is_redacted_and_rejected(self) -> None:
