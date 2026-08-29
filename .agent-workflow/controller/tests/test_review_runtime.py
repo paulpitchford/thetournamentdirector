@@ -455,6 +455,38 @@ class RuntimeAttestationTests(unittest.TestCase):
                     _attest_codex_runtime(destination)
             self.assertFalse(destination.exists())
 
+    def test_losing_publish_race_does_not_delete_winner(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            destination = root / "staged"
+
+            def stage_file(
+                source: Path, target: Path, expected_hash: str, expected_size: int
+            ) -> None:
+                target.write_bytes(b"reviewed")
+
+            def publish_collision(source: Path, target: Path) -> None:
+                destination.mkdir()
+                (destination / "winner").write_bytes(b"valid")
+                raise FileExistsError("publication race")
+
+            version = subprocess.CompletedProcess(
+                args=[], returncode=0, stdout=b"codex-cli 0.150.1\n"
+            )
+            with (
+                patch(
+                    "td_controller.review_runtime._pinned_runtime_sources",
+                    return_value=(root / "source", root / "host"),
+                ),
+                patch("td_controller.review_runtime._stage_file", side_effect=stage_file),
+                patch("td_controller.review_runtime.subprocess.run", return_value=version),
+                patch("td_controller.review_runtime.os.rename", side_effect=publish_collision),
+            ):
+                with self.assertRaisesRegex(CodexReviewError, "attestation failed"):
+                    _attest_codex_runtime(destination)
+            self.assertEqual((destination / "winner").read_bytes(), b"valid")
+            self.assertEqual(list(root.glob(".staged.*.partial")), [])
+
     def test_failed_host_stage_is_rolled_back_and_retryable(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

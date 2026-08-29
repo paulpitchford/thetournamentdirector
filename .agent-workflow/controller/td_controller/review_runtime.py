@@ -169,11 +169,9 @@ def _attest_codex_runtime(destination_dir: Path) -> str:
         os.rename(temporary, destination_dir)
     except CodexReviewError:
         shutil.rmtree(temporary, ignore_errors=True)
-        shutil.rmtree(destination_dir, ignore_errors=True)
         raise
     except (OSError, subprocess.TimeoutExpired) as exc:
         shutil.rmtree(temporary, ignore_errors=True)
-        shutil.rmtree(destination_dir, ignore_errors=True)
         raise CodexReviewError("Codex runtime attestation failed") from exc
     return str(destination_dir / "codex")
 
