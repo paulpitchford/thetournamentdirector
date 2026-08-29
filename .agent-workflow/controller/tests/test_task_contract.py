@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from td_controller.task_contract import (
     TaskContractError, load_task, parse_dispatch_task_json, parse_task, parse_task_json,
-    path_is_allowed, validate_for_dispatch,
+    tracked_path_is_allowed, validate_for_dispatch,
 )
 
 
@@ -316,16 +316,24 @@ class TaskContractTests(unittest.TestCase):
             with self.assertRaisesRegex(TaskContractError, "overlap"):
                 parse_task(value)
 
-    def test_concrete_path_authorization_applies_denies_first(self) -> None:
+    def test_tracked_path_matching_applies_segment_aware_denies_first(self) -> None:
         task = parse_task(valid_task())
-        self.assertTrue(path_is_allowed(task, "modern-app/src/domain/model.py"))
+        self.assertTrue(tracked_path_is_allowed(task, "modern-app/src/domain/model.py"))
         for candidate in (
             "modern-app/src/.git/hooks/pre-commit",
             "modern-app/src/downloads/tool",
             ".github/workflows/change.yml",
             "modern-app/src/**",
         ):
-            self.assertFalse(path_is_allowed(task, candidate))
+            self.assertFalse(tracked_path_is_allowed(task, candidate))
+
+        value = valid_task()
+        value["allowedPaths"] = ["modern-app/src/*"]
+        one_segment = parse_task(value)
+        self.assertTrue(tracked_path_is_allowed(one_segment, "modern-app/src/model.py"))
+        self.assertFalse(
+            tracked_path_is_allowed(one_segment, "modern-app/src/domain/model.py")
+        )
 
     def test_trusted_task_root_rejects_parent_symlink_traversal(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

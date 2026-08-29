@@ -317,8 +317,8 @@ def _path_claims_overlap(left: str, right: str) -> bool:
     )
 
 
-def path_is_allowed(task: TaskContract, candidate: str) -> bool:
-    """Match one concrete path with invariant and task deny rules taking precedence."""
+def tracked_path_is_allowed(task: TaskContract, candidate: str) -> bool:
+    """Check a Git-reported tracked path, never a filesystem mutation target."""
     try:
         concrete = _path_list([candidate], "candidatePath")[0]
     except TaskContractError:
@@ -327,9 +327,31 @@ def path_is_allowed(task: TaskContract, candidate: str) -> bool:
         return False
     if any(_path_claims_overlap(concrete, denied) for denied in INVARIANT_PROTECTED_PATHS):
         return False
-    if any(fnmatch.fnmatchcase(concrete, denied) for denied in task.protected_paths):
+    if any(_glob_matches(denied, concrete) for denied in task.protected_paths):
         return False
-    return any(fnmatch.fnmatchcase(concrete, allowed) for allowed in task.allowed_paths)
+    return any(_glob_matches(allowed, concrete) for allowed in task.allowed_paths)
+
+
+def _glob_matches(claim: str, concrete: str) -> bool:
+    claim_parts = PurePosixPath(claim).parts
+    path_parts = PurePosixPath(concrete).parts
+
+    def match(claim_index: int, path_index: int) -> bool:
+        if claim_index == len(claim_parts):
+            return path_index == len(path_parts)
+        part = claim_parts[claim_index]
+        if part == "**":
+            return any(
+                match(claim_index + 1, index)
+                for index in range(path_index, len(path_parts) + 1)
+            )
+        return (
+            path_index < len(path_parts)
+            and fnmatch.fnmatchcase(path_parts[path_index], part)
+            and match(claim_index + 1, path_index + 1)
+        )
+
+    return match(0, 0)
 
 
 def _bounded_int(value: object, field: str, minimum: int, maximum: int) -> int:
