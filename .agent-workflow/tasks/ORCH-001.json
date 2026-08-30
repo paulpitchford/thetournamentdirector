@@ -1,27 +1,27 @@
 {
-  "id": "ORCH-003D1B0G",
+  "id": "ORCH-003D1B0H",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Define a strict controller-bound contract for whole-file text replacement proposals",
-  "nonGoals": ["Call a model", "Create or delete files", "Apply replacements", "Run commands", "Modify Git state"],
-  "dependsOn": ["ORCH-003D1B0F", "ORCH-001A"],
+  "objective": "Return one validated text replacement proposal through the credential-isolating tool-less model broker",
+  "nonGoals": ["Apply replacements", "Mount credentials into a worker", "Give a worker network access", "Create or delete files", "Modify Git state"],
+  "dependsOn": ["ORCH-003D1B0F", "ORCH-003D1B0G"],
   "acceptanceCriteria": [
-    "selected-input|WHEN existing text files are selected|ASSERT TEST_PASS text-mutation-contract-tests",
-    "identity-binding|WHEN proposal identity or expected hashes are stale|ASSERT ERROR TextMutationContractError",
-    "scope-limit|WHEN replacement bytes or changed lines exceed bounds|ASSERT ERROR TextMutationContractError",
-    "closed-output|WHEN proposal fields or paths are unselected|ASSERT ERROR TextMutationContractError"
+    "model-proposal|WHEN a selected text request is brokered|ASSERT TEST_PASS text-mutation-broker-proof",
+    "prompt-bound|WHEN JSON escaping exceeds the input limit|ASSERT ERROR TextMutationBrokerError",
+    "tool-less|WHEN mutation broker arguments are built|ASSERT TEST_PASS text-mutation-broker-tests",
+    "response-bound|WHEN output is stale malformed or diagnostic|ASSERT ERROR TextMutationBrokerError"
   ],
   "acceptanceEvidenceIds": {
-    "selected-input|WHEN existing text files are selected|ASSERT TEST_PASS text-mutation-contract-tests": ["text-mutation-contract-tests"],
-    "identity-binding|WHEN proposal identity or expected hashes are stale|ASSERT ERROR TextMutationContractError": ["text-mutation-contract-tests"],
-    "scope-limit|WHEN replacement bytes or changed lines exceed bounds|ASSERT ERROR TextMutationContractError": ["text-mutation-contract-tests"],
-    "closed-output|WHEN proposal fields or paths are unselected|ASSERT ERROR TextMutationContractError": ["text-mutation-contract-tests"]
+    "model-proposal|WHEN a selected text request is brokered|ASSERT TEST_PASS text-mutation-broker-proof": ["text-mutation-broker-proof"],
+    "prompt-bound|WHEN JSON escaping exceeds the input limit|ASSERT ERROR TextMutationBrokerError": ["text-mutation-broker-tests"],
+    "tool-less|WHEN mutation broker arguments are built|ASSERT TEST_PASS text-mutation-broker-tests": ["text-mutation-broker-tests"],
+    "response-bound|WHEN output is stale malformed or diagnostic|ASSERT ERROR TextMutationBrokerError": ["text-mutation-broker-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/text_mutation_contract.py",
-    ".agent-workflow/controller/tests/test_text_mutation_contract.py",
+    ".agent-workflow/controller/td_controller/text_mutation_broker.py",
+    ".agent-workflow/controller/tests/test_text_mutation_broker.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
