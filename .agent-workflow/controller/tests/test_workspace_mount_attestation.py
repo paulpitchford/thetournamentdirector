@@ -30,9 +30,9 @@ class FakeExecutor:
         self.calls.append(command)
         output = self.outputs.pop(0)
         if len(self.calls) == 2 and output.returncode == 0:
-            (cwd / "task" / "attested-proof.txt").write_bytes(
-                b"attested-workspace-write\n"
-            )
+            marker = cwd / "task" / ".attested-proof"
+            marker.mkdir()
+            (marker / "result").write_bytes(b"attested-workspace-write\n")
         return output
 
 
@@ -73,7 +73,7 @@ class WorkspaceMountAttestationTests(unittest.TestCase):
             'test "$actual" != "$EXPECTED_WORKSPACE_IDENTITY"'
         )
         write_index = ATTESTED_WORKER_SCRIPT.index(
-            "> /workspace/attested-proof.txt"
+            "mkdir /workspace/.attested-proof"
         )
         self.assertLess(check_index, write_index)
 
@@ -103,7 +103,35 @@ class WorkspaceMountAttestationTests(unittest.TestCase):
         WorkspaceMountAttestation(executor=executor).verify_replacement_rejected(
             self.fixture, self.identity
         )
-        self.assertFalse((original / "attested-proof.txt").exists())
+        self.assertFalse((original / ".attested-proof").exists())
+
+    def test_existing_symlink_and_regular_marker_results_are_rejected(self) -> None:
+        probe = WorkspaceMountAttestation(
+            executor=FakeExecutor(
+                [
+                    ProcessOutput(0, b"true\n", b""),
+                    ProcessOutput(44, b"", b""),
+                ]
+            )
+        )
+        marker = self.task / ".attested-proof"
+        sentinel = self.task / "sentinel"
+        sentinel.write_text("retain")
+        marker.symlink_to("sentinel")
+        probe.verify_existing_marker_rejected(self.fixture, self.identity)
+        self.assertEqual(sentinel.read_text(), "retain")
+        marker.unlink()
+        marker.write_text("retain")
+        probe = WorkspaceMountAttestation(
+            executor=FakeExecutor(
+                [
+                    ProcessOutput(0, b"true\n", b""),
+                    ProcessOutput(44, b"", b""),
+                ]
+            )
+        )
+        probe.verify_existing_marker_rejected(self.fixture, self.identity)
+        self.assertEqual(marker.read_text(), "retain")
 
     def test_unexpected_rejection_or_rootless_result_fails_closed(self) -> None:
         cases = (

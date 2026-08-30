@@ -22,7 +22,10 @@ actual=$(stat -c '%d:%i' /workspace)
 if test "$actual" != "$EXPECTED_WORKSPACE_IDENTITY"; then
   exit 43
 fi
-printf 'attested-workspace-write\n' > /workspace/attested-proof.txt
+if ! mkdir /workspace/.attested-proof 2>/dev/null; then
+  exit 44
+fi
+printf 'attested-workspace-write\n' > /workspace/.attested-proof/result
 printf 'workspace-mount-attested\n'
 """.strip()
 
@@ -69,7 +72,7 @@ class WorkspaceMountAttestation:
         ):
             raise WorkspaceMountAttestationError("workspace mount attestation failed")
         try:
-            marker = (fixture.task / "attested-proof.txt").read_bytes()
+            marker = (fixture.task / ".attested-proof" / "result").read_bytes()
         except OSError as exc:
             raise WorkspaceMountAttestationError("attested write is unavailable") from exc
         if marker != b"attested-workspace-write\n":
@@ -81,8 +84,15 @@ class WorkspaceMountAttestation:
         result = self._run_container(fixture, identity)
         if result.returncode != 43 or result.stdout or result.stderr:
             raise WorkspaceMountAttestationError("replacement mount was not rejected")
-        if (fixture.task / "attested-proof.txt").exists():
+        if (fixture.task / ".attested-proof").exists():
             raise WorkspaceMountAttestationError("replacement workspace was modified")
+
+    def verify_existing_marker_rejected(
+        self, fixture: MountPolicyFixture, identity: WorkspaceIdentity
+    ) -> None:
+        result = self._run_container(fixture, identity)
+        if result.returncode != 44 or result.stdout or result.stderr:
+            raise WorkspaceMountAttestationError("existing marker was not rejected")
 
     def _run_container(
         self, fixture: MountPolicyFixture, identity: WorkspaceIdentity
@@ -139,6 +149,19 @@ def run_local_probe() -> None:
             probe.verify_replacement_rejected(fixture, handle.identity)
             task.rmdir()
             held.rename(task)
+            sentinel = task / "sentinel"
+            sentinel.write_text("retain")
+            marker = task / ".attested-proof"
+            marker.symlink_to("sentinel")
+            probe.verify_existing_marker_rejected(fixture, handle.identity)
+            if sentinel.read_text() != "retain":
+                raise WorkspaceMountAttestationError("symlink target was modified")
+            marker.unlink()
+            marker.write_text("retain")
+            probe.verify_existing_marker_rejected(fixture, handle.identity)
+            if marker.read_text() != "retain":
+                raise WorkspaceMountAttestationError("existing marker was modified")
+            marker.unlink()
             probe.verify(fixture, handle.identity)
             handle.verify()
         finally:
