@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import secrets
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -50,13 +51,23 @@ class ModelBrokerSmokeProbe:
         *,
         dispatch: Dispatch = execute_attested_codex,
         timeout_seconds: int = 300,
+        nonce_factory: Callable[[], str] = lambda: secrets.token_hex(16),
     ) -> None:
-        if not callable(dispatch) or not isinstance(timeout_seconds, int):
+        if (
+            not callable(dispatch)
+            or not callable(nonce_factory)
+            or not isinstance(timeout_seconds, int)
+        ):
             raise ModelBrokerError("model broker configuration is invalid")
         if not 30 <= timeout_seconds <= 600:
             raise ModelBrokerError("model broker timeout is invalid")
         self._dispatch = dispatch
         self._timeout_seconds = timeout_seconds
+        self._nonce_factory = nonce_factory
+
+    def run_fresh(self) -> ModelBrokerResult:
+        """Run with a new controller-generated replay challenge."""
+        return self.run(self._nonce_factory())
 
     def run(self, nonce: str) -> ModelBrokerResult:
         """Run one fixed, tool-less authenticated model request."""
@@ -126,7 +137,7 @@ class ModelBrokerSmokeProbe:
 
 
 def run_local_probe() -> None:
-    result = ModelBrokerSmokeProbe().run("0" * 32)
+    result = ModelBrokerSmokeProbe().run_fresh()
     if not result.session_id:
         raise ModelBrokerError("model broker returned no session identity")
 

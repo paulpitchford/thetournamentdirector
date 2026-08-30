@@ -79,6 +79,27 @@ class ModelBrokerSmokeProbeTests(unittest.TestCase):
         self.assertIn('web_search="disabled"', command)
         self.assertNotIn("danger-full-access", joined)
 
+    def test_fresh_runs_use_new_nonce_and_reject_replayed_response(self) -> None:
+        first = "a" * 32
+        second = "b" * 32
+        nonces = iter((first, second))
+        dispatch = FakeDispatch(
+            ProcessOutput(
+                0,
+                event_stream(json.dumps({"nonce": first, "status": "ready"})),
+                b"",
+            )
+        )
+        probe = ModelBrokerSmokeProbe(
+            dispatch=dispatch, nonce_factory=lambda: next(nonces)
+        )
+
+        self.assertEqual(probe.run_fresh().nonce, first)
+        with self.assertRaisesRegex(ModelBrokerError, "validation"):
+            probe.run_fresh()
+        self.assertIn(first.encode(), dispatch.calls[0][2])
+        self.assertIn(second.encode(), dispatch.calls[1][2])
+
     def test_invalid_nonce_fails_before_dispatch(self) -> None:
         dispatch = FakeDispatch(ProcessOutput(0, b"", b""))
         probe = ModelBrokerSmokeProbe(dispatch=dispatch)
