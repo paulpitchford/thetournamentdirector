@@ -1,30 +1,32 @@
 {
-  "id": "ORCH-003D1B0K5",
+  "id": "ORCH-003D1B0L2",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Guard and prove successful exact-ref creation with repository hooks forcibly disabled",
-  "nonGoals": ["Validate repository metadata", "Reserve a production branch", "Create a worktree", "Reconcile a ref", "Push a ref"],
-  "dependsOn": ["ORCH-003D1B0K1", "ORCH-003D1B0K3"],
+  "objective": "Require matching real and effective process identities before trusted filesystem effects",
+  "nonGoals": ["Execute a subprocess", "Inspect a directory", "Drop privileges", "Run Git", "Create a worktree"],
+  "dependsOn": ["ORCH-003D1B0K3", "ORCH-003D1B0K5"],
   "acceptanceCriteria": [
-    "successful-hook-proof|WHEN exact ref creation succeeds with a malicious hook configured|ASSERT ABSENT hook-marker",
-    "argv-guard|WHEN hook denial is missing from argv|ASSERT ERROR ExactRefHookGuardError",
-    "environment-guard|WHEN an extra Git environment key is present|ASSERT ERROR ExactRefHookGuardError"
+    "current-identity|WHEN real and effective credentials match|ASSERT TEST_PASS effective-identity-tests",
+    "uid-transition|WHEN real and effective UIDs differ|ASSERT ERROR EffectiveIdentityError",
+    "gid-transition|WHEN real and effective GIDs differ|ASSERT ERROR EffectiveIdentityError",
+    "diagnostic-boundary|WHEN an identity getter fails|ASSERT ABSENT identity-diagnostic"
   ],
   "acceptanceEvidenceIds": {
-    "successful-hook-proof|WHEN exact ref creation succeeds with a malicious hook configured|ASSERT ABSENT hook-marker": ["exact-ref-hook-guard-tests"],
-    "argv-guard|WHEN hook denial is missing from argv|ASSERT ERROR ExactRefHookGuardError": ["exact-ref-hook-guard-tests"],
-    "environment-guard|WHEN an extra Git environment key is present|ASSERT ERROR ExactRefHookGuardError": ["exact-ref-hook-guard-tests"]
+    "current-identity|WHEN real and effective credentials match|ASSERT TEST_PASS effective-identity-tests": ["effective-identity-tests"],
+    "uid-transition|WHEN real and effective UIDs differ|ASSERT ERROR EffectiveIdentityError": ["effective-identity-tests"],
+    "gid-transition|WHEN real and effective GIDs differ|ASSERT ERROR EffectiveIdentityError": ["effective-identity-tests"],
+    "diagnostic-boundary|WHEN an identity getter fails|ASSERT ABSENT identity-diagnostic": ["effective-identity-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/exact_ref_hook_guard.py",
-    ".agent-workflow/controller/tests/test_exact_ref_hook_guard.py",
+    ".agent-workflow/controller/td_controller/effective_identity.py",
+    ".agent-workflow/controller/tests/test_effective_identity.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 300,
+  "maxChangedLines": 250,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
