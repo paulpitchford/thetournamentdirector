@@ -1,30 +1,32 @@
 {
-  "id": "ORCH-003D1B0C",
+  "id": "ORCH-003D1B0D",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Run a fixed proof payload only after mount-policy and live workspace identity checks in the same container",
-  "nonGoals": ["Run Codex", "Accept an arbitrary payload command", "Write workspace files", "Create Git worktrees", "Export the workspace descriptor"],
-  "dependsOn": ["ORCH-003D1B0A", "ORCH-003D1B0B0"],
+  "objective": "Execute a bounded controller-supplied argv payload after same-container mount and live-identity checks",
+  "nonGoals": ["Run Codex", "Select a payload from repository text", "Inject payload environment variables", "Create Git worktrees", "Export the workspace descriptor"],
+  "dependsOn": ["ORCH-003D1B0A", "ORCH-003D1B0B0", "ORCH-003D1B0C"],
   "acceptanceCriteria": [
-    "same-container|WHEN the fixed launcher runs|ASSERT TEST_PASS attested-workspace-payload-tests",
-    "live-handle|WHEN the Podman process overlaps close|ASSERT TEST_PASS attested-workspace-payload-tests",
-    "replacement-rejection|WHEN Podman mounts a replacement workspace inode|ASSERT TEST_PASS attested-workspace-payload-proof"
+    "argv-boundary|WHEN payload arguments contain shell syntax|ASSERT TEST_PASS attested-payload-runner-tests",
+    "same-container|WHEN a bounded payload starts|ASSERT TEST_PASS attested-payload-runner-tests",
+    "live-handle|WHEN payload execution overlaps close|ASSERT TEST_PASS attested-payload-runner-tests",
+    "replacement-rejection|WHEN Podman mounts a replacement workspace inode|ASSERT TEST_PASS attested-payload-runner-proof"
   ],
   "acceptanceEvidenceIds": {
-    "same-container|WHEN the fixed launcher runs|ASSERT TEST_PASS attested-workspace-payload-tests": ["attested-workspace-payload-tests"],
-    "live-handle|WHEN the Podman process overlaps close|ASSERT TEST_PASS attested-workspace-payload-tests": ["attested-workspace-payload-tests"],
-    "replacement-rejection|WHEN Podman mounts a replacement workspace inode|ASSERT TEST_PASS attested-workspace-payload-proof": ["attested-workspace-payload-proof"]
+    "argv-boundary|WHEN payload arguments contain shell syntax|ASSERT TEST_PASS attested-payload-runner-tests": ["attested-payload-runner-tests"],
+    "same-container|WHEN a bounded payload starts|ASSERT TEST_PASS attested-payload-runner-tests": ["attested-payload-runner-tests"],
+    "live-handle|WHEN payload execution overlaps close|ASSERT TEST_PASS attested-payload-runner-tests": ["attested-payload-runner-tests"],
+    "replacement-rejection|WHEN Podman mounts a replacement workspace inode|ASSERT TEST_PASS attested-payload-runner-proof": ["attested-payload-runner-proof"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/attested_workspace_payload.py",
-    ".agent-workflow/controller/tests/test_attested_workspace_payload.py",
+    ".agent-workflow/controller/td_controller/attested_payload_runner.py",
+    ".agent-workflow/controller/tests/test_attested_payload_runner.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 425,
+  "maxChangedLines": 450,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
