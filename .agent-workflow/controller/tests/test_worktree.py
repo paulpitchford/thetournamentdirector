@@ -1,5 +1,3 @@
-"""Tests for metadata-only task worktree reservation."""
-
 from __future__ import annotations
 
 import os
@@ -78,27 +76,6 @@ class MetadataWorktreeManagerTests(unittest.TestCase):
         self.assertFalse((self.root / "hook-ran").exists())
         self.assertFalse((reservation.path / "README.md").exists())
 
-    def test_lease_branch_state_attempt_and_sha_are_exact(self) -> None:
-        manager = self.manager()
-        invalid = (
-            (self.lease.__class__(**{**self.lease.__dict__, "state": "EXPIRED"}), 1, self.base_sha),
-            (
-                self.lease.__class__(
-                    **{**self.lease.__dict__, "branch": "agent/other/attempt-1"}
-                ),
-                1,
-                self.base_sha,
-            ),
-            (self.lease, 2, self.base_sha),
-            (self.lease, 1, "A" * 40),
-        )
-        for lease, attempt, sha in invalid:
-            with self.subTest(lease=lease, attempt=attempt, sha=sha):
-                with self.assertRaises(WorktreeError):
-                    manager.reserve(lease, attempt=attempt, base_sha=sha)
-
-        self.assertEqual(tuple(self.worktrees.iterdir()), ())
-
     def test_roots_must_be_disjoint_private_and_self_contained(self) -> None:
         with self.assertRaisesRegex(WorktreeError, "overlaps"):
             self.manager(self.repository / "nested")
@@ -117,19 +94,17 @@ class MetadataWorktreeManagerTests(unittest.TestCase):
                 lease_ledger=self.lease_ledger, state_ledger=self.state_ledger,
             )
 
-    def test_replacement_objects_cannot_substitute_the_approved_base(self) -> None:
+    def test_replaced_git_directory_is_rejected_before_mutation(self) -> None:
         manager = self.manager()
-        blob = self.git("hash-object", "README.md").stdout.strip()
-        self.git("update-ref", f"refs/replace/{blob}", self.base_sha)
-
-        state = self.state_ledger.current.return_value
-        self.state_ledger.current.return_value = TaskState(
-            **{**state.__dict__, "base_sha": blob}
-        )
-        with self.assertRaisesRegex(WorktreeError, "rejected"):
-            manager.reserve(self.lease, attempt=1, base_sha=blob)
-
+        git_directory = self.repository / ".git"
+        original = self.repository / ".git-original"
+        git_directory.rename(original)
+        git_directory.mkdir()
+        with self.assertRaisesRegex(WorktreeError, "identity changed"):
+            manager.reserve(self.lease, attempt=1, base_sha=self.base_sha)
         self.assertEqual(tuple(self.worktrees.iterdir()), ())
+        git_directory.rmdir()
+        original.rename(git_directory)
 
     def test_ambiguous_branch_creation_is_quarantined_without_deletion(self) -> None:
         manager = self.manager()

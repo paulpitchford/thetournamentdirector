@@ -63,6 +63,9 @@ class MetadataWorktreeManager:
             or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", worktree_root.name)
         ):
             raise WorktreeError("worktree root name is invalid")
+        self._git_directory = git_directory
+        self._repository_identity = self._git_path_identity(self.repository_root)
+        self._git_identity = self._git_path_identity(git_directory)
         self.worktree_root = parent / worktree_root.name
         self.lease_ledger = lease_ledger
         self.state_ledger = state_ledger
@@ -179,6 +182,28 @@ class MetadataWorktreeManager:
             lease_id=lease.lease_id,
         )
 
+    def _assert_git_identity(self) -> None:
+        if (
+            self._git_path_identity(self.repository_root) != self._repository_identity
+            or self._git_path_identity(self._git_directory) != self._git_identity
+        ):
+            raise WorktreeError("repository Git identity changed")
+
+    @staticmethod
+    def _git_path_identity(path: Path) -> tuple[int, int]:
+        try:
+            metadata = path.lstat()
+        except OSError as exc:
+            raise WorktreeError("repository Git identity is unavailable") from exc
+        if (
+            not stat.S_ISDIR(metadata.st_mode)
+            or path.is_symlink()
+            or metadata.st_uid != os.getuid()
+            or stat.S_IMODE(metadata.st_mode) & 0o022
+        ):
+            raise WorktreeError("repository Git permissions are unsafe")
+        return metadata.st_dev, metadata.st_ino
+
     def _assert_storage_identity(self) -> None:
         parent = self.worktree_root.parent
         if (
@@ -246,6 +271,7 @@ class MetadataWorktreeManager:
             raise WorktreeError("trusted Git command was rejected")
 
     def _run_git(self, *arguments: str) -> subprocess.CompletedProcess[bytes]:
+        self._assert_git_identity()
         command = [
             "/usr/bin/git",
             "-c", "core.hooksPath=/dev/null",
