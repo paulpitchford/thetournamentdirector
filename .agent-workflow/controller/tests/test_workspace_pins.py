@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import threading
 import unittest
 from dataclasses import replace
 from pathlib import Path
@@ -70,6 +71,41 @@ class WorkspacePinRegistryTests(unittest.TestCase):
             os.fstat(duplicates[0])
         with self.assertRaisesRegex(WorkspacePinError, "closed"):
             self.register(registry)
+
+    def test_concurrent_close_waits_and_replays_cleanup_failure(self) -> None:
+        registry = WorkspacePinRegistry()
+        self.register(registry)
+        close_entered = threading.Event()
+        release_close = threading.Event()
+        second_started = threading.Event()
+        errors: list[Exception] = []
+
+        def failing_close(_: int) -> None:
+            close_entered.set()
+            release_close.wait(timeout=2)
+            raise OSError("injected")
+
+        def run_close(started: threading.Event | None = None) -> None:
+            if started is not None:
+                started.set()
+            try:
+                registry.close()
+            except Exception as exc:
+                errors.append(exc)
+
+        with patch("td_controller.workspace_pins.os.close", side_effect=failing_close):
+            first = threading.Thread(target=run_close)
+            first.start()
+            self.assertTrue(close_entered.wait(timeout=2))
+            second = threading.Thread(target=run_close, args=(second_started,))
+            second.start()
+            self.assertTrue(second_started.wait(timeout=2))
+            self.assertTrue(second.is_alive())
+            release_close.set()
+            first.join(timeout=2)
+            second.join(timeout=2)
+        self.assertEqual(len(errors), 2)
+        self.assertTrue(all(isinstance(error, WorkspacePinError) for error in errors))
 
     def test_registry_never_uses_pathname_apis(self) -> None:
         registry = WorkspacePinRegistry()

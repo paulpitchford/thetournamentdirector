@@ -39,6 +39,7 @@ class WorkspacePinRegistry:
         self._lock = threading.RLock()
         self._descriptors: dict[PinnedWorkspace, int] = {}
         self._closed = False
+        self._close_failed = False
 
     def register(
         self,
@@ -101,17 +102,21 @@ class WorkspacePinRegistry:
     def close(self) -> None:
         """Close every owned descriptor; safe to call repeatedly."""
         with self._lock:
-            descriptors = tuple(self._descriptors.values())
-            self._descriptors.clear()
+            if self._closed:
+                if self._close_failed:
+                    raise WorkspacePinError("workspace pin cleanup failed")
+                return
             self._closed = True
-        failed = False
-        for descriptor in descriptors:
-            try:
-                os.close(descriptor)
-            except OSError:
-                failed = True
-        if failed:
-            raise WorkspacePinError("workspace pin cleanup failed")
+            failed = False
+            for descriptor in self._descriptors.values():
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    failed = True
+            self._descriptors.clear()
+            self._close_failed = failed
+            if failed:
+                raise WorkspacePinError("workspace pin cleanup failed")
 
     def _require_open(self) -> None:
         if self._closed:
