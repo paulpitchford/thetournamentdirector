@@ -1,24 +1,32 @@
 {
-  "id": "DOC-OPS-001",
+  "id": "ORCH-003D1A0A",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Record the Codex process-wide file-size-limit crash regression in the reviewed backlog",
-  "nonGoals": ["Change runtime code", "Retain private Codex state", "Attribute the crash to Omarchy or Codex", "Weaken output limits"],
+  "objective": "Own trusted pre-provisioned workspace descriptor pins with explicit idempotent cleanup",
+  "nonGoals": ["Create workspace directories", "Export a workspace descriptor", "Use context-manager cleanup", "Delete or rename workspace directories", "Run Git commands"],
   "dependsOn": ["ORCH-003C"],
   "acceptanceCriteria": [
-    "incident-record|WHEN the reviewed backlog is inspected|ASSERT VALUE \"crash regression recorded\"",
-    "regression-scope|WHEN the proposed acceptance is inspected|ASSERT VALUE \"pipe bounds preserved\""
+    "owned-pin|WHEN a trusted workspace descriptor is registered|ASSERT TEST_PASS workspace-pin-tests",
+    "path-independent|WHEN its pathname is replaced|ASSERT TEST_PASS workspace-pin-tests",
+    "forced-cleanup|WHEN active pins remain at shutdown|ASSERT TEST_PASS workspace-pin-tests",
+    "no-path-access|WHEN registration, inspection, and retirement run|ASSERT TEST_PASS workspace-pin-tests"
   ],
   "acceptanceEvidenceIds": {
-    "incident-record|WHEN the reviewed backlog is inspected|ASSERT VALUE \"crash regression recorded\"": ["crash-regression-recorded"],
-    "regression-scope|WHEN the proposed acceptance is inspected|ASSERT VALUE \"pipe bounds preserved\"": ["pipe-bounds-preserved"]
+    "owned-pin|WHEN a trusted workspace descriptor is registered|ASSERT TEST_PASS workspace-pin-tests": ["workspace-pin-tests"],
+    "path-independent|WHEN its pathname is replaced|ASSERT TEST_PASS workspace-pin-tests": ["workspace-pin-tests"],
+    "forced-cleanup|WHEN active pins remain at shutdown|ASSERT TEST_PASS workspace-pin-tests": ["workspace-pin-tests"],
+    "no-path-access|WHEN registration, inspection, and retirement run|ASSERT TEST_PASS workspace-pin-tests": ["workspace-pin-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
-  "allowedPaths": ["docs/DELIVERY_BACKLOG.md", ".agent-workflow/tasks/ORCH-001.json"],
+  "allowedPaths": [
+    ".agent-workflow/controller/td_controller/workspace_pins.py",
+    ".agent-workflow/controller/tests/test_workspace_pins.py",
+    ".agent-workflow/tasks/ORCH-001.json"
+  ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 100,
+  "maxChangedLines": 400,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
