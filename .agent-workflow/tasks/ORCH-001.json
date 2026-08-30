@@ -1,32 +1,32 @@
 {
-  "id": "ORCH-003D1B0K1",
+  "id": "ORCH-003D1B0K2",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Define a hook-disabled non-dereferencing exact Git ref creation command",
-  "nonGoals": ["Validate repository metadata paths", "Reserve a production branch", "Create a worktree", "Checkout files", "Push a ref"],
-  "dependsOn": ["ORCH-003D1B0J2"],
+  "objective": "Reserve an exact Git branch using validated controller-exclusive metadata and the accepted exact-ref command",
+  "nonGoals": ["Defend against code already running as the trusted controller UID", "Create a worktree", "Checkout files", "Commit changes", "Push a ref"],
+  "dependsOn": ["ORCH-003D1B0K1"],
   "acceptanceCriteria": [
-    "hooks-disabled|WHEN repository hook config is malicious|ASSERT ABSENT hook-marker",
-    "no-dereference|WHEN the exact ref is symbolic|ASSERT ABSENT target-ref",
-    "absent-only|WHEN the exact direct ref already exists|ASSERT VALUE \"nonzero\"",
-    "closed-command|WHEN argv and environment are built|ASSERT TEST_PASS exact-ref-command-tests"
+    "atomic-ref|WHEN an absent exact branch is reserved|ASSERT TEST_PASS git-reservation-proof",
+    "metadata-boundary|WHEN ref parents or object alternates are unsafe|ASSERT ERROR GitReservationError",
+    "exact-object|WHEN base is not a SHA-1 commit object|ASSERT ERROR GitReservationError",
+    "redirect-defense|WHEN hooks or symbolic refs are prepositioned|ASSERT ABSENT unintended-ref"
   ],
   "acceptanceEvidenceIds": {
-    "hooks-disabled|WHEN repository hook config is malicious|ASSERT ABSENT hook-marker": ["exact-ref-command-tests"],
-    "no-dereference|WHEN the exact ref is symbolic|ASSERT ABSENT target-ref": ["exact-ref-command-tests"],
-    "absent-only|WHEN the exact direct ref already exists|ASSERT VALUE \"nonzero\"": ["exact-ref-command-tests"],
-    "closed-command|WHEN argv and environment are built|ASSERT TEST_PASS exact-ref-command-tests": ["exact-ref-command-tests"]
+    "atomic-ref|WHEN an absent exact branch is reserved|ASSERT TEST_PASS git-reservation-proof": ["git-reservation-proof"],
+    "metadata-boundary|WHEN ref parents or object alternates are unsafe|ASSERT ERROR GitReservationError": ["git-reservation-tests"],
+    "exact-object|WHEN base is not a SHA-1 commit object|ASSERT ERROR GitReservationError": ["git-reservation-tests"],
+    "redirect-defense|WHEN hooks or symbolic refs are prepositioned|ASSERT ABSENT unintended-ref": ["git-reservation-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/exact_ref_command.py",
-    ".agent-workflow/controller/tests/test_exact_ref_command.py",
+    ".agent-workflow/controller/td_controller/git_reservation.py",
+    ".agent-workflow/controller/tests/test_git_reservation.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 300,
+  "maxChangedLines": 450,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
