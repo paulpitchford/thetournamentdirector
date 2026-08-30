@@ -135,6 +135,13 @@ class GitReservationTests(unittest.TestCase):
             reserve_git_branch(self.root, self.handle, base_sha=self.base)
         self.assertEqual(tuple(external.iterdir()), ())
 
+    def test_untrusted_local_config_is_rejected_and_lazy_fetch_is_disabled(self) -> None:
+        config = self.root / ".git" / "config"
+        config.chmod(0o666)
+        with self.assertRaisesRegex(GitReservationError, "layout"):
+            reserve_git_branch(self.root, self.handle, base_sha=self.base)
+        self.assertEqual(_environment()["GIT_NO_LAZY_FETCH"], "1")
+
     def test_object_alternates_are_rejected_before_ref_creation(self) -> None:
         info = self.root / ".git" / "objects" / "info"
         info.mkdir(exist_ok=True)

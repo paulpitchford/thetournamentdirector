@@ -44,7 +44,8 @@ class GitBranchReservation:
 def _environment() -> dict[str, str]:
     return {
         "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1",
-        "GIT_NO_REPLACE_OBJECTS": "1", "HOME": "/nonexistent",
+        "GIT_NO_LAZY_FETCH": "1", "GIT_NO_REPLACE_OBJECTS": "1",
+        "HOME": "/nonexistent",
         "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8", "PATH": "/usr/bin:/bin",
     }
 
@@ -86,6 +87,15 @@ def _validate_metadata(root: Path) -> None:
             or path.is_symlink()
         ):
             raise OSError("unsafe Git metadata")
+    config = git_dir / "config"
+    config_metadata = config.stat(follow_symlinks=False)
+    if (
+        not stat.S_ISREG(config_metadata.st_mode)
+        or config_metadata.st_uid != os.getuid()
+        or stat.S_IMODE(config_metadata.st_mode) & 0o022
+        or config.is_symlink()
+    ):
+        raise OSError("unsafe Git configuration")
     alternates = objects / "info" / "alternates"
     if alternates.exists() or alternates.is_symlink():
         raise OSError("Git alternates are prohibited")
@@ -97,7 +107,10 @@ def _reserve_held(
     ref_name = f"refs/heads/agent-{identity.task_id.lower()}-{identity.generation}"
     _require_exact_leaves_absent(root, ref_name)
     command = guarded_exact_ref_command(ref_name, base_sha)
-    executor = SubprocessExecutor(lambda _: dict(command.environment))
+    execution_environment = dict(command.environment) | {
+        "GIT_NO_LAZY_FETCH": "1"
+    }
+    executor = SubprocessExecutor(lambda _: execution_environment)
     try:
         object_format = executor.run(
             [GIT, "rev-parse", "--show-object-format"], input_bytes=b"",
