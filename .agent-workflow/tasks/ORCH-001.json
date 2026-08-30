@@ -1,27 +1,25 @@
 {
-  "id": "ORCH-003D1B0K3",
+  "id": "ORCH-003D1B0K5",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Define exact Git ref creation outcomes from launch lifecycle and trusted post-run observation",
-  "nonGoals": ["Run Git", "Inspect a repository", "Create a ref", "Reconcile an existing ref", "Create a worktree"],
-  "dependsOn": ["ORCH-003D1B0K1"],
+  "objective": "Guard and prove successful exact-ref creation with repository hooks forcibly disabled",
+  "nonGoals": ["Validate repository metadata", "Reserve a production branch", "Create a worktree", "Reconcile a ref", "Push a ref"],
+  "dependsOn": ["ORCH-003D1B0K1", "ORCH-003D1B0K3"],
   "acceptanceCriteria": [
-    "created|WHEN exact success and exact ref are observed|ASSERT VALUE \"created\"",
-    "rejected|WHEN absence is conclusively observed after failure|ASSERT VALUE \"rejected\"",
-    "committed-ambiguity|WHEN a ref exists after runner or output ambiguity|ASSERT ERROR GitRefIndeterminateError",
-    "unsafe-observation|WHEN ref state is other or unsafe|ASSERT ERROR GitRefIndeterminateError"
+    "successful-hook-proof|WHEN exact ref creation succeeds with a malicious hook configured|ASSERT ABSENT hook-marker",
+    "argv-guard|WHEN hook denial is missing from argv|ASSERT ERROR ExactRefHookGuardError",
+    "environment-guard|WHEN an extra Git environment key is present|ASSERT ERROR ExactRefHookGuardError"
   ],
   "acceptanceEvidenceIds": {
-    "created|WHEN exact success and exact ref are observed|ASSERT VALUE \"created\"": ["git-ref-outcome-tests"],
-    "rejected|WHEN absence is conclusively observed after failure|ASSERT VALUE \"rejected\"": ["git-ref-outcome-tests"],
-    "committed-ambiguity|WHEN a ref exists after runner or output ambiguity|ASSERT ERROR GitRefIndeterminateError": ["git-ref-outcome-tests"],
-    "unsafe-observation|WHEN ref state is other or unsafe|ASSERT ERROR GitRefIndeterminateError": ["git-ref-outcome-tests"]
+    "successful-hook-proof|WHEN exact ref creation succeeds with a malicious hook configured|ASSERT ABSENT hook-marker": ["exact-ref-hook-guard-tests"],
+    "argv-guard|WHEN hook denial is missing from argv|ASSERT ERROR ExactRefHookGuardError": ["exact-ref-hook-guard-tests"],
+    "environment-guard|WHEN an extra Git environment key is present|ASSERT ERROR ExactRefHookGuardError": ["exact-ref-hook-guard-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/git_ref_outcome.py",
-    ".agent-workflow/controller/tests/test_git_ref_outcome.py",
+    ".agent-workflow/controller/td_controller/exact_ref_hook_guard.py",
+    ".agent-workflow/controller/tests/test_exact_ref_hook_guard.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
