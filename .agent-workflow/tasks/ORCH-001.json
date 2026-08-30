@@ -2,19 +2,19 @@
   "id": "ORCH-003D1A",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Keep task workspace and lock capabilities descriptor-pinned for their full active lifetime",
-  "nonGoals": ["Run Git commands", "Delete quarantine directories", "Run a write-capable provider", "Push branches", "Create pull requests"],
+  "objective": "Keep task workspace capabilities descriptor-pinned beneath a controller-supplied root capability",
+  "nonGoals": ["Provide task-lease exclusivity", "Open a workspace root by pathname", "Delete or rename retained workspace directories", "Run Git commands", "Run a write-capable provider"],
   "dependsOn": ["ORCH-003C"],
   "acceptanceCriteria": [
-    "pinned-capability|WHEN an active workspace pathname is replaced|ASSERT TEST_PASS workspace-storage-tests",
-    "exclusive-lock|WHEN another manager reserves the same task attempt|ASSERT TEST_PASS workspace-storage-tests",
-    "safe-retirement|WHEN an exact empty workspace is released|ASSERT TEST_PASS workspace-storage-tests",
+    "root-capability|WHEN the original root pathname is replaced|ASSERT TEST_PASS workspace-storage-tests",
+    "pinned-child|WHEN an active child pathname is replaced|ASSERT TEST_PASS workspace-storage-tests",
+    "tracked-borrow|WHEN retirement overlaps an exported descriptor|ASSERT TEST_PASS workspace-storage-tests",
     "fail-closed|WHEN permissions, identity, or inspection changes|ASSERT TEST_PASS workspace-storage-tests"
   ],
   "acceptanceEvidenceIds": {
-    "pinned-capability|WHEN an active workspace pathname is replaced|ASSERT TEST_PASS workspace-storage-tests": ["workspace-storage-tests"],
-    "exclusive-lock|WHEN another manager reserves the same task attempt|ASSERT TEST_PASS workspace-storage-tests": ["workspace-storage-tests"],
-    "safe-retirement|WHEN an exact empty workspace is released|ASSERT TEST_PASS workspace-storage-tests": ["workspace-storage-tests"],
+    "root-capability|WHEN the original root pathname is replaced|ASSERT TEST_PASS workspace-storage-tests": ["workspace-storage-tests"],
+    "pinned-child|WHEN an active child pathname is replaced|ASSERT TEST_PASS workspace-storage-tests": ["workspace-storage-tests"],
+    "tracked-borrow|WHEN retirement overlaps an exported descriptor|ASSERT TEST_PASS workspace-storage-tests": ["workspace-storage-tests"],
     "fail-closed|WHEN permissions, identity, or inspection changes|ASSERT TEST_PASS workspace-storage-tests": ["workspace-storage-tests"]
   },
   "acceptanceEvidenceRequirements": {},

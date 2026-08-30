@@ -7,11 +7,9 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
-from td_controller.workspace_storage import (
-    WorkspaceAnchor,
-    WorkspaceStorage,
-    WorkspaceStorageError,
-)
+from td_controller.workspace_storage import WorkspaceStorage, WorkspaceStorageError
+
+
 class Generations:
     def __init__(self) -> None:
         self.value = 0
@@ -19,129 +17,125 @@ class Generations:
     def __call__(self) -> str:
         self.value += 1
         return f"{self.value:032x}"
+
+
 class WorkspaceStorageTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
-        self.parent = Path(self.temporary.name)
+        self.root = Path(self.temporary.name) / "storage"
+        self.root.mkdir(mode=0o700)
+        self.root_fd = os.open(self.root, os.O_RDONLY | os.O_DIRECTORY)
         self.generations = Generations()
+
     def tearDown(self) -> None:
+        os.close(self.root_fd)
         self.temporary.cleanup()
+
     def storage(self) -> WorkspaceStorage:
         return WorkspaceStorage(
-            self.parent, "task-storage", generation_factory=self.generations
+            self.root_fd, generation_factory=self.generations
         )
 
-    def test_anchor_descriptor_survives_path_replacement(self) -> None:
+    def test_borrow_uses_pinned_inode_after_path_replacement(self) -> None:
         with self.storage() as storage:
             anchor = storage.reserve("DOC-001", attempt=1)
-            root = self.parent / "task-storage"
-            displaced = root / "displaced"
-            (root / anchor.name).rename(displaced)
-            (root / anchor.name).mkdir(mode=0o700)
-            descriptor = storage.open_anchor(anchor)
-            self.assertEqual(os.fstat(descriptor).st_ino, displaced.stat().st_ino)
-            self.assertNotEqual(os.fstat(descriptor).st_ino, (root / anchor.name).stat().st_ino)
-            os.close(descriptor)
-            (root / anchor.name).rmdir()
-            displaced.rename(root / anchor.name)
-            storage.release_empty(anchor)
-    def test_symlink_replacement_cannot_redirect_capability_or_release(self) -> None:
+            original = self.root / anchor.name
+            original.rename(self.root / "held")
+            original.mkdir(mode=0o700)
+            with storage.borrow(anchor) as descriptor:
+                self.assertEqual(
+                    os.fstat(descriptor).st_ino, (self.root / "held").stat().st_ino
+                )
+                self.assertNotEqual(os.fstat(descriptor).st_ino, original.stat().st_ino)
+            storage.retire(anchor)
+
+    def test_symlink_replacement_cannot_redirect_borrow(self) -> None:
         with self.storage() as storage:
             anchor = storage.reserve("DOC-001", attempt=1)
-            root = self.parent / "task-storage"
-            original = root / anchor.name
-            original.rename(root / "held")
-            (root / anchor.name).symlink_to(self.parent)
-            descriptor = storage.open_anchor(anchor)
-            self.assertEqual(os.fstat(descriptor).st_ino, (root / "held").stat().st_ino)
-            os.close(descriptor)
+            original = self.root / anchor.name
+            original.rename(self.root / "held")
+            original.symlink_to(self.root)
+            with storage.borrow(anchor) as descriptor:
+                self.assertEqual(
+                    os.fstat(descriptor).st_ino, (self.root / "held").stat().st_ino
+                )
+            storage.retire(anchor)
+
+    def test_outstanding_borrow_blocks_retirement(self) -> None:
+        with self.storage() as storage:
+            anchor = storage.reserve("DOC-001", attempt=1)
+            with storage.borrow(anchor):
+                with self.assertRaisesRegex(WorkspaceStorageError, "still borrowed"):
+                    storage.retire(anchor)
+            storage.retire(anchor)
             with self.assertRaisesRegex(WorkspaceStorageError, "unavailable"):
-                storage.release_empty(anchor)
-            (root / anchor.name).unlink()
-            (root / "held").rename(original)
-            storage.release_empty(anchor)
-    def test_release_quarantines_without_deleting_and_allows_retry(self) -> None:
+                with storage.borrow(anchor):
+                    self.fail("retired capability was borrowed")
+
+    def test_retirement_never_deletes_workspace_bytes(self) -> None:
         with self.storage() as storage:
             anchor = storage.reserve("DOC-001", attempt=1)
-            root = self.parent / "task-storage"
-            storage.release_empty(anchor)
-            self.assertTrue((root / f".released-{anchor.name}").is_dir())
-            self.assertTrue((root / anchor.lock_name).is_file())
-            with self.assertRaisesRegex(WorkspaceStorageError, "unavailable"):
-                storage.open_anchor(anchor)
-            replacement = storage.reserve("DOC-001", attempt=1)
-            self.assertNotEqual(replacement.generation, anchor.generation)
-            storage.release_empty(replacement)
-    def test_nonempty_workspace_is_not_released(self) -> None:
-        with self.storage() as storage:
-            anchor = storage.reserve("DOC-001", attempt=1)
-            root = self.parent / "task-storage"
-            evidence = root / anchor.name / "evidence"
+            evidence = self.root / anchor.name / "evidence"
             evidence.write_text("retain")
-            with self.assertRaisesRegex(WorkspaceStorageError, "requires an empty"):
-                storage.release_empty(anchor)
-            evidence.unlink()
-            storage.release_empty(anchor)
-    def test_logical_reservation_is_exclusive_across_storage_instances(self) -> None:
-        first = self.storage()
-        second = self.storage()
-        anchor = first.reserve("DOC-001", attempt=1)
-        try:
-            with self.assertRaisesRegex(WorkspaceStorageError, "already reserved"):
-                second.reserve("DOC-001", attempt=1)
-        finally:
-            first.release_empty(anchor)
-            first.close()
-            second.close()
-    def test_forged_anchor_is_not_a_capability(self) -> None:
+            storage.retire(anchor)
+            self.assertEqual(evidence.read_text(), "retain")
+
+    def test_duplicate_active_logical_workspace_is_rejected(self) -> None:
+        with self.storage() as storage:
+            anchor = storage.reserve("DOC-001", attempt=1)
+            with self.assertRaisesRegex(WorkspaceStorageError, "already active"):
+                storage.reserve("DOC-001", attempt=1)
+            storage.retire(anchor)
+
+    def test_permission_drift_fails_closed(self) -> None:
+        with self.storage() as storage:
+            anchor = storage.reserve("DOC-001", attempt=1)
+            (self.root / anchor.name).chmod(0o777)
+            with self.assertRaisesRegex(WorkspaceStorageError, "permissions"):
+                with storage.borrow(anchor):
+                    self.fail("unsafe capability was borrowed")
+            (self.root / anchor.name).chmod(0o700)
+            self.root.chmod(0o777)
+            with self.assertRaisesRegex(WorkspaceStorageError, "permissions"):
+                storage.reserve("DOC-002", attempt=1)
+            self.root.chmod(0o700)
+            storage.retire(anchor)
+
+    def test_root_path_replacement_does_not_redirect_reservation(self) -> None:
+        with self.storage() as storage:
+            moved = self.root.with_name("moved")
+            self.root.rename(moved)
+            self.root.mkdir(mode=0o700)
+            anchor = storage.reserve("DOC-001", attempt=1)
+            self.assertTrue((moved / anchor.name).is_dir())
+            self.assertFalse((self.root / anchor.name).exists())
+            storage.retire(anchor)
+
+    def test_post_creation_failure_retains_bytes_and_allows_retry(self) -> None:
+        with self.storage() as storage:
+            with patch(
+                "td_controller.workspace_storage.os.listdir",
+                side_effect=OSError("injected"),
+            ):
+                with self.assertRaisesRegex(WorkspaceStorageError, "reservation failed"):
+                    storage.reserve("DOC-001", attempt=1)
+            failed = self.root / f"doc-001-attempt-1-{1:032x}"
+            self.assertTrue(failed.is_dir())
+            replacement = storage.reserve("DOC-001", attempt=1)
+            storage.retire(replacement)
+
+    def test_forged_anchor_and_changed_descriptor_are_rejected(self) -> None:
         with self.storage() as storage:
             anchor = storage.reserve("DOC-001", attempt=1)
             forged = replace(anchor, inode=anchor.inode + 1)
             with self.assertRaisesRegex(WorkspaceStorageError, "unavailable"):
-                storage.open_anchor(forged)
-            storage.release_empty(anchor)
-    def test_permission_mutation_fails_closed(self) -> None:
-        with self.storage() as storage:
-            anchor = storage.reserve("DOC-001", attempt=1)
-            root = self.parent / "task-storage"
-            (root / anchor.name).chmod(0o777)
-            with self.assertRaisesRegex(WorkspaceStorageError, "permissions"):
-                storage.open_anchor(anchor)
-            (root / anchor.name).chmod(0o700)
-            root.chmod(0o777)
-            with self.assertRaisesRegex(WorkspaceStorageError, "permissions"):
-                storage.reserve("DOC-002", attempt=1)
-            root.chmod(0o700)
-            storage.release_empty(anchor)
-    def test_post_creation_failure_is_quarantined_and_retryable(self) -> None:
-        with self.storage() as storage:
-            original = os.listdir
+                with storage.borrow(forged):
+                    self.fail("forged capability was borrowed")
+            storage.retire(anchor)
 
-            def fail_child(descriptor: int) -> list[str]:
-                if os.fstat(descriptor).st_ino != (self.parent / "task-storage").stat().st_ino:
-                    raise OSError("injected")
-                return original(descriptor)
-
-            with patch("td_controller.workspace_storage.os.listdir", side_effect=fail_child):
-                with self.assertRaisesRegex(WorkspaceStorageError, "reservation failed"):
-                    storage.reserve("DOC-001", attempt=1)
-            root = self.parent / "task-storage"
-            self.assertTrue((root / f".failed-doc-001-attempt-1-{1:032x}").is_dir())
-            replacement = storage.reserve("DOC-001", attempt=1)
-            storage.release_empty(replacement)
-    def test_root_rename_does_not_redirect_operations(self) -> None:
-        storage = self.storage()
-        old_root = self.parent / "task-storage"
-        moved_root = self.parent / "moved-storage"
-        old_root.rename(moved_root)
-        old_root.mkdir(mode=0o700)
-        anchor = storage.reserve("DOC-001", attempt=1)
-        self.assertTrue((moved_root / anchor.name).is_dir())
-        storage.release_empty(anchor)
-        storage.close()
-    def test_invalid_inputs_and_active_close_fail_closed(self) -> None:
-        with self.assertRaisesRegex(WorkspaceStorageError, "root name"):
-            WorkspaceStorage(self.parent, "../escape")
+    def test_invalid_inputs_active_close_and_closed_use_fail(self) -> None:
+        with self.assertRaisesRegex(WorkspaceStorageError, "descriptor"):
+            WorkspaceStorage(True)
         with self.storage() as storage:
             for task_id, attempt in (("bad", 1), ("DOC-001", True), ("DOC-001", 100)):
                 with self.assertRaises(WorkspaceStorageError):
@@ -149,7 +143,6 @@ class WorkspaceStorageTests(unittest.TestCase):
             anchor = storage.reserve("DOC-001", attempt=1)
             with self.assertRaisesRegex(WorkspaceStorageError, "active"):
                 storage.close()
-            storage.release_empty(anchor)
+            storage.retire(anchor)
         with self.assertRaisesRegex(WorkspaceStorageError, "closed"):
             storage.reserve("DOC-001", attempt=1)
-
