@@ -13,7 +13,6 @@ from .task_contract import TASK_ID_PATTERN
 from .workflow_state import TaskStateLedger, WorkflowStateError
 
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
-
 class WorktreeError(RuntimeError):
     """Raised when a task worktree cannot be reserved safely."""
 
