@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fcntl
 import os
 import re
 import stat
@@ -17,6 +18,17 @@ GENERATION_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{7,63}$")
 
 class WorkspaceStorageError(RuntimeError):
     """Raised when private workspace storage cannot be used safely."""
+
+
+def _serialized(method: Callable[..., object]) -> Callable[..., object]:
+    def locked(storage: WorkspaceStorage, *args: object, **kwargs: object) -> object:
+        root_fd = storage._require_open()
+        fcntl.flock(root_fd, fcntl.LOCK_EX)
+        try:
+            return method(storage, *args, **kwargs)
+        finally:
+            fcntl.flock(root_fd, fcntl.LOCK_UN)
+    return locked
 
 
 @dataclass(frozen=True)
@@ -85,6 +97,7 @@ class WorkspaceStorage:
     def __exit__(self, *_: object) -> None:
         self.close()
 
+    @_serialized
     def reserve(self, task_id: str, *, attempt: int) -> WorkspaceAnchor:
         """Atomically reserve one empty direct-child task directory."""
         self._validate_task(task_id, attempt)
@@ -129,9 +142,10 @@ class WorkspaceStorage:
             if os.listdir(descriptor):
                 raise WorkspaceStorageError("reserved workspace is not empty")
             device, inode = self._identity(metadata)
-        except Exception:
+        except Exception as exc:
             os.close(descriptor)
-            raise WorkspaceStorageError("workspace inspection failed")
+            self._quarantine_partial(name, lock_name, generation, root_fd)
+            raise WorkspaceStorageError("workspace inspection failed") from exc
         os.close(descriptor)
         return WorkspaceAnchor(
             task_id, attempt, name, lock_name, generation, device, inode
@@ -155,6 +169,7 @@ class WorkspaceStorage:
             raise WorkspaceStorageError("workspace anchor identity changed")
         return descriptor
 
+    @_serialized
     def release_empty(self, anchor: WorkspaceAnchor) -> None:
         """Quarantine, reverify, and remove the exact empty anchored directory."""
         descriptor = self.open_anchor(anchor)
@@ -185,6 +200,19 @@ class WorkspaceStorage:
             if quarantined is not None:
                 os.close(quarantined)
             os.close(descriptor)
+
+    @staticmethod
+    def _quarantine_partial(
+        name: str, lock_name: str, generation: str, root_fd: int
+    ) -> None:
+        try:
+            os.rename(
+                name, f".failed-{generation}",
+                src_dir_fd=root_fd, dst_dir_fd=root_fd,
+            )
+            os.rmdir(lock_name, dir_fd=root_fd)
+        except OSError as exc:
+            raise WorkspaceStorageError("workspace quarantine failed") from exc
 
     def _require_open(self) -> int:
         if self._root_fd is None or self._parent_fd is None:

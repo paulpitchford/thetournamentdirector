@@ -134,6 +134,20 @@ class WorkspaceStorageTests(unittest.TestCase):
             anchor = storage.reserve("DOC-001", attempt=1)
             self.assertEqual(anchor.generation, "generation-0002")
 
+    def test_post_open_inspection_failure_quarantines_and_retries(self) -> None:
+        with self.storage() as storage:
+            with patch(
+                "td_controller.workspace_storage.os.listdir",
+                side_effect=OSError("injected inspection failure"),
+            ):
+                with self.assertRaisesRegex(WorkspaceStorageError, "inspection failed"):
+                    storage.reserve("DOC-001", attempt=1)
+
+            names = {path.name for path in self.root.iterdir()}
+            self.assertEqual(names, {".failed-generation-0001"})
+            replacement = storage.reserve("DOC-001", attempt=1)
+            self.assertEqual(replacement.generation, "generation-0002")
+
     def test_closed_storage_rejects_operations_idempotently(self) -> None:
         storage = self.storage()
         storage.close()
