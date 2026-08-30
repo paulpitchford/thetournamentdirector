@@ -2,20 +2,20 @@
   "id": "ORCH-003D1A0",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Prove controller-internal descriptor pin ownership without exporting task or root descriptors",
-  "nonGoals": ["Export a workspace descriptor", "Provide task-lease exclusivity", "Open a workspace root by pathname", "Delete or rename retained workspace directories", "Run Git commands"],
+  "objective": "Pin trusted pre-provisioned workspace descriptors internally without pathname access or descriptor export",
+  "nonGoals": ["Create workspace directories", "Export a workspace descriptor", "Provide task-lease exclusivity", "Delete or rename workspace directories", "Run Git commands"],
   "dependsOn": ["ORCH-003C"],
   "acceptanceCriteria": [
-    "root-pin|WHEN the supplied root pathname is replaced|ASSERT TEST_PASS workspace-storage-tests",
-    "child-pin|WHEN an active child pathname is replaced|ASSERT TEST_PASS workspace-storage-tests",
-    "no-export|WHEN callers inspect an active workspace|ASSERT TEST_PASS workspace-storage-tests",
-    "fail-closed|WHEN permissions, identity, or inspection changes|ASSERT TEST_PASS workspace-storage-tests"
+    "preprovisioned-pin|WHEN a trusted workspace descriptor is registered|ASSERT TEST_PASS workspace-storage-tests",
+    "path-independent|WHEN the workspace pathname is replaced|ASSERT TEST_PASS workspace-storage-tests",
+    "no-path-access|WHEN registration and inspection run|ASSERT TEST_PASS workspace-storage-tests",
+    "fail-closed|WHEN permissions, identity, or descriptor type changes|ASSERT TEST_PASS workspace-storage-tests"
   ],
   "acceptanceEvidenceIds": {
-    "root-pin|WHEN the supplied root pathname is replaced|ASSERT TEST_PASS workspace-storage-tests": ["workspace-storage-tests"],
-    "child-pin|WHEN an active child pathname is replaced|ASSERT TEST_PASS workspace-storage-tests": ["workspace-storage-tests"],
-    "no-export|WHEN callers inspect an active workspace|ASSERT TEST_PASS workspace-storage-tests": ["workspace-storage-tests"],
-    "fail-closed|WHEN permissions, identity, or inspection changes|ASSERT TEST_PASS workspace-storage-tests": ["workspace-storage-tests"]
+    "preprovisioned-pin|WHEN a trusted workspace descriptor is registered|ASSERT TEST_PASS workspace-storage-tests": ["workspace-storage-tests"],
+    "path-independent|WHEN the workspace pathname is replaced|ASSERT TEST_PASS workspace-storage-tests": ["workspace-storage-tests"],
+    "no-path-access|WHEN registration and inspection run|ASSERT TEST_PASS workspace-storage-tests": ["workspace-storage-tests"],
+    "fail-closed|WHEN permissions, identity, or descriptor type changes|ASSERT TEST_PASS workspace-storage-tests": ["workspace-storage-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
@@ -26,7 +26,7 @@
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 450,
+  "maxChangedLines": 400,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
