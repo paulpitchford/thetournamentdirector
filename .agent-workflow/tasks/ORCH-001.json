@@ -1,32 +1,32 @@
 {
-  "id": "ORCH-003D1B0I2",
+  "id": "ORCH-003D1B0J",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Apply one existing text replacement through the accepted outcome protocol and sole attested worker container",
-  "nonGoals": ["Defend against code already running as the trusted controller UID", "Apply multiple files", "Create delete or rename tracked files", "Call a model", "Modify Git state"],
-  "dependsOn": ["ORCH-003D1B0I1", "ORCH-003D1B0G"],
+  "objective": "Prove one end-to-end tool-less model proposal and attested text replacement without Git integration",
+  "nonGoals": ["Use a real repository worktree", "Create a commit or pull request", "Apply multiple files", "Expose credentials to workers", "Give workers network access"],
+  "dependsOn": ["ORCH-003D1B0H", "ORCH-003D1B0I2"],
   "acceptanceCriteria": [
-    "atomic-replacement|WHEN the selected digest matches|ASSERT TEST_PASS attested-text-replacement-proof",
-    "stale-input|WHEN the selected digest changed|ASSERT VALUE \"rejected\"",
-    "path-boundary|WHEN parent symlink or target directory is present|ASSERT VALUE \"rejected\"",
-    "ambiguous-run|WHEN runner lifecycle or post-mutation output is uncertain|ASSERT ERROR ReplacementIndeterminateError"
+    "end-to-end|WHEN selected text is brokered and applied|ASSERT TEST_PASS mutation-pipeline-proof",
+    "identity-gate|WHEN task SHA nonce or replacement count differs|ASSERT ERROR MutationPipelineError",
+    "boundary-order|WHEN the broker result is invalid|ASSERT ABSENT applier-call",
+    "indeterminate|WHEN replacement outcome needs reconciliation|ASSERT ERROR ReplacementIndeterminateError"
   ],
   "acceptanceEvidenceIds": {
-    "atomic-replacement|WHEN the selected digest matches|ASSERT TEST_PASS attested-text-replacement-proof": ["attested-text-replacement-proof"],
-    "stale-input|WHEN the selected digest changed|ASSERT VALUE \"rejected\"": ["attested-text-replacement-proof"],
-    "path-boundary|WHEN parent symlink or target directory is present|ASSERT VALUE \"rejected\"": ["attested-text-replacement-proof"],
-    "ambiguous-run|WHEN runner lifecycle or post-mutation output is uncertain|ASSERT ERROR ReplacementIndeterminateError": ["attested-text-replacement-tests"]
+    "end-to-end|WHEN selected text is brokered and applied|ASSERT TEST_PASS mutation-pipeline-proof": ["mutation-pipeline-proof"],
+    "identity-gate|WHEN task SHA nonce or replacement count differs|ASSERT ERROR MutationPipelineError": ["mutation-pipeline-tests"],
+    "boundary-order|WHEN the broker result is invalid|ASSERT ABSENT applier-call": ["mutation-pipeline-tests"],
+    "indeterminate|WHEN replacement outcome needs reconciliation|ASSERT ERROR ReplacementIndeterminateError": ["mutation-pipeline-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/attested_text_replacement.py",
-    ".agent-workflow/controller/tests/test_attested_text_replacement.py",
+    ".agent-workflow/controller/td_controller/mutation_pipeline.py",
+    ".agent-workflow/controller/tests/test_mutation_pipeline.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 500,
+  "maxChangedLines": 450,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
