@@ -1,32 +1,34 @@
 {
-  "id": "ORCH-003D1B0L2",
+  "id": "ORCH-003D1B0L3",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Require matching real and effective process identities before trusted filesystem effects",
-  "nonGoals": ["Execute a subprocess", "Inspect a directory", "Drop privileges", "Run Git", "Create a worktree"],
-  "dependsOn": ["ORCH-003D1B0K3", "ORCH-003D1B0K5"],
+  "objective": "Execute bounded trusted commands from a pinned directory descriptor under an unambiguous effective identity",
+  "nonGoals": ["Expose a repository pathname", "Expose a descriptor", "Run Git mutation", "Create a worktree", "Accept model commands"],
+  "dependsOn": ["ORCH-003D1B0K3", "ORCH-003D1B0K5", "ORCH-003D1B0L2"],
   "acceptanceCriteria": [
-    "current-identity|WHEN real and effective credentials match|ASSERT TEST_PASS effective-identity-tests",
-    "uid-transition|WHEN real and effective UIDs differ|ASSERT ERROR EffectiveIdentityError",
-    "gid-transition|WHEN real and effective GIDs differ|ASSERT ERROR EffectiveIdentityError",
-    "diagnostic-boundary|WHEN an identity getter fails|ASSERT ABSENT identity-diagnostic"
+    "descriptor-cwd|WHEN the original pathname is replaced|ASSERT TEST_PASS pinned-directory-executor-proof",
+    "replacement-isolation|WHEN a command writes a relative marker|ASSERT ABSENT replacement-marker",
+    "effective-owner|WHEN directory ownership differs from effective UID|ASSERT ERROR PinnedDirectoryExecutorError",
+    "identity-transition|WHEN process identity changes|ASSERT ERROR PinnedDirectoryExecutorError",
+    "bounded-input|WHEN environment command stdin or timeout is invalid|ASSERT ERROR PinnedDirectoryExecutorError"
   ],
   "acceptanceEvidenceIds": {
-    "current-identity|WHEN real and effective credentials match|ASSERT TEST_PASS effective-identity-tests": ["effective-identity-tests"],
-    "uid-transition|WHEN real and effective UIDs differ|ASSERT ERROR EffectiveIdentityError": ["effective-identity-tests"],
-    "gid-transition|WHEN real and effective GIDs differ|ASSERT ERROR EffectiveIdentityError": ["effective-identity-tests"],
-    "diagnostic-boundary|WHEN an identity getter fails|ASSERT ABSENT identity-diagnostic": ["effective-identity-tests"]
+    "descriptor-cwd|WHEN the original pathname is replaced|ASSERT TEST_PASS pinned-directory-executor-proof": ["pinned-directory-executor-proof"],
+    "replacement-isolation|WHEN a command writes a relative marker|ASSERT ABSENT replacement-marker": ["pinned-directory-executor-proof"],
+    "effective-owner|WHEN directory ownership differs from effective UID|ASSERT ERROR PinnedDirectoryExecutorError": ["pinned-directory-executor-tests"],
+    "identity-transition|WHEN process identity changes|ASSERT ERROR PinnedDirectoryExecutorError": ["pinned-directory-executor-tests"],
+    "bounded-input|WHEN environment command stdin or timeout is invalid|ASSERT ERROR PinnedDirectoryExecutorError": ["pinned-directory-executor-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/effective_identity.py",
-    ".agent-workflow/controller/tests/test_effective_identity.py",
+    ".agent-workflow/controller/td_controller/pinned_directory_executor.py",
+    ".agent-workflow/controller/tests/test_pinned_directory_executor.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 250,
+  "maxChangedLines": 450,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
