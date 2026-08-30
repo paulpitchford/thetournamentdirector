@@ -5,12 +5,14 @@ from __future__ import annotations
 import os
 import re
 import stat
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 from .task_contract import TASK_ID_PATTERN
 
 ROOT_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+GENERATION_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{7,63}$")
 
 
 class WorkspaceStorageError(RuntimeError):
@@ -24,6 +26,8 @@ class WorkspaceAnchor:
     task_id: str
     attempt: int
     name: str
+    lock_name: str
+    generation: str
     device: int
     inode: int
 
@@ -31,7 +35,7 @@ class WorkspaceAnchor:
 class WorkspaceStorage:
     """Own workspace directories relative to pinned parent and root descriptors."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, *, generation_factory: Callable[[], str]) -> None:
         if not root.is_absolute() or not ROOT_NAME_PATTERN.fullmatch(root.name):
             raise WorkspaceStorageError("workspace root name is invalid")
         parent_fd: int | None = None
@@ -60,6 +64,7 @@ class WorkspaceStorage:
                 raise WorkspaceStorageError("workspace storage is unavailable") from exc
             raise
         self.root = root
+        self._generation_factory = generation_factory
         self._parent_fd = parent_fd
         self._root_fd = root_fd
         self._root_identity = self._identity(os.fstat(root_fd))
@@ -84,8 +89,14 @@ class WorkspaceStorage:
         """Atomically reserve one empty direct-child task directory."""
         self._validate_task(task_id, attempt)
         root_fd = self._require_open()
-        name = f"{task_id.lower()}-attempt-{attempt}"
+        logical_name = f"{task_id.lower()}-attempt-{attempt}"
+        generation = self._generation_factory()
+        if not isinstance(generation, str) or not GENERATION_PATTERN.fullmatch(generation):
+            raise WorkspaceStorageError("workspace generation is invalid")
+        lock_name = f".{logical_name}.lock"
+        name = f"{logical_name}-{generation}"
         try:
+            os.mkdir(lock_name, mode=0o700, dir_fd=root_fd)
             os.mkdir(name, mode=0o700, dir_fd=root_fd)
             descriptor = os.open(
                 name,
@@ -95,10 +106,6 @@ class WorkspaceStorage:
         except FileExistsError as exc:
             raise WorkspaceStorageError("workspace is already reserved") from exc
         except OSError as exc:
-            try:
-                os.rmdir(name, dir_fd=root_fd)
-            except OSError:
-                pass
             raise WorkspaceStorageError("workspace reservation failed") from exc
         try:
             metadata = os.fstat(descriptor)
@@ -108,13 +115,11 @@ class WorkspaceStorage:
             device, inode = self._identity(metadata)
         except Exception:
             os.close(descriptor)
-            try:
-                os.rmdir(name, dir_fd=root_fd)
-            except OSError as exc:
-                raise WorkspaceStorageError("workspace rollback failed") from exc
-            raise
+            raise WorkspaceStorageError("workspace inspection failed")
         os.close(descriptor)
-        return WorkspaceAnchor(task_id, attempt, name, device, inode)
+        return WorkspaceAnchor(
+            task_id, attempt, name, lock_name, generation, device, inode
+        )
 
     def open_anchor(self, anchor: WorkspaceAnchor) -> int:
         """Open an existing anchor by no-follow relative lookup; caller closes it."""
@@ -142,13 +147,35 @@ class WorkspaceStorage:
             raise WorkspaceStorageError("workspace root duplication failed") from exc
 
     def release_empty(self, anchor: WorkspaceAnchor) -> None:
-        """Remove the exact anchored directory only while it remains empty."""
+        """Quarantine, reverify, and remove the exact empty anchored directory."""
         descriptor = self.open_anchor(anchor)
-        os.close(descriptor)
+        root_fd = self._require_open()
+        quarantine = f".release-{anchor.generation}"
+        quarantined: int | None = None
         try:
-            os.rmdir(anchor.name, dir_fd=self._require_open())
+            os.rename(
+                anchor.name, quarantine, src_dir_fd=root_fd, dst_dir_fd=root_fd
+            )
+            quarantined = os.open(
+                quarantine,
+                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                dir_fd=root_fd,
+            )
+            metadata = os.fstat(quarantined)
+            if self._identity(metadata) != (anchor.device, anchor.inode):
+                raise WorkspaceStorageError("workspace release identity changed")
+            if os.listdir(quarantined):
+                raise WorkspaceStorageError("workspace release requires an empty anchor")
+            os.close(quarantined)
+            quarantined = None
+            os.rmdir(quarantine, dir_fd=root_fd)
+            os.rmdir(anchor.lock_name, dir_fd=root_fd)
         except OSError as exc:
             raise WorkspaceStorageError("workspace release failed") from exc
+        finally:
+            if quarantined is not None:
+                os.close(quarantined)
+            os.close(descriptor)
 
     def _require_open(self) -> int:
         if self._root_fd is None or self._parent_fd is None:
@@ -194,6 +221,12 @@ class WorkspaceStorage:
         if not isinstance(anchor, WorkspaceAnchor):
             raise WorkspaceStorageError("workspace anchor is invalid")
         WorkspaceStorage._validate_task(anchor.task_id, anchor.attempt)
-        expected = f"{anchor.task_id.lower()}-attempt-{anchor.attempt}"
-        if anchor.name != expected or anchor.device < 0 or anchor.inode <= 0:
+        logical = f"{anchor.task_id.lower()}-attempt-{anchor.attempt}"
+        if (
+            not GENERATION_PATTERN.fullmatch(anchor.generation)
+            or anchor.name != f"{logical}-{anchor.generation}"
+            or anchor.lock_name != f".{logical}.lock"
+            or anchor.device < 0
+            or anchor.inode <= 0
+        ):
             raise WorkspaceStorageError("workspace anchor is invalid")
