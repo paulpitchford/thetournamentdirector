@@ -1,32 +1,32 @@
 {
-  "id": "ORCH-003C",
+  "id": "ORCH-003D1",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Authorize workflow gates only with immutable evidence bound to the exact leased task revision",
-  "nonGoals": ["Create worktrees", "Run a write-capable provider", "Push branches", "Create or merge pull requests", "Change GitHub policy"],
-  "dependsOn": ["ORCH-003B"],
+  "objective": "Provide descriptor-anchored private storage for isolated task workspaces",
+  "nonGoals": ["Run Git worktree commands", "Materialize tracked files", "Run a write-capable provider", "Push branches", "Create pull requests"],
+  "dependsOn": ["ORCH-003C"],
   "acceptanceCriteria": [
-    "immutable-evidence|WHEN trusted gate evidence is recorded|ASSERT TEST_PASS workflow-evidence-tests",
-    "exact-binding|WHEN evidence-gated progression is requested|ASSERT TEST_PASS workflow-evidence-tests",
-    "replay-rejection|WHEN old-head or failed evidence is reused|ASSERT TEST_PASS workflow-evidence-tests",
-    "lease-authority|WHEN gate evidence is recorded or consumed|ASSERT TEST_PASS workflow-evidence-tests"
+    "descriptor-anchor|WHEN workspace paths are renamed or replaced|ASSERT TEST_PASS workspace-storage-tests",
+    "exact-child|WHEN a task attempt reserves workspace storage|ASSERT TEST_PASS workspace-storage-tests",
+    "no-symlink|WHEN an anchor is replaced by a symlink|ASSERT TEST_PASS workspace-storage-tests",
+    "safe-cleanup|WHEN reservation or release fails|ASSERT TEST_PASS workspace-storage-tests"
   ],
   "acceptanceEvidenceIds": {
-    "immutable-evidence|WHEN trusted gate evidence is recorded|ASSERT TEST_PASS workflow-evidence-tests": ["workflow-evidence-tests"],
-    "exact-binding|WHEN evidence-gated progression is requested|ASSERT TEST_PASS workflow-evidence-tests": ["workflow-evidence-tests"],
-    "replay-rejection|WHEN old-head or failed evidence is reused|ASSERT TEST_PASS workflow-evidence-tests": ["workflow-evidence-tests"],
-    "lease-authority|WHEN gate evidence is recorded or consumed|ASSERT TEST_PASS workflow-evidence-tests": ["workflow-evidence-tests"]
+    "descriptor-anchor|WHEN workspace paths are renamed or replaced|ASSERT TEST_PASS workspace-storage-tests": ["workspace-storage-tests"],
+    "exact-child|WHEN a task attempt reserves workspace storage|ASSERT TEST_PASS workspace-storage-tests": ["workspace-storage-tests"],
+    "no-symlink|WHEN an anchor is replaced by a symlink|ASSERT TEST_PASS workspace-storage-tests": ["workspace-storage-tests"],
+    "safe-cleanup|WHEN reservation or release fails|ASSERT TEST_PASS workspace-storage-tests": ["workspace-storage-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/workflow_state.py",
-    ".agent-workflow/controller/tests/test_workflow_state.py",
+    ".agent-workflow/controller/td_controller/workspace_storage.py",
+    ".agent-workflow/controller/tests/test_workspace_storage.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 600,
+  "maxChangedLines": 500,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
