@@ -7,19 +7,15 @@ import stat
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-
 from .lease import LeaseError, TaskLease, TaskLeaseLedger
 from .task_contract import TASK_ID_PATTERN
 from .workflow_state import TaskStateLedger, WorkflowStateError
-
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 class WorktreeError(RuntimeError):
     """Raised when a task worktree cannot be reserved safely."""
 
 class AmbiguousGitError(WorktreeError):
     """Raised when a timed-out Git mutation may have taken effect."""
-
-
 @dataclass(frozen=True)
 class WorktreeReservation:
     task_id: str
@@ -243,7 +239,6 @@ class MetadataWorktreeManager:
             or stat.S_IMODE(metadata.st_mode) & 0o077
         ):
             raise WorktreeError("worktree root permissions are unsafe")
-
     def _rollback(self, target: Path, reference: str, base_sha: str) -> None:
         self._assert_storage_identity()
         self._run_git("worktree", "remove", "--force", str(target))
@@ -264,7 +259,28 @@ class MetadataWorktreeManager:
         deletion = self._run_git("update-ref", "-d", reference, base_sha)
         if deletion.returncode != 0:
             raise WorktreeError("partial branch cleanup failed")
-
+    def _open_git_descriptors(self) -> tuple[int, int]:
+        descriptors: list[int] = []
+        try:
+            for path in (self.repository_root, self._git_directory):
+                descriptors.append(os.open(
+                    path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+                ))
+            identities = tuple(
+                (os.fstat(descriptor).st_dev, os.fstat(descriptor).st_ino)
+                for descriptor in descriptors
+            )
+            if identities != (self._repository_identity, self._git_identity):
+                raise WorktreeError("repository Git identity changed")
+            return descriptors[0], descriptors[1]
+        except Exception as exc:
+            for descriptor in descriptors:
+                os.close(descriptor)
+            if isinstance(exc, OSError):
+                raise WorktreeError(
+                    "repository Git descriptors are unavailable"
+                ) from exc
+            raise
     def _git(self, *arguments: str) -> None:
         result = self._run_git(*arguments)
         if result.returncode != 0 or result.stdout or result.stderr:
@@ -272,24 +288,7 @@ class MetadataWorktreeManager:
 
     def _run_git(self, *arguments: str) -> subprocess.CompletedProcess[bytes]:
         self._assert_git_identity()
-        try:
-            repository_fd = os.open(
-                self.repository_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
-            )
-            git_fd = os.open(
-                self._git_directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
-            )
-        except OSError as exc:
-            raise WorktreeError("repository Git descriptors are unavailable") from exc
-        if (
-            (os.fstat(repository_fd).st_dev, os.fstat(repository_fd).st_ino)
-            != self._repository_identity
-            or (os.fstat(git_fd).st_dev, os.fstat(git_fd).st_ino)
-            != self._git_identity
-        ):
-            os.close(repository_fd)
-            os.close(git_fd)
-            raise WorktreeError("repository Git identity changed")
+        repository_fd, git_fd = self._open_git_descriptors()
         command = [
             "/usr/bin/git",
             "-c", "core.hooksPath=/dev/null",
