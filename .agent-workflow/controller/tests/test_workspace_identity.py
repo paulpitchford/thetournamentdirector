@@ -96,6 +96,34 @@ class WorkspaceIdentityRegistryTests(unittest.TestCase):
         registry.retire(replacement)
         registry.close()
 
+    def test_failed_registration_cleanup_is_terminal(self) -> None:
+        file_path = self.root / "file"
+        file_path.write_text("not a directory")
+        file_descriptor = os.open(file_path, os.O_RDONLY)
+        registry = WorkspaceIdentityRegistry()
+        real_close = os.close
+
+        def close_then_fail(descriptor: int) -> None:
+            real_close(descriptor)
+            raise OSError("injected")
+
+        try:
+            with patch(
+                "td_controller.workspace_identity.os.close",
+                side_effect=close_then_fail,
+            ):
+                with self.assertRaisesRegex(WorkspaceIdentityError, "cleanup failed"):
+                    registry.register(
+                        "DOC-001", attempt=1, generation="0" * 32,
+                        descriptor=file_descriptor,
+                    )
+            with self.assertRaisesRegex(WorkspaceIdentityError, "closed"):
+                self.register(registry)
+            with self.assertRaisesRegex(WorkspaceIdentityError, "cleanup failed"):
+                registry.close()
+        finally:
+            os.close(file_descriptor)
+
     def test_close_is_synchronous_and_replays_failure(self) -> None:
         registry = WorkspaceIdentityRegistry()
         self.register(registry)

@@ -61,7 +61,14 @@ class WorkspaceIdentityRegistry:
                     raise WorkspaceIdentityError("physical workspace is already owned")
             except Exception as exc:
                 if duplicate >= 0:
-                    os.close(duplicate)
+                    try:
+                        os.close(duplicate)
+                    except OSError as cleanup_error:
+                        self._closed = True
+                        self._cleanup_failed = True
+                        raise WorkspaceIdentityError(
+                            "workspace cleanup failed"
+                        ) from cleanup_error
                 if isinstance(exc, WorkspaceIdentityError):
                     raise
                 raise WorkspaceIdentityError("workspace registration failed") from exc
