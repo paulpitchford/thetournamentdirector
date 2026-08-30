@@ -137,7 +137,7 @@ class MetadataWorktreeManager:
             mutation_started = True
             update = self._run_git("update-ref", reference, base_sha, "0" * 40)
             if update.returncode != 0 or update.stdout or update.stderr:
-                raise WorktreeError("task branch creation was rejected")
+                raise AmbiguousGitError("task branch creation outcome is ambiguous")
             branch_may_be_owned = True
             self._git(
                 "worktree", "add", "--quiet", "--no-checkout",
@@ -272,12 +272,30 @@ class MetadataWorktreeManager:
 
     def _run_git(self, *arguments: str) -> subprocess.CompletedProcess[bytes]:
         self._assert_git_identity()
+        try:
+            repository_fd = os.open(
+                self.repository_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+            )
+            git_fd = os.open(
+                self._git_directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+            )
+        except OSError as exc:
+            raise WorktreeError("repository Git descriptors are unavailable") from exc
+        if (
+            (os.fstat(repository_fd).st_dev, os.fstat(repository_fd).st_ino)
+            != self._repository_identity
+            or (os.fstat(git_fd).st_dev, os.fstat(git_fd).st_ino)
+            != self._git_identity
+        ):
+            os.close(repository_fd)
+            os.close(git_fd)
+            raise WorktreeError("repository Git identity changed")
         command = [
             "/usr/bin/git",
             "-c", "core.hooksPath=/dev/null",
             "-c", "core.fsmonitor=false",
             "-c", "protocol.file.allow=never",
-            "-C", str(self.repository_root),
+            "-C", f"/proc/self/fd/{repository_fd}",
             *arguments,
         ]
         environment = {
@@ -285,6 +303,7 @@ class MetadataWorktreeManager:
             "GIT_CONFIG_NOSYSTEM": "1",
             "GIT_NO_LAZY_FETCH": "1",
             "GIT_NO_REPLACE_OBJECTS": "1",
+            "GIT_DIR": f"/proc/self/fd/{git_fd}",
             "HOME": "/dev/null",
             "LANG": "C.UTF-8",
             "LC_ALL": "C.UTF-8",
@@ -294,9 +313,12 @@ class MetadataWorktreeManager:
             return subprocess.run(
                 command, check=False, stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                timeout=30, env=environment,
+                timeout=30, env=environment, pass_fds=(repository_fd, git_fd),
             )
         except subprocess.TimeoutExpired as exc:
             raise AmbiguousGitError("trusted Git outcome is ambiguous") from exc
         except OSError as exc:
             raise WorktreeError("trusted Git command failed") from exc
+        finally:
+            os.close(repository_fd)
+            os.close(git_fd)

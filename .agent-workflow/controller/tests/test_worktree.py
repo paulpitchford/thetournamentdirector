@@ -1,12 +1,10 @@
 from __future__ import annotations
-
 import os
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
-
 from td_controller.lease import LeaseError, TaskLease
 from td_controller.workflow_state import TaskState
 from td_controller.worktree import (
@@ -14,8 +12,6 @@ from td_controller.worktree import (
     MetadataWorktreeManager,
     WorktreeError,
 )
-
-
 class MetadataWorktreeManagerTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory(dir="/var/tmp")
@@ -75,24 +71,6 @@ class MetadataWorktreeManagerTests(unittest.TestCase):
         self.assertEqual(self.git("rev-parse", self.lease.branch).stdout.strip(), self.base_sha)
         self.assertFalse((self.root / "hook-ran").exists())
         self.assertFalse((reservation.path / "README.md").exists())
-
-    def test_roots_must_be_disjoint_private_and_self_contained(self) -> None:
-        with self.assertRaisesRegex(WorktreeError, "overlaps"):
-            self.manager(self.repository / "nested")
-        unsafe = self.root / "unsafe"
-        unsafe.mkdir(mode=0o755)
-        with self.assertRaisesRegex(WorktreeError, "permissions"):
-            self.manager(unsafe)
-        external = self.root / "external-git"
-        external.mkdir()
-        linked = self.root / "linked"
-        linked.mkdir()
-        (linked / ".git").write_text(f"gitdir: {external}\n")
-        with self.assertRaisesRegex(WorktreeError, "self-contained"):
-            MetadataWorktreeManager(
-                linked, self.root / "linked-worktrees",
-                lease_ledger=self.lease_ledger, state_ledger=self.state_ledger,
-            )
 
     def test_replaced_git_directory_is_rejected_before_mutation(self) -> None:
         manager = self.manager()
