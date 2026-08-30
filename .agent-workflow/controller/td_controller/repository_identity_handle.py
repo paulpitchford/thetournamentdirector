@@ -87,8 +87,8 @@ class RepositoryIdentityHandle:
             self._verify_locked()
 
     @contextmanager
-    def hold_path(self) -> Iterator[Path]:
-        """Keep repository authority live throughout one synchronous operation."""
+    def hold_identity(self) -> Iterator[RepositoryIdentity]:
+        """Keep repository authority live without exporting a pathname or fd."""
         self._lock.acquire()
         try:
             if self._hold_owner is not None:
@@ -98,7 +98,7 @@ class RepositoryIdentityHandle:
             self._verify_locked()
             self._hold_owner = threading.get_ident()
             try:
-                yield self._root
+                yield self._identity
             finally:
                 try:
                     self._verify_locked()

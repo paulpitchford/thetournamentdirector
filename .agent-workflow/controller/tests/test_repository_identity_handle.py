@@ -33,14 +33,14 @@ class RepositoryIdentityHandleTests(unittest.TestCase):
         finally:
             os.close(descriptor)
 
-    def test_supplied_descriptor_is_duplicated_and_path_is_held(self) -> None:
+    def test_supplied_descriptor_is_duplicated_and_identity_is_held(self) -> None:
         handle = self.make_handle()
         try:
-            with handle.hold_path() as path:
-                self.assertEqual(path, self.root)
+            with handle.hold_identity() as identity:
+                self.assertIs(identity, handle.identity)
                 self.assertEqual(
-                    (path.stat().st_dev, path.stat().st_ino),
-                    (handle.identity.device, handle.identity.inode),
+                    (self.root.stat().st_dev, self.root.stat().st_ino),
+                    (identity.device, identity.inode),
                 )
             handle.verify()
         finally:
@@ -79,6 +79,27 @@ class RepositoryIdentityHandleTests(unittest.TestCase):
             self.root.rmdir()
             held.rename(self.root)
 
+    def test_hold_exports_neither_path_nor_descriptor_during_swap_restore(self) -> None:
+        handle = self.make_handle()
+        held = self.root.with_name(self.root.name + "-held")
+        try:
+            with handle.hold_identity() as authority:
+                self.root.rename(held)
+                self.root.mkdir(mode=0o755)
+                (self.root / "replacement-marker").write_text(
+                    "replacement", encoding="utf-8"
+                )
+                self.assertFalse(hasattr(authority, "path"))
+                self.assertFalse(hasattr(authority, "descriptor"))
+                (self.root / "replacement-marker").unlink()
+                self.root.rmdir()
+                held.rename(self.root)
+            handle.verify()
+        finally:
+            handle.close()
+            if held.exists() and not self.root.exists():
+                held.rename(self.root)
+
     def test_hold_blocks_concurrent_close_until_operation_finishes(self) -> None:
         handle = self.make_handle()
         entered = threading.Event()
@@ -86,7 +107,7 @@ class RepositoryIdentityHandleTests(unittest.TestCase):
         closed = threading.Event()
 
         def operation() -> None:
-            with handle.hold_path():
+            with handle.hold_identity():
                 entered.set()
                 release.wait(timeout=2)
 
@@ -108,9 +129,9 @@ class RepositoryIdentityHandleTests(unittest.TestCase):
 
     def test_nested_hold_same_thread_close_and_closed_verify_fail(self) -> None:
         handle = self.make_handle()
-        with handle.hold_path():
+        with handle.hold_identity():
             with self.assertRaisesRegex(RepositoryIdentityHandleError, "already held"):
-                with handle.hold_path():
+                with handle.hold_identity():
                     pass
             with self.assertRaisesRegex(RepositoryIdentityHandleError, "hold is active"):
                 handle.close()
