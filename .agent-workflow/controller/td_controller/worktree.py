@@ -16,7 +16,6 @@ SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 class WorktreeError(RuntimeError):
     """Raised when a task worktree cannot be reserved safely."""
 
-
 class AmbiguousGitError(WorktreeError):
     """Raised when a timed-out Git mutation may have taken effect."""
 
