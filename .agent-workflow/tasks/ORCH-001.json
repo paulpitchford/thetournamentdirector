@@ -3,7 +3,7 @@
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
   "objective": "Mount the pinned Codex runtime read-only and attest it inside the checked worker container",
-  "nonGoals": ["Send a model prompt", "Inject model credentials", "Enable network access", "Run write-capable Codex", "Create Git worktrees"],
+  "nonGoals": ["Defend against code already running as the trusted controller UID", "Send a model prompt", "Inject model credentials", "Enable network access", "Run write-capable Codex"],
   "dependsOn": ["ORCH-003D1B0A", "ORCH-003D1B0B0", "ORCH-003D1B0D"],
   "acceptanceCriteria": [
     "readonly-runtime|WHEN the Codex container command is built|ASSERT TEST_PASS codex-runtime-container-tests",

@@ -9,6 +9,7 @@ from unittest.mock import patch
 from td_controller.codex_runtime_container import (
     CONTAINER_CODEX,
     RUNTIME_LAUNCHER,
+    VERIFIED_CODEX,
     CodexRuntimeContainerError,
     CodexRuntimeContainerProbe,
 )
@@ -86,14 +87,18 @@ class CodexRuntimeContainerProbeTests(unittest.TestCase):
             mounts,
         )
         self.assertIn("HOME=/home/codex", command)
+        self.assertIn("/home/codex:rw,nosuid,nodev,size=300m", command)
+        self.assertIn("--memory=384m", command)
         self.assertEqual(
             command[2:4], ("--name", "td-codex-runtime-" + "0" * 32)
         )
         self.assertEqual(command[-5], IMAGE)
+        copy_index = RUNTIME_LAUNCHER.index(f"cp {CONTAINER_CODEX} {VERIFIED_CODEX}")
         size_check = RUNTIME_LAUNCHER.index("actual_size=")
         digest_check = RUNTIME_LAUNCHER.index("actual_digest=")
         workspace_check = RUNTIME_LAUNCHER.index("actual_workspace=")
-        exec_index = RUNTIME_LAUNCHER.index(f"exec {CONTAINER_CODEX}")
+        exec_index = RUNTIME_LAUNCHER.index(f"exec {VERIFIED_CODEX}")
+        self.assertLess(copy_index, size_check)
         self.assertLess(size_check, digest_check)
         self.assertLess(digest_check, workspace_check)
         self.assertLess(workspace_check, exec_index)

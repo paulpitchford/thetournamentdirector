@@ -35,15 +35,18 @@ from .workspace_identity_handle import (
 )
 
 CONTAINER_CODEX = "/opt/td-runtime/codex"
+VERIFIED_CODEX = "/home/codex/codex-verified"
 CONTAINER_PATH = (
-    "/home/codex/.local/bin:/opt/td-runtime:/usr/local/sbin:/usr/local/bin:"
+    "/home/codex/.local/bin:/home/codex:/opt/td-runtime:/usr/local/sbin:/usr/local/bin:"
     "/usr/sbin:/usr/bin:/sbin:/bin"
 )
 SAFE_PATH = re.compile(r"/[A-Za-z0-9._/-]{1,1023}")
 RUNTIME_LAUNCHER = f"""
-actual_size=$(stat -c '%s' {CONTAINER_CODEX} 2>/dev/null) || exit 45
+cp {CONTAINER_CODEX} {VERIFIED_CODEX} 2>/dev/null || exit 45
+chmod 500 {VERIFIED_CODEX} 2>/dev/null || exit 45
+actual_size=$(stat -c '%s' {VERIFIED_CODEX} 2>/dev/null) || exit 45
 if test "$actual_size" != "{PINNED_CODEX_SIZE}"; then exit 45; fi
-actual_digest=$(sha256sum {CONTAINER_CODEX} 2>/dev/null) || exit 46
+actual_digest=$(sha256sum {VERIFIED_CODEX} 2>/dev/null) || exit 46
 if test "${{actual_digest%% *}}" != "{PINNED_CODEX_SHA256}"; then exit 46; fi
 test "$(id -u)" != 0
 awk '
@@ -55,7 +58,7 @@ awk '
 ' /proc/self/mountinfo
 actual_workspace=$(stat -c '%d:%i' /workspace)
 if test "$actual_workspace" != "$EXPECTED_WORKSPACE_IDENTITY"; then exit 43; fi
-exec {CONTAINER_CODEX} --version
+exec {VERIFIED_CODEX} --version
 """.strip()
 
 
@@ -171,9 +174,11 @@ class CodexRuntimeContainerProbe:
         command[home_index] = "HOME=/home/codex"
         command[2:2] = ["--name", f"td-codex-runtime-{identity.generation}"]
         image_index = command.index(IMAGE)
+        memory_index = command.index("--memory=64m")
+        command[memory_index] = "--memory=384m"
         command[image_index:image_index] = [
             "--env", f"PATH={CONTAINER_PATH}",
-            "--tmpfs", "/home/codex:rw,nosuid,nodev,size=16m",
+            "--tmpfs", "/home/codex:rw,nosuid,nodev,size=300m",
             "--mount", f"type=bind,src={runtime_path},dst={CONTAINER_CODEX},ro",
             "--env",
             f"EXPECTED_WORKSPACE_IDENTITY={identity.device}:{identity.inode}",
