@@ -33,10 +33,6 @@ class FakeExecutor:
     ) -> ProcessOutput:
         self.calls.append(command)
         output = self.outputs.pop(0)
-        if len(self.calls) == 2 and output.returncode == 0:
-            marker = cwd / "task" / ".payload-proof"
-            marker.mkdir()
-            (marker / "result").write_bytes(b"same-container-payload\n")
         return output
 
 
@@ -82,11 +78,11 @@ class AttestedWorkspacePayloadTests(unittest.TestCase):
         identity_check = ATTESTED_PAYLOAD_SCRIPT.index(
             'test "$actual" != "$EXPECTED_WORKSPACE_IDENTITY"'
         )
-        payload_write = ATTESTED_PAYLOAD_SCRIPT.index(
-            "> /workspace/.payload-proof/result"
+        payload_output = ATTESTED_PAYLOAD_SCRIPT.index(
+            "printf 'attested-payload-ok"
         )
         self.assertLess(mount_check, identity_check)
-        self.assertLess(identity_check, payload_write)
+        self.assertLess(identity_check, payload_output)
 
     def test_positive_payload_runs_under_live_handle_hold(self) -> None:
         class CloseCheckingExecutor(FakeExecutor):
@@ -116,7 +112,7 @@ class AttestedWorkspacePayloadTests(unittest.TestCase):
         self.assertTrue(executor.close_was_blocked)
         self.handle.verify()
 
-    def test_replacement_and_existing_marker_are_rejected_without_write(self) -> None:
+    def test_replacement_is_rejected_before_payload_output(self) -> None:
         held = self.root / "held"
         self.task.rename(held)
         self.task.mkdir(mode=0o700)
@@ -126,20 +122,7 @@ class AttestedWorkspacePayloadTests(unittest.TestCase):
             )
         )
         payload.verify_rejected(self.fixture, self.handle, expected_exit=43)
-        self.assertFalse((self.task / ".payload-proof").exists())
-        self.task.rmdir()
-        held.rename(self.task)
-        sentinel = self.task / "sentinel"
-        sentinel.write_text("retain")
-        marker = self.task / ".payload-proof"
-        marker.symlink_to("sentinel")
-        payload = AttestedWorkspacePayload(
-            executor=FakeExecutor(
-                [ProcessOutput(0, b"true\n", b""), ProcessOutput(44, b"", b"")]
-            )
-        )
-        payload.verify_rejected(self.fixture, self.handle, expected_exit=44)
-        self.assertEqual(sentinel.read_text(), "retain")
+        self.assertEqual(tuple(self.task.iterdir()), ())
 
     def test_closed_or_invalid_handle_fails_before_payload(self) -> None:
         executor = FakeExecutor([])

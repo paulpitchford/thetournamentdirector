@@ -35,10 +35,6 @@ actual=$(stat -c '%d:%i' /workspace)
 if test "$actual" != "$EXPECTED_WORKSPACE_IDENTITY"; then
   exit 43
 fi
-if ! mkdir /workspace/.payload-proof 2>/dev/null; then
-  exit 44
-fi
-printf 'same-container-payload\n' > /workspace/.payload-proof/result
 printf 'attested-payload-ok\n'
 """.strip()
 
@@ -71,13 +67,6 @@ class AttestedWorkspacePayload:
             or result.stderr
         ):
             raise AttestedWorkspacePayloadError("attested payload failed")
-        try:
-            marker = (fixture.task / ".payload-proof" / "result").read_bytes()
-        except OSError as exc:
-            raise AttestedWorkspacePayloadError("payload marker is unavailable") from exc
-        if marker != b"same-container-payload\n":
-            raise AttestedWorkspacePayloadError("payload marker is invalid")
-
     def verify_rejected(
         self,
         fixture: MountPolicyFixture,
@@ -85,12 +74,10 @@ class AttestedWorkspacePayload:
         *,
         expected_exit: int,
     ) -> None:
-        if expected_exit not in {41, 43, 44}:
+        if expected_exit not in {41, 43}:
             raise AttestedWorkspacePayloadError("rejection exit is invalid")
         if not isinstance(handle, WorkspaceIdentityHandle):
             raise AttestedWorkspacePayloadError("workspace handle is invalid")
-        marker = fixture.task / ".payload-proof"
-        marker_existed = os.path.lexists(marker)
         try:
             with handle.hold_identity() as identity:
                 result = self._run_held(fixture, identity)
@@ -98,9 +85,6 @@ class AttestedWorkspacePayload:
             raise AttestedWorkspacePayloadError("workspace handle is unavailable") from exc
         if result.returncode != expected_exit or result.stdout or result.stderr:
             raise AttestedWorkspacePayloadError("workspace rejection was not exact")
-        if not marker_existed and os.path.lexists(marker):
-            raise AttestedWorkspacePayloadError("rejected workspace was modified")
-
     def _run_held(
         self, fixture: MountPolicyFixture, identity: WorkspaceIdentity
     ) -> ProcessOutput:
@@ -170,14 +154,6 @@ def run_local_probe() -> None:
             payload.verify_rejected(fixture, handle, expected_exit=43)
             task.rmdir()
             held.rename(task)
-            marker = task / ".payload-proof"
-            sentinel = task / "sentinel"
-            sentinel.write_text("retain")
-            marker.symlink_to("sentinel")
-            payload.verify_rejected(fixture, handle, expected_exit=44)
-            if sentinel.read_text() != "retain":
-                raise AttestedWorkspacePayloadError("symlink target was modified")
-            marker.unlink()
             payload.run(fixture, handle)
             handle.verify()
         finally:

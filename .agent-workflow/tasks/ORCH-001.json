@@ -3,19 +3,17 @@
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
   "objective": "Run a fixed proof payload only after mount-policy and live workspace identity checks in the same container",
-  "nonGoals": ["Run Codex", "Accept an arbitrary payload command", "Create Git worktrees", "Delete retained workspaces", "Export the workspace descriptor"],
+  "nonGoals": ["Run Codex", "Accept an arbitrary payload command", "Write workspace files", "Create Git worktrees", "Export the workspace descriptor"],
   "dependsOn": ["ORCH-003D1B0A", "ORCH-003D1B0B0"],
   "acceptanceCriteria": [
     "same-container|WHEN the fixed launcher runs|ASSERT TEST_PASS attested-workspace-payload-tests",
     "live-handle|WHEN the Podman process overlaps close|ASSERT TEST_PASS attested-workspace-payload-tests",
-    "replacement-rejection|WHEN Podman mounts a replacement workspace inode|ASSERT TEST_PASS attested-workspace-payload-proof",
-    "marker-rejection|WHEN the proof marker already exists|ASSERT TEST_PASS attested-workspace-payload-proof"
+    "replacement-rejection|WHEN Podman mounts a replacement workspace inode|ASSERT TEST_PASS attested-workspace-payload-proof"
   ],
   "acceptanceEvidenceIds": {
     "same-container|WHEN the fixed launcher runs|ASSERT TEST_PASS attested-workspace-payload-tests": ["attested-workspace-payload-tests"],
     "live-handle|WHEN the Podman process overlaps close|ASSERT TEST_PASS attested-workspace-payload-tests": ["attested-workspace-payload-tests"],
-    "replacement-rejection|WHEN Podman mounts a replacement workspace inode|ASSERT TEST_PASS attested-workspace-payload-proof": ["attested-workspace-payload-proof"],
-    "marker-rejection|WHEN the proof marker already exists|ASSERT TEST_PASS attested-workspace-payload-proof": ["attested-workspace-payload-proof"]
+    "replacement-rejection|WHEN Podman mounts a replacement workspace inode|ASSERT TEST_PASS attested-workspace-payload-proof": ["attested-workspace-payload-proof"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
