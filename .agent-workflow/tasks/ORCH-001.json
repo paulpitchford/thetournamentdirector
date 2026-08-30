@@ -1,29 +1,32 @@
 {
-  "id": "DOC-ADR-0009",
+  "id": "ORCH-003D1B0",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Record the workspace provisioning trust boundary and its required containment proof",
-  "nonGoals": ["Implement provisioning code", "Create or delete workspaces", "Run a write-capable provider", "Change GitHub policy"],
-  "dependsOn": ["ORCH-003C"],
+  "objective": "Prove that a real rootless non-root worker receives only one direct task workspace mount",
+  "nonGoals": ["Run Codex", "Create Git branches or worktrees", "Mount a shared workspace root", "Delete retained workspaces", "Change container policy"],
+  "dependsOn": ["ORCH-003D1A0A1A0"],
   "acceptanceCriteria": [
-    "boundary-decision|WHEN ADR 0009 is inspected|ASSERT VALUE \"worker parent namespace excluded\"",
-    "proof-requirements|WHEN the provisioning backlog item is inspected|ASSERT VALUE \"real contained worker proof required\""
+    "direct-child-mount|WHEN the worker command is constructed|ASSERT TEST_PASS workspace-isolation-tests",
+    "rootless-worker|WHEN the real local containment probe runs|ASSERT TEST_PASS workspace-rootless-proof",
+    "sibling-denial|WHEN the worker checks root and sibling paths and descriptors|ASSERT TEST_PASS workspace-rootless-proof",
+    "bounded-output|WHEN the Podman commands execute|ASSERT TEST_PASS workspace-isolation-tests"
   ],
   "acceptanceEvidenceIds": {
-    "boundary-decision|WHEN ADR 0009 is inspected|ASSERT VALUE \"worker parent namespace excluded\"": ["adr-boundary-recorded"],
-    "proof-requirements|WHEN the provisioning backlog item is inspected|ASSERT VALUE \"real contained worker proof required\"": ["provisioning-proof-recorded"]
+    "direct-child-mount|WHEN the worker command is constructed|ASSERT TEST_PASS workspace-isolation-tests": ["workspace-isolation-tests"],
+    "rootless-worker|WHEN the real local containment probe runs|ASSERT TEST_PASS workspace-rootless-proof": ["workspace-rootless-proof"],
+    "sibling-denial|WHEN the worker checks root and sibling paths and descriptors|ASSERT TEST_PASS workspace-rootless-proof": ["workspace-rootless-proof"],
+    "bounded-output|WHEN the Podman commands execute|ASSERT TEST_PASS workspace-isolation-tests": ["workspace-isolation-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    "docs/adr/0009-workspace-provisioning-boundary.md",
-    "docs/adr/README.md",
-    "docs/DELIVERY_BACKLOG.md",
+    ".agent-workflow/controller/td_controller/workspace_isolation.py",
+    ".agent-workflow/controller/tests/test_workspace_isolation.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 200,
+  "maxChangedLines": 450,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
