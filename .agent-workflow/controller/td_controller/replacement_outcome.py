@@ -76,9 +76,14 @@ def require_definitive_rejection(operation: Callable[[], ProcessOutput]) -> None
 def _run(operation: Callable[[], ProcessOutput]) -> ReplacementOutcome:
     if not callable(operation):
         raise ReplacementOutcomeError("replacement operation is invalid")
+    runner_failed = False
     try:
-        return classify_replacement_output(operation())
-    except AttestedPayloadRunnerError as exc:
+        output = operation()
+    except AttestedPayloadRunnerError:
+        runner_failed = True
+        output = None
+    if runner_failed:
         raise ReplacementIndeterminateError(
             "replacement outcome requires reconciliation"
-        ) from exc
+        ) from None
+    return classify_replacement_output(output)

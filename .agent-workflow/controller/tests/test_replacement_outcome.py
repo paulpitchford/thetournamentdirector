@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import traceback
 import unittest
 
 from td_controller.attested_payload_runner import AttestedPayloadRunnerError
@@ -90,6 +91,12 @@ class ReplacementOutcomeTests(unittest.TestCase):
                 with self.assertRaises(ReplacementIndeterminateError) as raised:
                     requirement(fail)
                 self.assertNotIn(secret, str(raised.exception))
+                rendered = "".join(
+                    traceback.format_exception(raised.exception)
+                )
+                self.assertNotIn(secret, rendered)
+                self.assertIsNone(raised.exception.__cause__)
+                self.assertIsNone(raised.exception.__context__)
 
     def test_invalid_operation_and_output_fail_closed(self) -> None:
         with self.assertRaisesRegex(ReplacementOutcomeError, "operation"):
