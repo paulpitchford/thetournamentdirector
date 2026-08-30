@@ -1,5 +1,3 @@
-"""Metadata-only Git worktree reservation for controlled dispatch."""
-
 from __future__ import annotations
 
 import os
@@ -11,10 +9,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .lease import LeaseError, TaskLease, TaskLeaseLedger
+from .task_contract import TASK_ID_PATTERN
 from .workflow_state import TaskStateLedger, WorkflowStateError
 
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
-
 
 class WorktreeError(RuntimeError):
     """Raised when a task worktree cannot be reserved safely."""
@@ -88,8 +86,11 @@ class MetadataWorktreeManager:
     ) -> WorktreeReservation:
         """Reserve one empty no-checkout worktree from an active exact lease."""
         self._assert_storage_identity()
-        if lease.state != "ACTIVE":
-            raise WorktreeError("an active task lease is required")
+        if (
+            lease.state != "ACTIVE" or len(lease.task_id) > 128
+            or not TASK_ID_PATTERN.fullmatch(lease.task_id)
+        ):
+            raise WorktreeError("an active canonical task lease is required")
         if isinstance(attempt, bool) or not isinstance(attempt, int) or not 1 <= attempt <= 5:
             raise WorktreeError("worktree attempt is invalid")
         expected_branch = f"agent/{lease.task_id.lower()}/attempt-{attempt}"
