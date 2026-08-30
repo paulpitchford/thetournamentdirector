@@ -28,6 +28,10 @@ class GitRefOutcomeError(RuntimeError):
     """Raised when exact-ref creation was not confirmed."""
 
 
+class GitRefRejectedError(GitRefOutcomeError):
+    """Raised when trusted observation confirms the ref is absent."""
+
+
 class GitRefIndeterminateError(GitRefOutcomeError):
     """Raised when durable state must be reconciled before retry."""
 
@@ -76,5 +80,5 @@ def require_created(outcome: RefCreationOutcome) -> None:
     if outcome is RefCreationOutcome.CREATED:
         return
     if outcome is RefCreationOutcome.REJECTED:
-        raise GitRefOutcomeError("exact ref was not created")
+        raise GitRefRejectedError("exact ref was not created")
     raise GitRefIndeterminateError("exact ref requires reconciliation")

@@ -4,7 +4,7 @@ import unittest
 
 from td_controller.git_ref_outcome import (
     GitRefIndeterminateError,
-    GitRefOutcomeError,
+    GitRefRejectedError,
     RefCreationOutcome,
     RefObservation,
     classify_ref_creation,
@@ -40,8 +40,16 @@ class GitRefOutcomeTests(unittest.TestCase):
         for outcome in rejected:
             with self.subTest(outcome=outcome):
                 self.assertIs(outcome, RefCreationOutcome.REJECTED)
-                with self.assertRaises(GitRefOutcomeError):
+                with self.assertRaises(GitRefRejectedError):
                     require_created(outcome)
+
+    def test_rejected_handler_does_not_catch_indeterminate(self) -> None:
+        try:
+            require_created(RefCreationOutcome.INDETERMINATE)
+        except GitRefRejectedError:
+            self.fail("indeterminate outcome was caught as rejected")
+        except GitRefIndeterminateError:
+            pass
 
     def test_committed_ref_plus_runner_or_output_ambiguity_is_indeterminate(self) -> None:
         ambiguous = (
