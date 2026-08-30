@@ -1,30 +1,30 @@
 {
-  "id": "ORCH-003D1B0B0",
+  "id": "ORCH-003D1B0C",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Hold a verified workspace identity live across one trusted synchronous operation without exporting its descriptor",
-  "nonGoals": ["Run Podman", "Run an untrusted payload", "Create workspaces", "Export the descriptor", "Change close failure policy"],
-  "dependsOn": ["ORCH-003D1B0A"],
+  "objective": "Run a fixed proof payload only after mount-policy and live workspace identity checks in the same container",
+  "nonGoals": ["Run Codex", "Accept an arbitrary payload command", "Write workspace files", "Create Git worktrees", "Export the workspace descriptor"],
+  "dependsOn": ["ORCH-003D1B0A", "ORCH-003D1B0B0"],
   "acceptanceCriteria": [
-    "live-hold|WHEN trusted code holds a verified identity|ASSERT TEST_PASS workspace-identity-handle-tests",
-    "close-exclusion|WHEN close overlaps an active identity hold|ASSERT TEST_PASS workspace-identity-handle-tests",
-    "closed-rejection|WHEN an identity hold starts after close|ASSERT TEST_PASS workspace-identity-handle-tests"
+    "same-container|WHEN the fixed launcher runs|ASSERT TEST_PASS attested-workspace-payload-tests",
+    "live-handle|WHEN the Podman process overlaps close|ASSERT TEST_PASS attested-workspace-payload-tests",
+    "replacement-rejection|WHEN Podman mounts a replacement workspace inode|ASSERT TEST_PASS attested-workspace-payload-proof"
   ],
   "acceptanceEvidenceIds": {
-    "live-hold|WHEN trusted code holds a verified identity|ASSERT TEST_PASS workspace-identity-handle-tests": ["workspace-identity-handle-tests"],
-    "close-exclusion|WHEN close overlaps an active identity hold|ASSERT TEST_PASS workspace-identity-handle-tests": ["workspace-identity-handle-tests"],
-    "closed-rejection|WHEN an identity hold starts after close|ASSERT TEST_PASS workspace-identity-handle-tests": ["workspace-identity-handle-tests"]
+    "same-container|WHEN the fixed launcher runs|ASSERT TEST_PASS attested-workspace-payload-tests": ["attested-workspace-payload-tests"],
+    "live-handle|WHEN the Podman process overlaps close|ASSERT TEST_PASS attested-workspace-payload-tests": ["attested-workspace-payload-tests"],
+    "replacement-rejection|WHEN Podman mounts a replacement workspace inode|ASSERT TEST_PASS attested-workspace-payload-proof": ["attested-workspace-payload-proof"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/workspace_identity_handle.py",
-    ".agent-workflow/controller/tests/test_workspace_identity_handle.py",
+    ".agent-workflow/controller/td_controller/attested_workspace_payload.py",
+    ".agent-workflow/controller/tests/test_attested_workspace_payload.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 160,
+  "maxChangedLines": 425,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
