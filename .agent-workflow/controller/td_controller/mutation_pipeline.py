@@ -88,10 +88,15 @@ class MutationPipeline:
             or len(result.proposal.replacements) != 1
         ):
             raise MutationPipelineError("mutation broker result is invalid")
+        replacement = result.proposal.replacements[0]
+        selected = request.files.get(replacement.path)
+        if (
+            selected is None
+            or replacement.expected_sha256 != selected.sha256
+        ):
+            raise MutationPipelineError("mutation broker selection is invalid")
         self._applier.apply(fixture, handle, result.proposal)
-        return MutationPipelineResult(
-            result.session_id, result.proposal.replacements[0].path
-        )
+        return MutationPipelineResult(result.session_id, replacement.path)
 
 
 def run_local_probe() -> None:

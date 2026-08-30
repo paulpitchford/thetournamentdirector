@@ -44,9 +44,12 @@ def request():
     )
 
 
-def result(*, replacements=1, nonce="2" * 32):
+def result(
+    *, replacements=1, nonce="2" * 32, path="docs/pilot.md",
+    expected=None,
+):
     replacement = TextReplacement(
-        "docs/pilot.md", hashlib.sha256(b"alpha\n").hexdigest(), "beta\n"
+        path, expected or hashlib.sha256(b"alpha\n").hexdigest(), "beta\n"
     )
     proposal = TextMutationProposal(
         "ORCH-003D1B0J", "1" * 40, nonce, "replace",
@@ -118,6 +121,20 @@ class MutationPipelineTests(unittest.TestCase):
             with self.subTest(broker_result=broker_result):
                 applier = FakeApplier()
                 with self.assertRaisesRegex(MutationPipelineError, "result"):
+                    MutationPipeline(
+                        broker=FakeBroker(broker_result), applier=applier
+                    ).run(self.fixture, self.handle, request())
+                self.assertEqual(applier.calls, [])
+
+    def test_unselected_path_or_digest_never_reaches_applier(self) -> None:
+        invalid = (
+            result(path="docs/unselected.md"),
+            result(expected="0" * 64),
+        )
+        for broker_result in invalid:
+            with self.subTest(broker_result=broker_result):
+                applier = FakeApplier()
+                with self.assertRaisesRegex(MutationPipelineError, "selection"):
                     MutationPipeline(
                         broker=FakeBroker(broker_result), applier=applier
                     ).run(self.fixture, self.handle, request())
