@@ -1,24 +1,32 @@
 {
-  "id": "DOC-OPS-001",
+  "id": "ORCH-003D1A0A1A",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Record the Codex process-wide file-size-limit crash regression in the reviewed backlog",
-  "nonGoals": ["Change runtime code", "Retain private Codex state", "Attribute the crash to Omarchy or Codex", "Weaken output limits"],
+  "objective": "Own trusted workspace identities using bounded inode metadata only",
+  "nonGoals": ["Create workspace directories", "Enumerate workspace contents", "Export owned descriptors", "Delete or rename workspace directories", "Run Git commands"],
   "dependsOn": ["ORCH-003C"],
   "acceptanceCriteria": [
-    "incident-record|WHEN the reviewed backlog is inspected|ASSERT VALUE \"crash regression recorded\"",
-    "regression-scope|WHEN the proposed acceptance is inspected|ASSERT VALUE \"pipe bounds preserved\""
+    "physical-exclusivity|WHEN one inode is registered for another task or attempt|ASSERT TEST_PASS workspace-identity-tests",
+    "path-independent|WHEN an owned pathname is replaced|ASSERT TEST_PASS workspace-identity-tests",
+    "bounded-verification|WHEN an identity is verified|ASSERT TEST_PASS workspace-identity-tests",
+    "terminal-cleanup|WHEN retirement or concurrent cleanup fails|ASSERT TEST_PASS workspace-identity-tests"
   ],
   "acceptanceEvidenceIds": {
-    "incident-record|WHEN the reviewed backlog is inspected|ASSERT VALUE \"crash regression recorded\"": ["crash-regression-recorded"],
-    "regression-scope|WHEN the proposed acceptance is inspected|ASSERT VALUE \"pipe bounds preserved\"": ["pipe-bounds-preserved"]
+    "physical-exclusivity|WHEN one inode is registered for another task or attempt|ASSERT TEST_PASS workspace-identity-tests": ["workspace-identity-tests"],
+    "path-independent|WHEN an owned pathname is replaced|ASSERT TEST_PASS workspace-identity-tests": ["workspace-identity-tests"],
+    "bounded-verification|WHEN an identity is verified|ASSERT TEST_PASS workspace-identity-tests": ["workspace-identity-tests"],
+    "terminal-cleanup|WHEN retirement or concurrent cleanup fails|ASSERT TEST_PASS workspace-identity-tests": ["workspace-identity-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
-  "allowedPaths": ["docs/DELIVERY_BACKLOG.md", ".agent-workflow/tasks/ORCH-001.json"],
+  "allowedPaths": [
+    ".agent-workflow/controller/td_controller/workspace_identity.py",
+    ".agent-workflow/controller/tests/test_workspace_identity.py",
+    ".agent-workflow/tasks/ORCH-001.json"
+  ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 100,
+  "maxChangedLines": 400,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
