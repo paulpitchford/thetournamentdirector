@@ -111,10 +111,24 @@ class MetadataWorktreeManager:
             raise WorktreeError("task worktree path is already reserved")
         self._git("cat-file", "-e", f"{base_sha}^{{commit}}")
         reference = f"refs/heads/{lease.branch}"
-        existing = self._run_git("show-ref", "--quiet", "--verify", reference)
-        if existing.returncode != 1 or existing.stdout or existing.stderr:
-            raise WorktreeError("task branch is already reserved or cannot be inspected")
+        lock = self.worktree_root / f".{target.name}.reservation"
         try:
+            lock.mkdir(mode=0o700)
+        except FileExistsError as exc:
+            raise WorktreeError("task reservation is already active") from exc
+        except OSError as exc:
+            raise WorktreeError("task reservation lock failed") from exc
+        branch_may_be_owned = False
+        try:
+            self._assert_storage_identity()
+            if target.exists() or target.is_symlink():
+                raise WorktreeError("task worktree path is already reserved")
+            existing = self._run_git("show-ref", "--quiet", "--verify", reference)
+            if existing.returncode != 1 or existing.stdout or existing.stderr:
+                raise WorktreeError(
+                    "task branch is already reserved or cannot be inspected"
+                )
+            branch_may_be_owned = True
             self._git("update-ref", reference, base_sha, "0" * 40)
             self._git(
                 "worktree", "add", "--quiet", "--no-checkout",
@@ -135,7 +149,12 @@ class MetadataWorktreeManager:
             ):
                 raise WorktreeError("dispatch authority changed during reservation")
         except (OSError, WorktreeError, LeaseError, WorkflowStateError) as exc:
-            self._rollback(target, reference, base_sha)
+            if branch_may_be_owned:
+                self._rollback(target, reference, base_sha)
+            try:
+                lock.rmdir()
+            except OSError as cleanup_error:
+                raise WorktreeError("reservation lock cleanup failed") from cleanup_error
             if isinstance(exc, WorktreeError):
                 raise
             raise WorktreeError("reservation authority or inspection failed") from exc
