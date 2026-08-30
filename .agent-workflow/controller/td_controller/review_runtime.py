@@ -17,6 +17,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
+from .effective_identity import (
+    EffectiveIdentity,
+    EffectiveIdentityError,
+    validate_effective_identity,
+)
 from .review_contract import CodexReviewError
 
 CGROUP_ROOT = Path("/sys/fs/cgroup")
@@ -300,8 +305,32 @@ class SubprocessExecutor:
     def __init__(
         self,
         environment_factory: Callable[[str], dict[str, str]] | None = None,
+        *,
+        process_identity: EffectiveIdentity | None = None,
     ) -> None:
+        if process_identity is not None and (
+            type(process_identity) is not EffectiveIdentity
+            or isinstance(process_identity.uid, bool)
+            or not isinstance(process_identity.uid, int)
+            or process_identity.uid < 0
+            or isinstance(process_identity.gid, bool)
+            or not isinstance(process_identity.gid, int)
+            or process_identity.gid < 0
+        ):
+            raise CodexReviewError("subprocess identity is invalid")
+        identity_failed = False
+        if process_identity is not None:
+            try:
+                current_identity = validate_effective_identity()
+            except EffectiveIdentityError:
+                identity_failed = True
+                current_identity = None
+            if identity_failed or current_identity != process_identity:
+                raise CodexReviewError(
+                    "subprocess identity does not match the controller"
+                ) from None
         self._environment_factory = environment_factory or _minimal_codex_environment
+        self._process_identity = process_identity
 
     def run(
         self,
@@ -314,6 +343,14 @@ class SubprocessExecutor:
         if len(input_bytes) > MAX_INPUT_BYTES:
             raise CodexReviewError("local Codex review exceeded the input limit")
         command = _absolute_command(command)
+        identity_arguments = (
+            {}
+            if self._process_identity is None
+            else {
+                "user": self._process_identity.uid,
+                "group": self._process_identity.gid,
+            }
+        )
         process = subprocess.Popen(
             command,
             stdin=subprocess.PIPE,
@@ -322,6 +359,7 @@ class SubprocessExecutor:
             cwd=cwd,
             env=self._environment_factory(command[0]),
             start_new_session=True,
+            **identity_arguments,
         )
         if process.stdin is None or process.stdout is None or process.stderr is None:
             process.kill()
