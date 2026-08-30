@@ -125,7 +125,7 @@ class MetadataWorktreeManager:
             raise WorktreeError("task reservation is already active") from exc
         except OSError as exc:
             raise WorktreeError("task reservation lock failed") from exc
-        branch_may_be_owned = False
+        branch_may_be_owned = mutation_started = False
         try:
             self._assert_storage_identity()
             if target.exists() or target.is_symlink():
@@ -135,6 +135,7 @@ class MetadataWorktreeManager:
                 raise WorktreeError(
                     "task branch is already reserved or cannot be inspected"
                 )
+            mutation_started = True
             update = self._run_git("update-ref", reference, base_sha, "0" * 40)
             if update.returncode != 0 or update.stdout or update.stderr:
                 raise WorktreeError("task branch creation was rejected")
@@ -162,7 +163,7 @@ class MetadataWorktreeManager:
             ):
                 raise WorktreeError("dispatch authority changed during reservation")
         except (OSError, WorktreeError, LeaseError, WorkflowStateError) as exc:
-            if isinstance(exc, AmbiguousGitError):
+            if isinstance(exc, AmbiguousGitError) and mutation_started:
                 raise
             if branch_may_be_owned:
                 self._rollback(target, reference, base_sha)
