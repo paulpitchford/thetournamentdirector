@@ -84,6 +84,29 @@ The diagram is a summary; each task's `Depends on` field is authoritative.
   receives no personal GitHub token; the controller can be globally paused
   without killing the host.
 
+### OPS-001 — Regress process-wide provider file-size limits
+
+- **Status:** Proposed operational follow-up.
+- **Risk:** R2
+- **Depends on:** `HUM-002`
+- **Allowed paths:** `.agent-workflow/controller/td_controller/review_runtime.py`,
+  matching controller tests
+- **Objective:** prove that controller output limits cannot impose
+  `RLIMIT_FSIZE` on the Codex process or its private state files.
+- **Incident evidence:** a short-lived controller change applied a 2,000,000-byte
+  process-wide file-size limit. Codex then received `EFBIG` while appending 24
+  bytes at offset 3,609,152 to `~/.codex/queue_1.sqlite-wal`; the resulting
+  `SIGXFSZ` produced a core dump. The limit was introduced at 21:58:17 BST, the
+  crash occurred at 22:00:27, and the limit was removed at 22:04:01. The current
+  runtime bounds stdout and stderr through pipes instead.
+- **Acceptance:** a regression test proves a contained provider can write a
+  private state file beyond 2,000,000 bytes while aggregate captured output
+  remains bounded; runtime inspection proves no provider-wide `RLIMIT_FSIZE` is
+  installed; output flooding is still killed at the existing pipe limit.
+- **Non-goals:** weaken stdout/stderr bounds; treat Omarchy or Codex as the root
+  cause; retain a real core dump, Codex database, or other private state as a
+  test fixture.
+
 ## Wave 1 — project and quality foundation
 
 ### FND-001 — Scaffold the modern application
