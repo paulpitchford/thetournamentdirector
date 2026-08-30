@@ -1,27 +1,27 @@
 {
-  "id": "ORCH-003D1B0H",
+  "id": "ORCH-003D1B0I",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Return one validated text replacement proposal through the credential-isolating tool-less model broker",
-  "nonGoals": ["Apply replacements", "Mount credentials into a worker", "Give a worker network access", "Create or delete files", "Modify Git state"],
-  "dependsOn": ["ORCH-003D1B0F", "ORCH-003D1B0G"],
+  "objective": "Apply one validated whole-file text replacement inside the live attested worker mount",
+  "nonGoals": ["Apply multiple files atomically", "Create delete or rename tracked files", "Call a model", "Commit Git state", "Expose credentials or network"],
+  "dependsOn": ["ORCH-003D1B0D", "ORCH-003D1B0G"],
   "acceptanceCriteria": [
-    "model-proposal|WHEN a selected text request is brokered|ASSERT TEST_PASS text-mutation-broker-proof",
-    "prompt-bound|WHEN JSON escaping exceeds the input limit|ASSERT ERROR TextMutationBrokerError",
-    "tool-less|WHEN mutation broker arguments are built|ASSERT TEST_PASS text-mutation-broker-tests",
-    "response-bound|WHEN output is stale malformed or diagnostic|ASSERT ERROR TextMutationBrokerError"
+    "atomic-replacement|WHEN the selected digest matches|ASSERT TEST_PASS attested-text-replacement-proof",
+    "path-boundary|WHEN a parent or target is a symlink|ASSERT ERROR AttestedTextReplacementError",
+    "stale-input|WHEN the selected digest changed|ASSERT ERROR AttestedTextReplacementError",
+    "bounded-runner|WHEN payload output or lifecycle is invalid|ASSERT ERROR AttestedTextReplacementError"
   ],
   "acceptanceEvidenceIds": {
-    "model-proposal|WHEN a selected text request is brokered|ASSERT TEST_PASS text-mutation-broker-proof": ["text-mutation-broker-proof"],
-    "prompt-bound|WHEN JSON escaping exceeds the input limit|ASSERT ERROR TextMutationBrokerError": ["text-mutation-broker-tests"],
-    "tool-less|WHEN mutation broker arguments are built|ASSERT TEST_PASS text-mutation-broker-tests": ["text-mutation-broker-tests"],
-    "response-bound|WHEN output is stale malformed or diagnostic|ASSERT ERROR TextMutationBrokerError": ["text-mutation-broker-tests"]
+    "atomic-replacement|WHEN the selected digest matches|ASSERT TEST_PASS attested-text-replacement-proof": ["attested-text-replacement-proof"],
+    "path-boundary|WHEN a parent or target is a symlink|ASSERT ERROR AttestedTextReplacementError": ["attested-text-replacement-proof"],
+    "stale-input|WHEN the selected digest changed|ASSERT ERROR AttestedTextReplacementError": ["attested-text-replacement-proof"],
+    "bounded-runner|WHEN payload output or lifecycle is invalid|ASSERT ERROR AttestedTextReplacementError": ["attested-text-replacement-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/text_mutation_broker.py",
-    ".agent-workflow/controller/tests/test_text_mutation_broker.py",
+    ".agent-workflow/controller/td_controller/attested_text_replacement.py",
+    ".agent-workflow/controller/tests/test_attested_text_replacement.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
