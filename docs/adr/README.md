@@ -14,6 +14,7 @@ They do not replace implementation plans or policy-as-code tests.
 | [0007](0007-local-review-agents.md) | Separate local Codex review and QA agents | Accepted |
 | [0008](0008-tool-less-local-review-provider.md) | Tool-less local review provider | Proposed |
 | [0009](0009-workspace-provisioning-boundary.md) | Workspace provisioning before worker exposure | Proposed |
+| [0010](0010-controller-owned-model-broker.md) | Controller-owned tool-less model broker | Accepted |
 
 A proposed ADR becomes accepted only after the user approves its open choices.
 Accepted ADRs are changed by a superseding ADR rather than silently rewritten.
