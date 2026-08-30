@@ -1,32 +1,32 @@
 {
-  "id": "ORCH-003D1B0J1",
+  "id": "ORCH-003D1B0J2",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Select mutation coordinator dependencies by exact None semantics without filesystem effects",
-  "nonGoals": ["Call a model", "Dispatch a container", "Apply a mutation", "Coordinate a pipeline", "Modify Git state"],
-  "dependsOn": ["ORCH-003D1B0H", "ORCH-003D1B0I2"],
+  "objective": "Prove the broker-to-worker mutation coordinator using exact dependency and selected-file bindings",
+  "nonGoals": ["Use a repository worktree", "Create a commit or pull request", "Apply multiple files", "Expose worker credentials", "Enable worker network"],
+  "dependsOn": ["ORCH-003D1B0J1"],
   "acceptanceCriteria": [
-    "falsey-broker|WHEN a falsey callable broker is supplied|ASSERT VALUE \"preserved\"",
-    "falsey-applier|WHEN a falsey callable applier is supplied|ASSERT VALUE \"preserved\"",
-    "none-default|WHEN a dependency is exactly None|ASSERT VALUE \"constructed-once\"",
-    "invalid-dependency|WHEN required methods are absent|ASSERT ERROR MutationDependencyError"
+    "end-to-end|WHEN selected text is brokered and applied|ASSERT TEST_PASS mutation-pipeline-proof",
+    "selection-gate|WHEN proposed path or digest was not selected|ASSERT ABSENT applier-call",
+    "dependency-gate|WHEN falsey dependencies are injected|ASSERT VALUE \"preserved\"",
+    "indeterminate|WHEN replacement needs reconciliation|ASSERT ERROR ReplacementIndeterminateError"
   ],
   "acceptanceEvidenceIds": {
-    "falsey-broker|WHEN a falsey callable broker is supplied|ASSERT VALUE \"preserved\"": ["mutation-dependency-tests"],
-    "falsey-applier|WHEN a falsey callable applier is supplied|ASSERT VALUE \"preserved\"": ["mutation-dependency-tests"],
-    "none-default|WHEN a dependency is exactly None|ASSERT VALUE \"constructed-once\"": ["mutation-dependency-tests"],
-    "invalid-dependency|WHEN required methods are absent|ASSERT ERROR MutationDependencyError": ["mutation-dependency-tests"]
+    "end-to-end|WHEN selected text is brokered and applied|ASSERT TEST_PASS mutation-pipeline-proof": ["mutation-pipeline-proof"],
+    "selection-gate|WHEN proposed path or digest was not selected|ASSERT ABSENT applier-call": ["mutation-pipeline-tests"],
+    "dependency-gate|WHEN falsey dependencies are injected|ASSERT VALUE \"preserved\"": ["mutation-pipeline-tests"],
+    "indeterminate|WHEN replacement needs reconciliation|ASSERT ERROR ReplacementIndeterminateError": ["mutation-pipeline-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/mutation_dependencies.py",
-    ".agent-workflow/controller/tests/test_mutation_dependencies.py",
+    ".agent-workflow/controller/td_controller/mutation_pipeline.py",
+    ".agent-workflow/controller/tests/test_mutation_pipeline.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 250,
+  "maxChangedLines": 400,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
