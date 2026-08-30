@@ -1,32 +1,32 @@
 {
-  "id": "ORCH-003D1B0A",
+  "id": "ORCH-003D1B0B",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Prove controlled Podman configuration rejects an injected workspace-root mount",
-  "nonGoals": ["Prove exact task-directory provenance", "Run Codex", "Create Git worktrees", "Delete retained workspaces", "Change global Podman configuration"],
-  "dependsOn": ["ORCH-003D1A0A1A0"],
+  "objective": "Attest the mounted task inode inside the trusted container launcher before any workspace write",
+  "nonGoals": ["Mount a directory through procfs descriptors", "Run an untrusted payload", "Create Git worktrees", "Delete retained workspaces", "Broaden Podman mount policy"],
+  "dependsOn": ["ORCH-003D1B0A"],
   "acceptanceCriteria": [
-    "controlled-config|WHEN the controller builds the Podman environment|ASSERT TEST_PASS podman-mount-policy-tests",
-    "direct-task-only|WHEN the controller builds the normal worker command|ASSERT TEST_PASS podman-mount-policy-tests",
-    "injected-mount|WHEN the adversarial root mount command executes|ASSERT TEST_PASS podman-mount-policy-proof",
-    "bounded-process|WHEN Podman output reaches the configured byte limit|ASSERT TEST_PASS podman-mount-policy-tests"
+    "prewrite-attestation|WHEN the trusted launcher starts|ASSERT TEST_PASS workspace-mount-attestation-tests",
+    "replacement-rejection|WHEN Podman mounts a replacement task pathname|ASSERT TEST_PASS workspace-mount-attestation-proof",
+    "exact-positive|WHEN Podman mounts the pinned task inode|ASSERT TEST_PASS workspace-mount-attestation-proof",
+    "bounded-process|WHEN attestation process output reaches the configured byte limit|ASSERT TEST_PASS workspace-mount-attestation-tests"
   ],
   "acceptanceEvidenceIds": {
-    "controlled-config|WHEN the controller builds the Podman environment|ASSERT TEST_PASS podman-mount-policy-tests": ["podman-mount-policy-tests"],
-    "direct-task-only|WHEN the controller builds the normal worker command|ASSERT TEST_PASS podman-mount-policy-tests": ["podman-mount-policy-tests"],
-    "injected-mount|WHEN the adversarial root mount command executes|ASSERT TEST_PASS podman-mount-policy-proof": ["podman-mount-policy-proof"],
-    "bounded-process|WHEN Podman output reaches the configured byte limit|ASSERT TEST_PASS podman-mount-policy-tests": ["podman-mount-policy-tests"]
+    "prewrite-attestation|WHEN the trusted launcher starts|ASSERT TEST_PASS workspace-mount-attestation-tests": ["workspace-mount-attestation-tests"],
+    "replacement-rejection|WHEN Podman mounts a replacement task pathname|ASSERT TEST_PASS workspace-mount-attestation-proof": ["workspace-mount-attestation-proof"],
+    "exact-positive|WHEN Podman mounts the pinned task inode|ASSERT TEST_PASS workspace-mount-attestation-proof": ["workspace-mount-attestation-proof"],
+    "bounded-process|WHEN attestation process output reaches the configured byte limit|ASSERT TEST_PASS workspace-mount-attestation-tests": ["workspace-mount-attestation-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/podman_mount_policy.py",
-    ".agent-workflow/controller/tests/test_podman_mount_policy.py",
+    ".agent-workflow/controller/td_controller/workspace_mount_attestation.py",
+    ".agent-workflow/controller/tests/test_workspace_mount_attestation.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 425,
+  "maxChangedLines": 400,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
