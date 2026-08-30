@@ -1,30 +1,28 @@
 {
-  "id": "ORCH-003D1B0F",
+  "id": "ORCH-003D1B0G",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Prove a schema-bound tool-less model broker without exposing credentials or provider networking to workers",
-  "nonGoals": ["Return file mutations", "Mount authentication into a worker", "Give a worker network access", "Run repository tools", "Modify a worktree"],
-  "dependsOn": ["ORCH-003D1B0E", "ORCH-002B"],
+  "objective": "Define a strict controller-bound contract for whole-file text replacement proposals",
+  "nonGoals": ["Call a model", "Create or delete files", "Apply replacements", "Run commands", "Modify Git state"],
+  "dependsOn": ["ORCH-003D1B0F", "ORCH-001A"],
   "acceptanceCriteria": [
-    "credential-boundary|WHEN an authenticated smoke request runs|ASSERT TEST_PASS model-broker-smoke-proof",
-    "closed-protocol|WHEN broker output is malformed or stale|ASSERT TEST_PASS model-broker-tests",
-    "tool-less|WHEN broker arguments are constructed|ASSERT TEST_PASS model-broker-tests",
-    "architecture|WHEN the inference boundary is reviewed|ASSERT TEST_PASS repository-policy"
+    "selected-input|WHEN existing text files are selected|ASSERT TEST_PASS text-mutation-contract-tests",
+    "identity-binding|WHEN proposal identity or expected hashes are stale|ASSERT ERROR TextMutationContractError",
+    "scope-limit|WHEN replacement bytes or changed lines exceed bounds|ASSERT ERROR TextMutationContractError",
+    "closed-output|WHEN proposal fields or paths are unselected|ASSERT ERROR TextMutationContractError"
   ],
   "acceptanceEvidenceIds": {
-    "credential-boundary|WHEN an authenticated smoke request runs|ASSERT TEST_PASS model-broker-smoke-proof": ["model-broker-smoke-proof"],
-    "closed-protocol|WHEN broker output is malformed or stale|ASSERT TEST_PASS model-broker-tests": ["model-broker-tests"],
-    "tool-less|WHEN broker arguments are constructed|ASSERT TEST_PASS model-broker-tests": ["model-broker-tests"],
-    "architecture|WHEN the inference boundary is reviewed|ASSERT TEST_PASS repository-policy": ["repository-policy"]
+    "selected-input|WHEN existing text files are selected|ASSERT TEST_PASS text-mutation-contract-tests": ["text-mutation-contract-tests"],
+    "identity-binding|WHEN proposal identity or expected hashes are stale|ASSERT ERROR TextMutationContractError": ["text-mutation-contract-tests"],
+    "scope-limit|WHEN replacement bytes or changed lines exceed bounds|ASSERT ERROR TextMutationContractError": ["text-mutation-contract-tests"],
+    "closed-output|WHEN proposal fields or paths are unselected|ASSERT ERROR TextMutationContractError": ["text-mutation-contract-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/model_broker.py",
-    ".agent-workflow/controller/tests/test_model_broker.py",
-    ".agent-workflow/tasks/ORCH-001.json",
-    "docs/adr/0010-controller-owned-model-broker.md",
-    "docs/adr/README.md"
+    ".agent-workflow/controller/td_controller/text_mutation_contract.py",
+    ".agent-workflow/controller/tests/test_text_mutation_contract.py",
+    ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
