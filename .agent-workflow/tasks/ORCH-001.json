@@ -1,30 +1,32 @@
 {
-  "id": "ORCH-003D1B0K5",
+  "id": "ORCH-003D1B0K6",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Guard and prove successful exact-ref creation with repository hooks forcibly disabled",
-  "nonGoals": ["Validate repository metadata", "Reserve a production branch", "Create a worktree", "Reconcile a ref", "Push a ref"],
-  "dependsOn": ["ORCH-003D1B0K1", "ORCH-003D1B0K3"],
+  "objective": "Reserve an exact Git branch with guarded hooks trusted metadata and post-launch reconciliation",
+  "nonGoals": ["Defend against code already running as the trusted controller UID", "Create a worktree", "Checkout files", "Commit changes", "Push a ref"],
+  "dependsOn": ["ORCH-003D1B0K1", "ORCH-003D1B0K3", "ORCH-003D1B0K5"],
   "acceptanceCriteria": [
-    "successful-hook-proof|WHEN exact ref creation succeeds with a malicious hook configured|ASSERT ABSENT hook-marker",
-    "argv-guard|WHEN hook denial is missing from argv|ASSERT ERROR ExactRefHookGuardError",
-    "environment-guard|WHEN an extra Git environment key is present|ASSERT ERROR ExactRefHookGuardError"
+    "atomic-ref|WHEN exact branch creation completes normally|ASSERT TEST_PASS git-reservation-proof",
+    "hook-suppression|WHEN successful creation has a malicious hook configured|ASSERT ABSENT hook-marker",
+    "metadata-boundary|WHEN parents leaves alternates or redirects are unsafe|ASSERT ERROR GitReservationError",
+    "post-launch|WHEN committed output or runner lifecycle is ambiguous|ASSERT ERROR GitRefIndeterminateError"
   ],
   "acceptanceEvidenceIds": {
-    "successful-hook-proof|WHEN exact ref creation succeeds with a malicious hook configured|ASSERT ABSENT hook-marker": ["exact-ref-hook-guard-tests"],
-    "argv-guard|WHEN hook denial is missing from argv|ASSERT ERROR ExactRefHookGuardError": ["exact-ref-hook-guard-tests"],
-    "environment-guard|WHEN an extra Git environment key is present|ASSERT ERROR ExactRefHookGuardError": ["exact-ref-hook-guard-tests"]
+    "atomic-ref|WHEN exact branch creation completes normally|ASSERT TEST_PASS git-reservation-proof": ["git-reservation-proof"],
+    "hook-suppression|WHEN successful creation has a malicious hook configured|ASSERT ABSENT hook-marker": ["git-reservation-tests"],
+    "metadata-boundary|WHEN parents leaves alternates or redirects are unsafe|ASSERT ERROR GitReservationError": ["git-reservation-tests"],
+    "post-launch|WHEN committed output or runner lifecycle is ambiguous|ASSERT ERROR GitRefIndeterminateError": ["git-reservation-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/exact_ref_hook_guard.py",
-    ".agent-workflow/controller/tests/test_exact_ref_hook_guard.py",
+    ".agent-workflow/controller/td_controller/git_reservation.py",
+    ".agent-workflow/controller/tests/test_git_reservation.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 300,
+  "maxChangedLines": 500,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
