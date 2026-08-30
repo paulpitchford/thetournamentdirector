@@ -95,12 +95,16 @@ class WorkspaceOwnership:
             self._require_open()
             descriptor = self._require_owned(owned)
             self._validate_owned(owned, descriptor)
+            close_error: OSError | None = None
             try:
                 os.close(descriptor)
             except OSError as exc:
-                raise WorkspaceOwnershipError("workspace retirement failed") from exc
-            del self._descriptors[owned]
-            del self._physical[(owned.device, owned.inode)]
+                close_error = exc
+            finally:
+                del self._descriptors[owned]
+                del self._physical[(owned.device, owned.inode)]
+            if close_error is not None:
+                raise WorkspaceOwnershipError("workspace retirement failed") from close_error
 
     def close(self) -> None:
         """Synchronously close all owned descriptors and replay cleanup failure."""

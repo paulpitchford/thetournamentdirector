@@ -100,6 +100,27 @@ class WorkspaceOwnershipTests(unittest.TestCase):
             ownership.inspect(owned)
         ownership.close()
 
+    def test_failed_retirement_cannot_reuse_stale_descriptor_number(self) -> None:
+        ownership = WorkspaceOwnership()
+        owned = self.register(ownership)
+        real_close = os.close
+
+        def close_then_fail(descriptor: int) -> None:
+            real_close(descriptor)
+            raise OSError("injected")
+
+        with patch(
+            "td_controller.workspace_ownership.os.close",
+            side_effect=close_then_fail,
+        ):
+            with self.assertRaisesRegex(WorkspaceOwnershipError, "retirement failed"):
+                ownership.retire(owned)
+        with self.assertRaisesRegex(WorkspaceOwnershipError, "not owned"):
+            ownership.inspect(owned)
+        replacement = self.register(ownership)
+        ownership.retire(replacement)
+        ownership.close()
+
     def test_close_is_synchronous_and_replays_failure(self) -> None:
         ownership = WorkspaceOwnership()
         self.register(ownership)
