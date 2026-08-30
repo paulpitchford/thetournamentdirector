@@ -1,32 +1,32 @@
 {
-  "id": "ORCH-003D1B0H",
+  "id": "ORCH-003D1B0I1",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Return one validated text replacement proposal through the credential-isolating tool-less model broker",
-  "nonGoals": ["Apply replacements", "Mount credentials into a worker", "Give a worker network access", "Create or delete files", "Modify Git state"],
-  "dependsOn": ["ORCH-003D1B0F", "ORCH-003D1B0G"],
+  "objective": "Define exact applied rejected and indeterminate outcomes before retrying filesystem replacement",
+  "nonGoals": ["Mutate filesystem bytes", "Dispatch a container", "Call a model", "Reconcile an indeterminate workspace", "Modify Git state"],
+  "dependsOn": ["ORCH-003D1B0D", "ORCH-003D1B0G"],
   "acceptanceCriteria": [
-    "model-proposal|WHEN a selected text request is brokered|ASSERT TEST_PASS text-mutation-broker-proof",
-    "prompt-bound|WHEN JSON escaping exceeds the input limit|ASSERT ERROR TextMutationBrokerError",
-    "tool-less|WHEN mutation broker arguments are built|ASSERT TEST_PASS text-mutation-broker-tests",
-    "response-bound|WHEN output is stale malformed or diagnostic|ASSERT ERROR TextMutationBrokerError"
+    "applied-shape|WHEN exact success output is classified|ASSERT VALUE \"applied\"",
+    "rejected-shape|WHEN a silent precondition exit is classified|ASSERT VALUE \"rejected\"",
+    "ambiguous-shape|WHEN output or runner lifecycle is ambiguous|ASSERT ERROR ReplacementIndeterminateError",
+    "negative-proof|WHEN rejection proof receives an indeterminate result|ASSERT ERROR ReplacementIndeterminateError"
   ],
   "acceptanceEvidenceIds": {
-    "model-proposal|WHEN a selected text request is brokered|ASSERT TEST_PASS text-mutation-broker-proof": ["text-mutation-broker-proof"],
-    "prompt-bound|WHEN JSON escaping exceeds the input limit|ASSERT ERROR TextMutationBrokerError": ["text-mutation-broker-tests"],
-    "tool-less|WHEN mutation broker arguments are built|ASSERT TEST_PASS text-mutation-broker-tests": ["text-mutation-broker-tests"],
-    "response-bound|WHEN output is stale malformed or diagnostic|ASSERT ERROR TextMutationBrokerError": ["text-mutation-broker-tests"]
+    "applied-shape|WHEN exact success output is classified|ASSERT VALUE \"applied\"": ["replacement-outcome-tests"],
+    "rejected-shape|WHEN a silent precondition exit is classified|ASSERT VALUE \"rejected\"": ["replacement-outcome-tests"],
+    "ambiguous-shape|WHEN output or runner lifecycle is ambiguous|ASSERT ERROR ReplacementIndeterminateError": ["replacement-outcome-tests"],
+    "negative-proof|WHEN rejection proof receives an indeterminate result|ASSERT ERROR ReplacementIndeterminateError": ["replacement-outcome-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/text_mutation_broker.py",
-    ".agent-workflow/controller/tests/test_text_mutation_broker.py",
+    ".agent-workflow/controller/td_controller/replacement_outcome.py",
+    ".agent-workflow/controller/tests/test_replacement_outcome.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 500,
+  "maxChangedLines": 300,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
