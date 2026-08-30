@@ -1,27 +1,27 @@
 {
-  "id": "ORCH-003D1B0J2",
+  "id": "ORCH-003D1B0K",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Prove the broker-to-worker mutation coordinator using exact dependency and selected-file bindings",
-  "nonGoals": ["Use a repository worktree", "Create a commit or pull request", "Apply multiple files", "Expose worker credentials", "Enable worker network"],
-  "dependsOn": ["ORCH-003D1B0J1"],
+  "objective": "Atomically reserve a controller-derived Git branch at the exact approved base commit",
+  "nonGoals": ["Create a worktree", "Checkout a branch", "Materialize files", "Commit changes", "Push a branch"],
+  "dependsOn": ["ORCH-003D1B0J2", "ORCH-003A"],
   "acceptanceCriteria": [
-    "end-to-end|WHEN selected text is brokered and applied|ASSERT TEST_PASS mutation-pipeline-proof",
-    "selection-gate|WHEN proposed path or digest was not selected|ASSERT ABSENT applier-call",
-    "dependency-gate|WHEN falsey dependencies are injected|ASSERT VALUE \"preserved\"",
-    "indeterminate|WHEN replacement needs reconciliation|ASSERT ERROR ReplacementIndeterminateError"
+    "atomic-ref|WHEN an absent derived branch is reserved|ASSERT TEST_PASS git-reservation-proof",
+    "duplicate-ref|WHEN the same generation is reserved twice|ASSERT ERROR GitReservationError",
+    "exact-base|WHEN the approved commit is absent|ASSERT ERROR GitReservationError",
+    "live-authority|WHEN the workspace handle is closed|ASSERT ERROR GitReservationError"
   ],
   "acceptanceEvidenceIds": {
-    "end-to-end|WHEN selected text is brokered and applied|ASSERT TEST_PASS mutation-pipeline-proof": ["mutation-pipeline-proof"],
-    "selection-gate|WHEN proposed path or digest was not selected|ASSERT ABSENT applier-call": ["mutation-pipeline-tests"],
-    "dependency-gate|WHEN falsey dependencies are injected|ASSERT VALUE \"preserved\"": ["mutation-pipeline-tests"],
-    "indeterminate|WHEN replacement needs reconciliation|ASSERT ERROR ReplacementIndeterminateError": ["mutation-pipeline-tests"]
+    "atomic-ref|WHEN an absent derived branch is reserved|ASSERT TEST_PASS git-reservation-proof": ["git-reservation-proof"],
+    "duplicate-ref|WHEN the same generation is reserved twice|ASSERT ERROR GitReservationError": ["git-reservation-tests"],
+    "exact-base|WHEN the approved commit is absent|ASSERT ERROR GitReservationError": ["git-reservation-tests"],
+    "live-authority|WHEN the workspace handle is closed|ASSERT ERROR GitReservationError": ["git-reservation-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/mutation_pipeline.py",
-    ".agent-workflow/controller/tests/test_mutation_pipeline.py",
+    ".agent-workflow/controller/td_controller/git_reservation.py",
+    ".agent-workflow/controller/tests/test_git_reservation.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
