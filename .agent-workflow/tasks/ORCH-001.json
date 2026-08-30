@@ -1,24 +1,32 @@
 {
-  "id": "DOC-OPS-001",
+  "id": "ORCH-003D1A0A1",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Record the Codex process-wide file-size-limit crash regression in the reviewed backlog",
-  "nonGoals": ["Change runtime code", "Retain private Codex state", "Attribute the crash to Omarchy or Codex", "Weaken output limits"],
+  "objective": "Enforce one-to-one logical ownership of trusted pre-provisioned workspace inodes",
+  "nonGoals": ["Create workspace directories", "Export owned descriptors", "Use context-manager cleanup", "Delete or rename workspace directories", "Run Git commands"],
   "dependsOn": ["ORCH-003C"],
   "acceptanceCriteria": [
-    "incident-record|WHEN the reviewed backlog is inspected|ASSERT VALUE \"crash regression recorded\"",
-    "regression-scope|WHEN the proposed acceptance is inspected|ASSERT VALUE \"pipe bounds preserved\""
+    "physical-exclusivity|WHEN one inode is registered for another task or attempt|ASSERT TEST_PASS workspace-ownership-tests",
+    "path-independent|WHEN an owned pathname is replaced|ASSERT TEST_PASS workspace-ownership-tests",
+    "synchronous-cleanup|WHEN concurrent cleanup fails|ASSERT TEST_PASS workspace-ownership-tests",
+    "no-path-access|WHEN ownership operations run|ASSERT TEST_PASS workspace-ownership-tests"
   ],
   "acceptanceEvidenceIds": {
-    "incident-record|WHEN the reviewed backlog is inspected|ASSERT VALUE \"crash regression recorded\"": ["crash-regression-recorded"],
-    "regression-scope|WHEN the proposed acceptance is inspected|ASSERT VALUE \"pipe bounds preserved\"": ["pipe-bounds-preserved"]
+    "physical-exclusivity|WHEN one inode is registered for another task or attempt|ASSERT TEST_PASS workspace-ownership-tests": ["workspace-ownership-tests"],
+    "path-independent|WHEN an owned pathname is replaced|ASSERT TEST_PASS workspace-ownership-tests": ["workspace-ownership-tests"],
+    "synchronous-cleanup|WHEN concurrent cleanup fails|ASSERT TEST_PASS workspace-ownership-tests": ["workspace-ownership-tests"],
+    "no-path-access|WHEN ownership operations run|ASSERT TEST_PASS workspace-ownership-tests": ["workspace-ownership-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
-  "allowedPaths": ["docs/DELIVERY_BACKLOG.md", ".agent-workflow/tasks/ORCH-001.json"],
+  "allowedPaths": [
+    ".agent-workflow/controller/td_controller/workspace_ownership.py",
+    ".agent-workflow/controller/tests/test_workspace_ownership.py",
+    ".agent-workflow/tasks/ORCH-001.json"
+  ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 100,
+  "maxChangedLines": 400,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
