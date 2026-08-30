@@ -1,32 +1,32 @@
 {
-  "id": "ORCH-003D1B0K3",
+  "id": "ORCH-003D1B0K4",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Define exact Git ref creation outcomes from launch lifecycle and trusted post-run observation",
-  "nonGoals": ["Run Git", "Inspect a repository", "Create a ref", "Reconcile an existing ref", "Create a worktree"],
-  "dependsOn": ["ORCH-003D1B0K1"],
+  "objective": "Reserve an exact Git branch with trusted metadata and post-launch outcome reconciliation",
+  "nonGoals": ["Defend against code already running as the trusted controller UID", "Create a worktree", "Checkout files", "Commit changes", "Push a ref"],
+  "dependsOn": ["ORCH-003D1B0K1", "ORCH-003D1B0K3"],
   "acceptanceCriteria": [
-    "created|WHEN exact success and exact ref are observed|ASSERT VALUE \"created\"",
-    "rejected|WHEN absence is conclusively observed after failure|ASSERT VALUE \"rejected\"",
-    "committed-ambiguity|WHEN a ref exists after runner or output ambiguity|ASSERT ERROR GitRefIndeterminateError",
-    "unsafe-observation|WHEN ref state is other or unsafe|ASSERT ERROR GitRefIndeterminateError"
+    "atomic-ref|WHEN exact branch creation completes normally|ASSERT TEST_PASS git-reservation-proof",
+    "metadata-boundary|WHEN metadata parents alternates hooks or redirects are unsafe|ASSERT ERROR GitReservationError",
+    "runner-ambiguity|WHEN the ref commits before runner failure|ASSERT ERROR GitRefIndeterminateError",
+    "output-ambiguity|WHEN the ref commits with unexpected output|ASSERT ERROR GitRefIndeterminateError"
   ],
   "acceptanceEvidenceIds": {
-    "created|WHEN exact success and exact ref are observed|ASSERT VALUE \"created\"": ["git-ref-outcome-tests"],
-    "rejected|WHEN absence is conclusively observed after failure|ASSERT VALUE \"rejected\"": ["git-ref-outcome-tests"],
-    "committed-ambiguity|WHEN a ref exists after runner or output ambiguity|ASSERT ERROR GitRefIndeterminateError": ["git-ref-outcome-tests"],
-    "unsafe-observation|WHEN ref state is other or unsafe|ASSERT ERROR GitRefIndeterminateError": ["git-ref-outcome-tests"]
+    "atomic-ref|WHEN exact branch creation completes normally|ASSERT TEST_PASS git-reservation-proof": ["git-reservation-proof"],
+    "metadata-boundary|WHEN metadata parents alternates hooks or redirects are unsafe|ASSERT ERROR GitReservationError": ["git-reservation-tests"],
+    "runner-ambiguity|WHEN the ref commits before runner failure|ASSERT ERROR GitRefIndeterminateError": ["git-reservation-tests"],
+    "output-ambiguity|WHEN the ref commits with unexpected output|ASSERT ERROR GitRefIndeterminateError": ["git-reservation-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/git_ref_outcome.py",
-    ".agent-workflow/controller/tests/test_git_ref_outcome.py",
+    ".agent-workflow/controller/td_controller/git_reservation.py",
+    ".agent-workflow/controller/tests/test_git_reservation.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 300,
+  "maxChangedLines": 500,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
