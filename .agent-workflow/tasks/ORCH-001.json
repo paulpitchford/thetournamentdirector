@@ -1,29 +1,32 @@
 {
-  "id": "DOC-ADR-0009",
+  "id": "ORCH-003D1B0A",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Record the workspace provisioning trust boundary and its required containment proof",
-  "nonGoals": ["Implement provisioning code", "Create or delete workspaces", "Run a write-capable provider", "Change GitHub policy"],
-  "dependsOn": ["ORCH-003C"],
+  "objective": "Prove controlled Podman configuration rejects an injected workspace-root mount",
+  "nonGoals": ["Prove exact task-directory provenance", "Run Codex", "Create Git worktrees", "Delete retained workspaces", "Change global Podman configuration"],
+  "dependsOn": ["ORCH-003D1A0A1A0"],
   "acceptanceCriteria": [
-    "boundary-decision|WHEN ADR 0009 is inspected|ASSERT VALUE \"worker parent namespace excluded\"",
-    "proof-requirements|WHEN the provisioning backlog item is inspected|ASSERT VALUE \"real contained worker proof required\""
+    "controlled-config|WHEN the controller builds the Podman environment|ASSERT TEST_PASS podman-mount-policy-tests",
+    "direct-task-only|WHEN the controller builds the normal worker command|ASSERT TEST_PASS podman-mount-policy-tests",
+    "injected-mount|WHEN the adversarial root mount command executes|ASSERT TEST_PASS podman-mount-policy-proof",
+    "bounded-process|WHEN Podman output reaches the configured byte limit|ASSERT TEST_PASS podman-mount-policy-tests"
   ],
   "acceptanceEvidenceIds": {
-    "boundary-decision|WHEN ADR 0009 is inspected|ASSERT VALUE \"worker parent namespace excluded\"": ["adr-boundary-recorded"],
-    "proof-requirements|WHEN the provisioning backlog item is inspected|ASSERT VALUE \"real contained worker proof required\"": ["provisioning-proof-recorded"]
+    "controlled-config|WHEN the controller builds the Podman environment|ASSERT TEST_PASS podman-mount-policy-tests": ["podman-mount-policy-tests"],
+    "direct-task-only|WHEN the controller builds the normal worker command|ASSERT TEST_PASS podman-mount-policy-tests": ["podman-mount-policy-tests"],
+    "injected-mount|WHEN the adversarial root mount command executes|ASSERT TEST_PASS podman-mount-policy-proof": ["podman-mount-policy-proof"],
+    "bounded-process|WHEN Podman output reaches the configured byte limit|ASSERT TEST_PASS podman-mount-policy-tests": ["podman-mount-policy-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    "docs/adr/0009-workspace-provisioning-boundary.md",
-    "docs/adr/README.md",
-    "docs/DELIVERY_BACKLOG.md",
+    ".agent-workflow/controller/td_controller/podman_mount_policy.py",
+    ".agent-workflow/controller/tests/test_podman_mount_policy.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 200,
+  "maxChangedLines": 425,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
