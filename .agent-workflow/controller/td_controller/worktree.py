@@ -230,8 +230,11 @@ class MetadataWorktreeManager:
                     shutil.rmtree(target)
             except OSError as exc:
                 raise WorktreeError("partial worktree cleanup failed") from exc
-        listing = self._run_git("worktree", "list", "--porcelain").stdout
-        if f"worktree {target}\n".encode() in listing:
+        listing = self._run_git("worktree", "list", "--porcelain")
+        if (
+            listing.returncode != 0 or listing.stderr
+            or f"worktree {target}\n".encode() in listing.stdout
+        ):
             raise WorktreeError("partial worktree cleanup failed")
         deletion = self._run_git("update-ref", "-d", reference, base_sha)
         if deletion.returncode != 0:
