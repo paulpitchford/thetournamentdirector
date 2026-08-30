@@ -12,14 +12,15 @@ from td_controller.attested_payload_runner import (
     PayloadCommand,
 )
 from td_controller.podman_mount_policy import IMAGE, MountPolicyFixture
-from td_controller.review_runtime import ProcessOutput
+from td_controller.review_contract import CodexReviewError
+from td_controller.review_runtime import ProcessOutput, SubprocessExecutor
 from td_controller.workspace_identity_handle import (
     WorkspaceIdentityHandle,
     WorkspaceIdentityHandleError,
 )
 
 
-class FakeExecutor:
+class FakeExecutor(SubprocessExecutor):
     def __init__(self, outputs: list[ProcessOutput]) -> None:
         self.outputs = outputs
         self.calls: list[tuple[list[str], bytes]] = []
@@ -62,6 +63,10 @@ class AttestedPayloadRunnerTests(unittest.TestCase):
         self.handle.close()
         self.temporary.cleanup()
 
+    def test_unbounded_executor_is_rejected(self) -> None:
+        with self.assertRaisesRegex(AttestedPayloadRunnerError, "bounded"):
+            AttestedPayloadRunner(executor=object())
+
     def test_command_preserves_payload_argv_after_all_checks(self) -> None:
         executor = FakeExecutor([])
         runner = AttestedPayloadRunner(executor=executor)
@@ -73,6 +78,7 @@ class AttestedPayloadRunnerTests(unittest.TestCase):
             self.fixture, self.handle.identity, payload
         )
         image_index = command.index(IMAGE)
+        self.assertEqual(command[2:4], ("--name", "td-payload-" + "0" * 32))
         self.assertEqual(
             command[image_index:],
             (
@@ -160,6 +166,31 @@ class AttestedPayloadRunnerTests(unittest.TestCase):
                 self.fixture, self.handle, PayloadCommand("/bin/true")
             )
         self.assertEqual(executor.calls, [])
+
+    def test_output_flood_triggers_container_cleanup_and_absence_check(self) -> None:
+        class FloodExecutor(SubprocessExecutor):
+            def __init__(self):
+                self.calls: list[list[str]] = []
+
+            def run(self, command, **kwargs):
+                self.calls.append(command)
+                if len(self.calls) == 1:
+                    return ProcessOutput(0, b"true\n", b"")
+                if len(self.calls) == 2:
+                    raise CodexReviewError("output limit")
+                if len(self.calls) == 3:
+                    return ProcessOutput(0, b"container-id\n", b"")
+                return ProcessOutput(1, b"", b"")
+
+        executor = FloodExecutor()
+        with self.assertRaisesRegex(AttestedPayloadRunnerError, "process failed"):
+            AttestedPayloadRunner(executor=executor).run(
+                self.fixture,
+                self.handle,
+                PayloadCommand("/bin/busybox", ("yes",)),
+            )
+        self.assertEqual(executor.calls[2][1:5], ["rm", "-f", "--time=1", "td-payload-" + "0" * 32])
+        self.assertEqual(executor.calls[3][1:3], ["container", "exists"])
 
     def test_rootless_failure_prevents_payload_dispatch(self) -> None:
         executor = FakeExecutor([ProcessOutput(1, b"false\n", b"")])

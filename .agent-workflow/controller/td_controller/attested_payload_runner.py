@@ -61,6 +61,8 @@ class AttestedPayloadRunner:
     """Hold one live identity through checks and an argv-preserving payload."""
 
     def __init__(self, *, executor: CommandExecutor | None = None) -> None:
+        if executor is not None and not isinstance(executor, SubprocessExecutor):
+            raise AttestedPayloadRunnerError("bounded payload executor is required")
         self._executor = executor or SubprocessExecutor(
             PodmanMountPolicyProbe.environment
         )
@@ -92,7 +94,9 @@ class AttestedPayloadRunner:
         *,
         input_bytes: bytes,
     ) -> ProcessOutput:
+        name = f"td-payload-{identity.generation}"
         command = list(self._command(fixture, identity, payload))
+        payload_started = False
         try:
             rootless = self._executor.run(
                 [str(PODMAN), "info", "--format", "{{.Host.Security.Rootless}}"],
@@ -106,6 +110,7 @@ class AttestedPayloadRunner:
                 raise AttestedPayloadRunnerError(
                     "rootless runtime attestation failed"
                 )
+            payload_started = True
             return self._executor.run(
                 command,
                 input_bytes=input_bytes,
@@ -113,6 +118,8 @@ class AttestedPayloadRunner:
                 timeout_seconds=60,
             )
         except (CodexReviewError, OSError) as exc:
+            if payload_started:
+                self._cleanup_container(fixture.root, name)
             raise AttestedPayloadRunnerError("payload process failed") from exc
 
     def _command(
@@ -127,8 +134,9 @@ class AttestedPayloadRunner:
             )
         except PodmanMountPolicyError as exc:
             raise AttestedPayloadRunnerError("workspace fixture is invalid") from exc
-        image_index = command.index(IMAGE)
         expected = f"{identity.device}:{identity.inode}"
+        command[2:2] = ["--name", f"td-payload-{identity.generation}"]
+        image_index = command.index(IMAGE)
         command[image_index:image_index] = [
             "--interactive",
             "--env",
@@ -145,6 +153,21 @@ class AttestedPayloadRunner:
             *payload.arguments,
         ]
         return tuple(command)
+
+    def _cleanup_container(self, cwd: Path, name: str) -> None:
+        try:
+            self._executor.run(
+                [str(PODMAN), "rm", "-f", "--time=1", name],
+                input_bytes=b"", cwd=cwd, timeout_seconds=30,
+            )
+            remaining = self._executor.run(
+                [str(PODMAN), "container", "exists", name],
+                input_bytes=b"", cwd=cwd, timeout_seconds=30,
+            )
+        except (CodexReviewError, OSError) as exc:
+            raise AttestedPayloadRunnerError("payload cleanup failed") from exc
+        if remaining.returncode != 1 or remaining.stdout or remaining.stderr:
+            raise AttestedPayloadRunnerError("payload cleanup failed")
 
     @staticmethod
     def _validate_payload(payload: PayloadCommand, input_bytes: bytes) -> None:
@@ -211,6 +234,15 @@ def run_local_probe() -> None:
                 raise AttestedPayloadRunnerError("argv payload proof failed")
             if (task / "not-run").exists() or tuple(sibling.iterdir()):
                 raise AttestedPayloadRunnerError("payload argument was interpreted")
+            try:
+                runner.run(
+                    fixture, handle,
+                    PayloadCommand("/bin/busybox", ("yes",)),
+                )
+            except AttestedPayloadRunnerError:
+                pass
+            else:
+                raise AttestedPayloadRunnerError("payload output was not bounded")
             handle.verify()
         finally:
             handle.close()

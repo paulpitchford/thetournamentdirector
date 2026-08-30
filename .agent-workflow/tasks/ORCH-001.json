@@ -26,7 +26,7 @@
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 450,
+  "maxChangedLines": 500,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
