@@ -1,30 +1,32 @@
 {
-  "id": "ORCH-003D1B0K5",
+  "id": "ORCH-003D1B0L1",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Guard and prove successful exact-ref creation with repository hooks forcibly disabled",
-  "nonGoals": ["Validate repository metadata", "Reserve a production branch", "Create a worktree", "Reconcile a ref", "Push a ref"],
-  "dependsOn": ["ORCH-003D1B0K1", "ORCH-003D1B0K3"],
+  "objective": "Execute bounded trusted commands with cwd anchored internally to one pinned directory descriptor",
+  "nonGoals": ["Expose a repository pathname", "Expose a descriptor", "Run Git mutation", "Create a worktree", "Accept model commands"],
+  "dependsOn": ["ORCH-003D1B0K3", "ORCH-003D1B0K5"],
   "acceptanceCriteria": [
-    "successful-hook-proof|WHEN exact ref creation succeeds with a malicious hook configured|ASSERT ABSENT hook-marker",
-    "argv-guard|WHEN hook denial is missing from argv|ASSERT ERROR ExactRefHookGuardError",
-    "environment-guard|WHEN an extra Git environment key is present|ASSERT ERROR ExactRefHookGuardError"
+    "descriptor-cwd|WHEN the original pathname is replaced|ASSERT TEST_PASS pinned-directory-executor-proof",
+    "replacement-isolation|WHEN a command writes a relative marker|ASSERT ABSENT replacement-marker",
+    "live-lifetime|WHEN close overlaps a running command|ASSERT VALUE \"serialized\"",
+    "bounded-input|WHEN environment command or timeout is invalid|ASSERT ERROR PinnedDirectoryExecutorError"
   ],
   "acceptanceEvidenceIds": {
-    "successful-hook-proof|WHEN exact ref creation succeeds with a malicious hook configured|ASSERT ABSENT hook-marker": ["exact-ref-hook-guard-tests"],
-    "argv-guard|WHEN hook denial is missing from argv|ASSERT ERROR ExactRefHookGuardError": ["exact-ref-hook-guard-tests"],
-    "environment-guard|WHEN an extra Git environment key is present|ASSERT ERROR ExactRefHookGuardError": ["exact-ref-hook-guard-tests"]
+    "descriptor-cwd|WHEN the original pathname is replaced|ASSERT TEST_PASS pinned-directory-executor-proof": ["pinned-directory-executor-proof"],
+    "replacement-isolation|WHEN a command writes a relative marker|ASSERT ABSENT replacement-marker": ["pinned-directory-executor-proof"],
+    "live-lifetime|WHEN close overlaps a running command|ASSERT VALUE \"serialized\"": ["pinned-directory-executor-tests"],
+    "bounded-input|WHEN environment command or timeout is invalid|ASSERT ERROR PinnedDirectoryExecutorError": ["pinned-directory-executor-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/exact_ref_hook_guard.py",
-    ".agent-workflow/controller/tests/test_exact_ref_hook_guard.py",
+    ".agent-workflow/controller/td_controller/pinned_directory_executor.py",
+    ".agent-workflow/controller/tests/test_pinned_directory_executor.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 300,
+  "maxChangedLines": 450,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
