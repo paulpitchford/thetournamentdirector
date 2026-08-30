@@ -20,6 +20,10 @@ class WorktreeError(RuntimeError):
     """Raised when a task worktree cannot be reserved safely."""
 
 
+class AmbiguousGitError(WorktreeError):
+    """Raised when a timed-out Git mutation may have taken effect."""
+
+
 @dataclass(frozen=True)
 class WorktreeReservation:
     task_id: str
@@ -128,8 +132,10 @@ class MetadataWorktreeManager:
                 raise WorktreeError(
                     "task branch is already reserved or cannot be inspected"
                 )
+            update = self._run_git("update-ref", reference, base_sha, "0" * 40)
+            if update.returncode != 0 or update.stdout or update.stderr:
+                raise WorktreeError("task branch creation was rejected")
             branch_may_be_owned = True
-            self._git("update-ref", reference, base_sha, "0" * 40)
             self._git(
                 "worktree", "add", "--quiet", "--no-checkout",
                 str(target), lease.branch,
@@ -142,13 +148,19 @@ class MetadataWorktreeManager:
                 lease.lease_id, owner=lease.owner, ttl_seconds=300
             )
             refreshed_state = self.state_ledger.current(lease.task_id)
+            branch = self._run_git("rev-parse", "--verify", reference)
             if (
-                refreshed.lease_id != authoritative_lease.lease_id
+                branch.returncode != 0
+                or branch.stdout != f"{base_sha}\n".encode()
+                or branch.stderr
+                or refreshed.lease_id != authoritative_lease.lease_id
                 or refreshed_state.revision != expected_revision
                 or refreshed_state.base_sha != base_sha
             ):
                 raise WorktreeError("dispatch authority changed during reservation")
         except (OSError, WorktreeError, LeaseError, WorkflowStateError) as exc:
+            if isinstance(exc, AmbiguousGitError):
+                raise
             if branch_may_be_owned:
                 self._rollback(target, reference, base_sha)
             try:
@@ -255,5 +267,7 @@ class MetadataWorktreeManager:
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 timeout=30, env=environment,
             )
-        except (OSError, subprocess.TimeoutExpired) as exc:
+        except subprocess.TimeoutExpired as exc:
+            raise AmbiguousGitError("trusted Git outcome is ambiguous") from exc
+        except OSError as exc:
             raise WorktreeError("trusted Git command failed") from exc

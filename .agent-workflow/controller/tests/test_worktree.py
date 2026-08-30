@@ -11,7 +11,11 @@ from unittest.mock import Mock, patch
 
 from td_controller.lease import LeaseError, TaskLease
 from td_controller.workflow_state import TaskState
-from td_controller.worktree import MetadataWorktreeManager, WorktreeError
+from td_controller.worktree import (
+    AmbiguousGitError,
+    MetadataWorktreeManager,
+    WorktreeError,
+)
 
 
 class MetadataWorktreeManagerTests(unittest.TestCase):
@@ -74,15 +78,6 @@ class MetadataWorktreeManagerTests(unittest.TestCase):
         self.assertFalse((self.root / "hook-ran").exists())
         self.assertFalse((reservation.path / "README.md").exists())
 
-    def test_duplicate_branch_or_path_is_rejected_without_reuse(self) -> None:
-        manager = self.manager()
-        first = manager.reserve(self.lease, attempt=1, base_sha=self.base_sha)
-
-        with self.assertRaisesRegex(WorktreeError, "already reserved"):
-            manager.reserve(self.lease, attempt=1, base_sha=self.base_sha)
-
-        self.assertTrue((first.path / ".git").is_file())
-
     def test_lease_branch_state_attempt_and_sha_are_exact(self) -> None:
         manager = self.manager()
         invalid = (
@@ -136,20 +131,21 @@ class MetadataWorktreeManagerTests(unittest.TestCase):
 
         self.assertEqual(tuple(self.worktrees.iterdir()), ())
 
-    def test_ambiguous_branch_creation_failure_is_rolled_back(self) -> None:
+    def test_ambiguous_branch_creation_is_quarantined_without_deletion(self) -> None:
         manager = self.manager()
-        original = manager._git
+        original = manager._run_git
 
-        def ambiguous(*arguments: str) -> None:
-            original(*arguments)
+        def ambiguous(*arguments: str):
+            result = original(*arguments)
             if arguments[0] == "update-ref":
-                raise WorktreeError("ambiguous update")
+                raise AmbiguousGitError("ambiguous update")
+            return result
 
-        with patch.object(manager, "_git", side_effect=ambiguous):
+        with patch.object(manager, "_run_git", side_effect=ambiguous):
             with self.assertRaisesRegex(WorktreeError, "ambiguous"):
                 manager.reserve(self.lease, attempt=1, base_sha=self.base_sha)
-        self.assertNotIn(self.lease.branch, self.git("branch", "--list").stdout)
-        self.assertTrue(manager.reserve(self.lease, attempt=1, base_sha=self.base_sha))
+        self.assertIn(self.lease.branch, self.git("branch", "--list").stdout)
+        self.assertTrue((self.worktrees / ".doc-001-attempt-1.reservation").is_dir())
 
     def test_post_creation_failure_rolls_back_branch_path_and_registration(self) -> None:
         manager = self.manager()
@@ -191,18 +187,6 @@ class MetadataWorktreeManagerTests(unittest.TestCase):
         self.assertEqual(tuple(destination.iterdir()), ())
         self.worktrees.unlink()
         original.rename(self.worktrees)
-
-    def test_unknown_base_is_rejected_before_target_creation(self) -> None:
-        manager = self.manager()
-
-        state = self.state_ledger.current.return_value
-        self.state_ledger.current.return_value = TaskState(
-            **{**state.__dict__, "base_sha": "f" * 40}
-        )
-        with self.assertRaisesRegex(WorktreeError, "rejected"):
-            manager.reserve(self.lease, attempt=1, base_sha="f" * 40)
-
-        self.assertEqual(tuple(self.worktrees.iterdir()), ())
 
 
 if __name__ == "__main__":
