@@ -107,7 +107,8 @@ class AttestedTextReplacementTests(unittest.TestCase):
         temporary = REPLACEMENT_SCRIPT.index("mktemp")
         new_hash = REPLACEMENT_SCRIPT.index('sha256sum "$temporary"')
         data_sync = REPLACEMENT_SCRIPT.index('sync -d "$temporary"')
-        move = REPLACEMENT_SCRIPT.index('mv "$temporary" "$target"')
+        move = REPLACEMENT_SCRIPT.index('mv -T "$temporary" "$target"')
+        post_hash = REPLACEMENT_SCRIPT.rindex('sha256sum "$target"')
         directory_sync = REPLACEMENT_SCRIPT.index('sync -f "$parent"')
         self.assertLess(parent_check, link_check)
         self.assertLess(link_check, hardlink_check)
@@ -116,7 +117,8 @@ class AttestedTextReplacementTests(unittest.TestCase):
         self.assertLess(temporary, new_hash)
         self.assertLess(new_hash, data_sync)
         self.assertLess(data_sync, move)
-        self.assertLess(move, directory_sync)
+        self.assertLess(move, post_hash)
+        self.assertLess(post_hash, directory_sync)
 
     def test_task_count_and_path_mismatch_fail_before_runner(self) -> None:
         invalid = (

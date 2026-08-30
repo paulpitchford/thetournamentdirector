@@ -49,8 +49,14 @@ actual=$(sha256sum "$temporary")
 test "${actual%% *}" = "$replacement"
 chmod "$mode" "$temporary"
 sync -d "$temporary"
-mv "$temporary" "$target"
+mv -T "$temporary" "$target"
 trap - EXIT HUP INT TERM
+test "$(readlink -f "$parent")" = "$parent" || exit 52
+test ! -L "$target" || exit 52
+test -f "$target" || exit 52
+test "$(stat -c '%h' "$target")" = 1 || exit 52
+actual=$(sha256sum "$target") || exit 52
+test "${actual%% *}" = "$replacement" || exit 52
 if sync -f "$parent"; then
   printf 'text-replacement-ok\n'
 else
@@ -83,7 +89,13 @@ class AttestedTextReplacementIndeterminateError(
 
 
 class AttestedTextReplacementApplier:
-    """Execute one preconditioned atomic replacement through the argv runner."""
+    """Execute one preconditioned atomic replacement through the argv runner.
+
+    The controller owns one handle per workspace. ``AttestedPayloadRunner`` holds
+    that handle for the complete container lifetime, so controller-authorized
+    workspace operations cannot overlap this fixed payload. As established by
+    ADR 0009, other processes running as the controller UID remain in the TCB.
+    """
 
     def __init__(self, *, runner: ReplacementRunner | None = None) -> None:
         if runner is not None and not callable(getattr(runner, "run", None)):
@@ -220,6 +232,25 @@ def run_local_probe() -> None:
                 raise AttestedTextReplacementError("symlink parent was accepted")
             if (real / "pilot.md").read_bytes() != b"beta\n":
                 raise AttestedTextReplacementError("rejected replacement changed bytes")
+            docs.unlink()
+            real.rename(docs)
+            held_target = docs / "held-pilot.md"
+            target.rename(held_target)
+            target.mkdir(mode=0o700)
+            try:
+                applier.apply(
+                    fixture, handle,
+                    _proposal(
+                        handle.identity.task_id, "docs/pilot.md",
+                        b"beta\n", "directory\n",
+                    ),
+                )
+            except AttestedTextReplacementError:
+                pass
+            else:
+                raise AttestedTextReplacementError("directory target was accepted")
+            if tuple(target.iterdir()) or held_target.read_bytes() != b"beta\n":
+                raise AttestedTextReplacementError("directory rejection changed bytes")
             handle.verify()
         finally:
             handle.close()

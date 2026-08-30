@@ -3,7 +3,7 @@
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
   "objective": "Apply one validated whole-file text replacement inside the live attested worker mount",
-  "nonGoals": ["Apply multiple files atomically", "Create delete or rename tracked files", "Call a model", "Commit Git state", "Expose credentials or network"],
+  "nonGoals": ["Defend against code already running as the trusted controller UID", "Apply multiple files atomically", "Create delete or rename tracked files", "Call a model", "Commit Git state"],
   "dependsOn": ["ORCH-003D1B0D", "ORCH-003D1B0G"],
   "acceptanceCriteria": [
     "atomic-replacement|WHEN the selected digest matches|ASSERT TEST_PASS attested-text-replacement-proof",
