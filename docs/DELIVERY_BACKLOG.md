@@ -107,6 +107,25 @@ The diagram is a summary; each task's `Depends on` field is authoritative.
   cause; retain a real core dump, Codex database, or other private state as a
   test fixture.
 
+### ORCH-003D1B — Prove isolated workspace provisioning
+
+- **Status:** Proposed operational prerequisite.
+- **Risk:** R3
+- **Depends on:** `HUM-002`, merged workspace identity handle
+- **Allowed paths:** controller workspace provisioner and matching unit and
+  rootless-container integration tests
+- **Objective:** create and pin a private generation-qualified task directory
+  before any untrusted worker can observe its parent namespace.
+- **Acceptance:** the controller records exact root and child identities before
+  dispatch; a real contained non-root worker can access its direct child but
+  cannot stat, list, watch, open, rename, or inherit a descriptor for the shared
+  root or a sibling; broad parent mounts and host-namespace write execution fail
+  before provider startup; interruption retains bytes for reconciliation.
+- **Non-goals:** delete retained directories; reserve Git branches; materialize
+  repository files; run Codex; treat Unix mode bits as isolation between hostile
+  processes sharing the trusted controller account.
+- **Architecture:** ADR 0009 must be accepted before implementation dispatch.
+
 ## Wave 1 — project and quality foundation
 
 ### FND-001 — Scaffold the modern application

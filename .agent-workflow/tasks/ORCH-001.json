@@ -1,32 +1,29 @@
 {
-  "id": "ORCH-003D1A0A1A0",
+  "id": "DOC-ADR-0009",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Own and verify one trusted workspace descriptor per explicit identity handle",
-  "nonGoals": ["Index multiple workspaces", "Create workspace directories", "Enumerate workspace contents", "Export the owned descriptor", "Run Git commands"],
+  "objective": "Record the workspace provisioning trust boundary and its required containment proof",
+  "nonGoals": ["Implement provisioning code", "Create or delete workspaces", "Run a write-capable provider", "Change GitHub policy"],
   "dependsOn": ["ORCH-003C"],
   "acceptanceCriteria": [
-    "single-owner|WHEN a trusted descriptor initializes one handle|ASSERT TEST_PASS workspace-identity-handle-tests",
-    "path-independent|WHEN its pathname is replaced|ASSERT TEST_PASS workspace-identity-handle-tests",
-    "bounded-verification|WHEN the handle is verified|ASSERT TEST_PASS workspace-identity-handle-tests",
-    "terminal-cleanup|WHEN initialization or concurrent close fails|ASSERT TEST_PASS workspace-identity-handle-tests"
+    "boundary-decision|WHEN ADR 0009 is inspected|ASSERT VALUE \"worker parent namespace excluded\"",
+    "proof-requirements|WHEN the provisioning backlog item is inspected|ASSERT VALUE \"real contained worker proof required\""
   ],
   "acceptanceEvidenceIds": {
-    "single-owner|WHEN a trusted descriptor initializes one handle|ASSERT TEST_PASS workspace-identity-handle-tests": ["workspace-identity-handle-tests"],
-    "path-independent|WHEN its pathname is replaced|ASSERT TEST_PASS workspace-identity-handle-tests": ["workspace-identity-handle-tests"],
-    "bounded-verification|WHEN the handle is verified|ASSERT TEST_PASS workspace-identity-handle-tests": ["workspace-identity-handle-tests"],
-    "terminal-cleanup|WHEN initialization or concurrent close fails|ASSERT TEST_PASS workspace-identity-handle-tests": ["workspace-identity-handle-tests"]
+    "boundary-decision|WHEN ADR 0009 is inspected|ASSERT VALUE \"worker parent namespace excluded\"": ["adr-boundary-recorded"],
+    "proof-requirements|WHEN the provisioning backlog item is inspected|ASSERT VALUE \"real contained worker proof required\"": ["provisioning-proof-recorded"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/workspace_identity_handle.py",
-    ".agent-workflow/controller/tests/test_workspace_identity_handle.py",
+    "docs/adr/0009-workspace-provisioning-boundary.md",
+    "docs/adr/README.md",
+    "docs/DELIVERY_BACKLOG.md",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 375,
+  "maxChangedLines": 200,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
