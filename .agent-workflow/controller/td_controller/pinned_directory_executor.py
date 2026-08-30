@@ -10,7 +10,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from .review_contract import CodexReviewError
-from .review_runtime import ProcessOutput, SubprocessExecutor
+from .review_runtime import MAX_INPUT_BYTES, ProcessOutput, SubprocessExecutor
 
 ENV_KEY = re.compile(r"[A-Z][A-Z0-9_]{0,63}")
 
@@ -70,6 +70,7 @@ class PinnedDirectoryExecutor:
                 for argument in command
             )
             or not isinstance(input_bytes, bytes)
+            or len(input_bytes) > MAX_INPUT_BYTES
             or isinstance(timeout_seconds, bool)
             or not isinstance(timeout_seconds, int)
             or not 1 <= timeout_seconds <= 600

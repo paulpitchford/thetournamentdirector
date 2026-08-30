@@ -11,6 +11,7 @@ from td_controller.pinned_directory_executor import (
     PinnedDirectoryExecutor,
     PinnedDirectoryExecutorError,
 )
+from td_controller.review_runtime import MAX_INPUT_BYTES
 
 ENVIRONMENT = {"HOME": "/nonexistent", "PATH": "/usr/bin:/bin"}
 
@@ -132,6 +133,16 @@ class PinnedDirectoryExecutorTests(unittest.TestCase):
             for command in ([], ["relative"], ["/usr/bin/true", "é"]):
                 with self.assertRaises(PinnedDirectoryExecutorError):
                     executor.run(command, environment=ENVIRONMENT)
+            accepted = executor.run(
+                ["/usr/bin/cat"], environment=ENVIRONMENT,
+                input_bytes=b"x" * MAX_INPUT_BYTES,
+            )
+            self.assertEqual(len(accepted.stdout), MAX_INPUT_BYTES)
+            with self.assertRaisesRegex(PinnedDirectoryExecutorError, "command"):
+                executor.run(
+                    ["/usr/bin/cat"], environment=ENVIRONMENT,
+                    input_bytes=b"x" * (MAX_INPUT_BYTES + 1),
+                )
             with self.assertRaisesRegex(PinnedDirectoryExecutorError, "process"):
                 executor.run(
                     ["/usr/bin/sleep", "2"], environment=ENVIRONMENT,
