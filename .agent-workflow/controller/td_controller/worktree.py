@@ -195,7 +195,7 @@ class MetadataWorktreeManager:
             raise WorktreeError("worktree storage cannot be inspected") from exc
         mode = stat.S_IMODE(metadata.st_mode)
         private = metadata.st_uid == os.getuid() and not mode & 0o077
-        sticky = allow_sticky and bool(mode & stat.S_ISVTX)
+        sticky = allow_sticky and metadata.st_uid == 0 and bool(mode & stat.S_ISVTX)
         if not stat.S_ISDIR(metadata.st_mode) or path.is_symlink() or not (private or sticky):
             raise WorktreeError("worktree storage permissions are unsafe")
         return metadata.st_dev, metadata.st_ino
