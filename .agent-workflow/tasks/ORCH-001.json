@@ -1,32 +1,30 @@
 {
-  "id": "ORCH-003D1B0A",
+  "id": "ORCH-003D1B0B0",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Prove controlled Podman configuration rejects an injected workspace-root mount",
-  "nonGoals": ["Prove exact task-directory provenance", "Run Codex", "Create Git worktrees", "Delete retained workspaces", "Change global Podman configuration"],
-  "dependsOn": ["ORCH-003D1A0A1A0"],
+  "objective": "Hold a verified workspace identity live across one trusted synchronous operation without exporting its descriptor",
+  "nonGoals": ["Run Podman", "Run an untrusted payload", "Create workspaces", "Export the descriptor", "Change close failure policy"],
+  "dependsOn": ["ORCH-003D1B0A"],
   "acceptanceCriteria": [
-    "controlled-config|WHEN the controller builds the Podman environment|ASSERT TEST_PASS podman-mount-policy-tests",
-    "direct-task-only|WHEN the controller builds the normal worker command|ASSERT TEST_PASS podman-mount-policy-tests",
-    "injected-mount|WHEN the adversarial root mount command executes|ASSERT TEST_PASS podman-mount-policy-proof",
-    "bounded-process|WHEN Podman output reaches the configured byte limit|ASSERT TEST_PASS podman-mount-policy-tests"
+    "live-hold|WHEN trusted code holds a verified identity|ASSERT TEST_PASS workspace-identity-handle-tests",
+    "close-exclusion|WHEN close overlaps an active identity hold|ASSERT TEST_PASS workspace-identity-handle-tests",
+    "closed-rejection|WHEN an identity hold starts after close|ASSERT TEST_PASS workspace-identity-handle-tests"
   ],
   "acceptanceEvidenceIds": {
-    "controlled-config|WHEN the controller builds the Podman environment|ASSERT TEST_PASS podman-mount-policy-tests": ["podman-mount-policy-tests"],
-    "direct-task-only|WHEN the controller builds the normal worker command|ASSERT TEST_PASS podman-mount-policy-tests": ["podman-mount-policy-tests"],
-    "injected-mount|WHEN the adversarial root mount command executes|ASSERT TEST_PASS podman-mount-policy-proof": ["podman-mount-policy-proof"],
-    "bounded-process|WHEN Podman output reaches the configured byte limit|ASSERT TEST_PASS podman-mount-policy-tests": ["podman-mount-policy-tests"]
+    "live-hold|WHEN trusted code holds a verified identity|ASSERT TEST_PASS workspace-identity-handle-tests": ["workspace-identity-handle-tests"],
+    "close-exclusion|WHEN close overlaps an active identity hold|ASSERT TEST_PASS workspace-identity-handle-tests": ["workspace-identity-handle-tests"],
+    "closed-rejection|WHEN an identity hold starts after close|ASSERT TEST_PASS workspace-identity-handle-tests": ["workspace-identity-handle-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/podman_mount_policy.py",
-    ".agent-workflow/controller/tests/test_podman_mount_policy.py",
+    ".agent-workflow/controller/td_controller/workspace_identity_handle.py",
+    ".agent-workflow/controller/tests/test_workspace_identity_handle.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 425,
+  "maxChangedLines": 160,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }

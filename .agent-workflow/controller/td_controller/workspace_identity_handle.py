@@ -6,6 +6,8 @@ import os
 import re
 import stat
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 TASK_PATTERN = re.compile(r"[A-Z][A-Z0-9-]{2,63}")
@@ -41,6 +43,7 @@ class WorkspaceIdentityHandle:
         self._descriptor = -1
         self._closed = False
         self._cleanup_failed = False
+        self._hold_owner: int | None = None
         try:
             self._descriptor = os.dup(descriptor)
             metadata = os.fstat(self._descriptor)
@@ -75,25 +78,29 @@ class WorkspaceIdentityHandle:
     def verify(self) -> None:
         """Verify bounded inode metadata without reading a path or directory."""
         with self._lock:
-            self._require_open()
+            self._verify_locked()
+
+    @contextmanager
+    def hold_identity(self) -> Iterator[WorkspaceIdentity]:
+        """Keep the descriptor live while trusted code uses its identity."""
+        self._lock.acquire()
+        try:
+            if self._hold_owner is not None:
+                raise WorkspaceIdentityHandleError("workspace identity is already held")
+            self._verify_locked()
+            self._hold_owner = threading.get_ident()
             try:
-                metadata = os.fstat(self._descriptor)
-                self._validate_directory(metadata)
-            except OSError as exc:
-                raise WorkspaceIdentityHandleError(
-                    "workspace handle verification failed"
-                ) from exc
-            if (metadata.st_dev, metadata.st_ino) != (
-                self._identity.device,
-                self._identity.inode,
-            ):
-                raise WorkspaceIdentityHandleError(
-                    "workspace handle identity changed"
-                )
+                yield self._identity
+            finally:
+                self._hold_owner = None
+        finally:
+            self._lock.release()
 
     def close(self) -> None:
         """Make one synchronized close attempt and replay its result."""
         with self._lock:
+            if self._hold_owner == threading.get_ident():
+                raise WorkspaceIdentityHandleError("workspace identity hold is active")
             if self._closed:
                 if self._cleanup_failed:
                     raise WorkspaceIdentityHandleError(
@@ -110,6 +117,21 @@ class WorkspaceIdentityHandle:
                 ) from exc
             finally:
                 self._descriptor = -1
+
+    def _verify_locked(self) -> None:
+        self._require_open()
+        try:
+            metadata = os.fstat(self._descriptor)
+            self._validate_directory(metadata)
+        except OSError as exc:
+            raise WorkspaceIdentityHandleError(
+                "workspace handle verification failed"
+            ) from exc
+        if (metadata.st_dev, metadata.st_ino) != (
+            self._identity.device,
+            self._identity.inode,
+        ):
+            raise WorkspaceIdentityHandleError("workspace handle identity changed")
 
     def _require_open(self) -> None:
         if self._closed:

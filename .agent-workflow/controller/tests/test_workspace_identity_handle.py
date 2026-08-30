@@ -102,6 +102,28 @@ class WorkspaceIdentityHandleTests(unittest.TestCase):
         finally:
             os.close(file_descriptor)
 
+    def test_identity_hold_blocks_close_without_exporting_descriptor(self) -> None:
+        handle = self.handle()
+        close_finished = threading.Event()
+
+        def close() -> None:
+            handle.close()
+            close_finished.set()
+
+        with handle.hold_identity() as identity:
+            self.assertEqual(identity, handle.identity)
+            self.assertFalse(isinstance(identity, int))
+            with self.assertRaisesRegex(WorkspaceIdentityHandleError, "hold is active"):
+                handle.close()
+            thread = threading.Thread(target=close)
+            thread.start()
+            self.assertFalse(close_finished.wait(timeout=0.05))
+            self.assertTrue(thread.is_alive())
+        thread.join(timeout=2)
+        self.assertTrue(close_finished.is_set())
+        with self.assertRaisesRegex(WorkspaceIdentityHandleError, "closed"):
+            handle.verify()
+
     def test_close_is_synchronous_idempotent_and_replays_failure(self) -> None:
         handle = self.handle()
         entered = threading.Event()
@@ -159,3 +181,6 @@ class WorkspaceIdentityHandleTests(unittest.TestCase):
         handle.close()
         with self.assertRaisesRegex(WorkspaceIdentityHandleError, "closed"):
             handle.verify()
+        with self.assertRaisesRegex(WorkspaceIdentityHandleError, "closed"):
+            with handle.hold_identity():
+                self.fail("closed handle identity was held")
