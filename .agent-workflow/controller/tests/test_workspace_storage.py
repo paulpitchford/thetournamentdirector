@@ -98,7 +98,7 @@ class WorkspaceStorageTests(unittest.TestCase):
 
             with self.assertRaisesRegex(WorkspaceStorageError, "requires an empty"):
                 storage.release_empty(anchor)
-            quarantine = self.root / f".release-{anchor.generation}"
+            quarantine = self.root / f".release-{anchor.name}"
             self.assertTrue((quarantine / "evidence").is_file())
             with self.assertRaisesRegex(WorkspaceStorageError, "unavailable"):
                 storage.open_anchor(anchor)
@@ -130,7 +130,9 @@ class WorkspaceStorageTests(unittest.TestCase):
                     storage.reserve("DOC-001", attempt=1)
 
             names = {path.name for path in self.root.iterdir()}
-            self.assertEqual(names, {".failed-generation-0001"})
+            self.assertEqual(
+                names, {".failed-doc-001-attempt-1-generation-0001"}
+            )
             anchor = storage.reserve("DOC-001", attempt=1)
             self.assertEqual(anchor.generation, "generation-0002")
 
@@ -144,9 +146,23 @@ class WorkspaceStorageTests(unittest.TestCase):
                     storage.reserve("DOC-001", attempt=1)
 
             names = {path.name for path in self.root.iterdir()}
-            self.assertEqual(names, {".failed-generation-0001"})
+            self.assertEqual(
+                names, {".failed-doc-001-attempt-1-generation-0001"}
+            )
             replacement = storage.reserve("DOC-001", attempt=1)
             self.assertEqual(replacement.generation, "generation-0002")
+
+    def test_mutated_root_and_anchor_permissions_fail_closed(self) -> None:
+        with self.storage() as storage:
+            anchor = storage.reserve("DOC-001", attempt=1)
+            self.root.chmod(0o777)
+            with self.assertRaisesRegex(WorkspaceStorageError, "permissions"):
+                storage.reserve("DOC-002", attempt=1)
+            self.root.chmod(0o700)
+            (self.root / anchor.name).chmod(0o777)
+            with self.assertRaisesRegex(WorkspaceStorageError, "unavailable"):
+                storage.open_anchor(anchor)
+            (self.root / anchor.name).chmod(0o700)
 
     def test_closed_storage_rejects_operations_idempotently(self) -> None:
         storage = self.storage()

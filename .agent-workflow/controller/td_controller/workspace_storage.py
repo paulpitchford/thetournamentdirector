@@ -129,8 +129,9 @@ class WorkspaceStorage:
                 dir_fd=root_fd,
             )
         except OSError as exc:
-            failed = f".failed-{generation}"
+            failed = f".failed-{name}"
             try:
+                self._require_absent(failed, root_fd)
                 os.rename(name, failed, src_dir_fd=root_fd, dst_dir_fd=root_fd)
                 os.rmdir(lock_name, dir_fd=root_fd)
             except OSError as cleanup_error:
@@ -144,7 +145,7 @@ class WorkspaceStorage:
             device, inode = self._identity(metadata)
         except Exception as exc:
             os.close(descriptor)
-            self._quarantine_partial(name, lock_name, generation, root_fd)
+            self._quarantine_partial(name, lock_name, root_fd)
             raise WorkspaceStorageError("workspace inspection failed") from exc
         os.close(descriptor)
         return WorkspaceAnchor(
@@ -155,6 +156,7 @@ class WorkspaceStorage:
         """Open an existing anchor by no-follow relative lookup; caller closes it."""
         self._validate_anchor(anchor)
         root_fd = self._require_open()
+        descriptor: int | None = None
         try:
             descriptor = os.open(
                 anchor.name,
@@ -162,7 +164,10 @@ class WorkspaceStorage:
                 dir_fd=root_fd,
             )
             metadata = os.fstat(descriptor)
-        except OSError as exc:
+            self._validate_owned_private_directory(metadata)
+        except (OSError, WorkspaceStorageError) as exc:
+            if descriptor is not None:
+                os.close(descriptor)
             raise WorkspaceStorageError("workspace anchor is unavailable") from exc
         if self._identity(metadata) != (anchor.device, anchor.inode):
             os.close(descriptor)
@@ -174,9 +179,10 @@ class WorkspaceStorage:
         """Quarantine, reverify, and remove the exact empty anchored directory."""
         descriptor = self.open_anchor(anchor)
         root_fd = self._require_open()
-        quarantine = f".release-{anchor.generation}"
+        quarantine = f".release-{anchor.name}"
         quarantined: int | None = None
         try:
+            self._require_absent(quarantine, root_fd)
             os.rename(
                 anchor.name, quarantine, src_dir_fd=root_fd, dst_dir_fd=root_fd
             )
@@ -202,13 +208,24 @@ class WorkspaceStorage:
             os.close(descriptor)
 
     @staticmethod
+    def _require_absent(name: str, root_fd: int) -> None:
+        try:
+            os.stat(name, dir_fd=root_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            return
+        except OSError as exc:
+            raise WorkspaceStorageError("workspace quarantine cannot be inspected") from exc
+        raise WorkspaceStorageError("workspace quarantine already exists")
+
+    @staticmethod
     def _quarantine_partial(
-        name: str, lock_name: str, generation: str, root_fd: int
+        name: str, lock_name: str, root_fd: int
     ) -> None:
         try:
+            failed = f".failed-{name}"
+            WorkspaceStorage._require_absent(failed, root_fd)
             os.rename(
-                name, f".failed-{generation}",
-                src_dir_fd=root_fd, dst_dir_fd=root_fd,
+                name, failed, src_dir_fd=root_fd, dst_dir_fd=root_fd,
             )
             os.rmdir(lock_name, dir_fd=root_fd)
         except OSError as exc:
@@ -217,7 +234,9 @@ class WorkspaceStorage:
     def _require_open(self) -> int:
         if self._root_fd is None or self._parent_fd is None:
             raise WorkspaceStorageError("workspace storage is closed")
-        if self._identity(os.fstat(self._root_fd)) != self._root_identity:
+        metadata = os.fstat(self._root_fd)
+        self._validate_owned_private_directory(metadata)
+        if self._identity(metadata) != self._root_identity:
             raise WorkspaceStorageError("workspace root identity changed")
         return self._root_fd
 
