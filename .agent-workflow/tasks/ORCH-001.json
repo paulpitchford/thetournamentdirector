@@ -1,28 +1,30 @@
 {
-  "id": "ORCH-003D1B0E",
+  "id": "ORCH-003D1B0F",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Mount the pinned Codex runtime read-only and attest it inside the checked worker container",
-  "nonGoals": ["Defend against code already running as the trusted controller UID", "Send a model prompt", "Inject model credentials", "Enable network access", "Run write-capable Codex"],
-  "dependsOn": ["ORCH-003D1B0A", "ORCH-003D1B0B0", "ORCH-003D1B0D"],
+  "objective": "Prove a schema-bound tool-less model broker without exposing credentials or provider networking to workers",
+  "nonGoals": ["Return file mutations", "Mount authentication into a worker", "Give a worker network access", "Run repository tools", "Modify a worktree"],
+  "dependsOn": ["ORCH-003D1B0E", "ORCH-002B"],
   "acceptanceCriteria": [
-    "readonly-runtime|WHEN the Codex container command is built|ASSERT TEST_PASS codex-runtime-container-tests",
-    "runtime-attestation|WHEN the mounted runtime size or digest changes|ASSERT TEST_PASS codex-runtime-container-proof",
-    "same-container|WHEN Codex version executes|ASSERT TEST_PASS codex-runtime-container-proof",
-    "live-handle|WHEN runtime execution overlaps workspace close|ASSERT TEST_PASS codex-runtime-container-tests"
+    "credential-boundary|WHEN an authenticated smoke request runs|ASSERT TEST_PASS model-broker-smoke-proof",
+    "closed-protocol|WHEN broker output is malformed or stale|ASSERT TEST_PASS model-broker-tests",
+    "tool-less|WHEN broker arguments are constructed|ASSERT TEST_PASS model-broker-tests",
+    "architecture|WHEN the inference boundary is reviewed|ASSERT TEST_PASS repository-policy"
   ],
   "acceptanceEvidenceIds": {
-    "readonly-runtime|WHEN the Codex container command is built|ASSERT TEST_PASS codex-runtime-container-tests": ["codex-runtime-container-tests"],
-    "runtime-attestation|WHEN the mounted runtime size or digest changes|ASSERT TEST_PASS codex-runtime-container-proof": ["codex-runtime-container-proof"],
-    "same-container|WHEN Codex version executes|ASSERT TEST_PASS codex-runtime-container-proof": ["codex-runtime-container-proof"],
-    "live-handle|WHEN runtime execution overlaps workspace close|ASSERT TEST_PASS codex-runtime-container-tests": ["codex-runtime-container-tests"]
+    "credential-boundary|WHEN an authenticated smoke request runs|ASSERT TEST_PASS model-broker-smoke-proof": ["model-broker-smoke-proof"],
+    "closed-protocol|WHEN broker output is malformed or stale|ASSERT TEST_PASS model-broker-tests": ["model-broker-tests"],
+    "tool-less|WHEN broker arguments are constructed|ASSERT TEST_PASS model-broker-tests": ["model-broker-tests"],
+    "architecture|WHEN the inference boundary is reviewed|ASSERT TEST_PASS repository-policy": ["repository-policy"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/codex_runtime_container.py",
-    ".agent-workflow/controller/tests/test_codex_runtime_container.py",
-    ".agent-workflow/tasks/ORCH-001.json"
+    ".agent-workflow/controller/td_controller/model_broker.py",
+    ".agent-workflow/controller/tests/test_model_broker.py",
+    ".agent-workflow/tasks/ORCH-001.json",
+    "docs/adr/0010-controller-owned-model-broker.md",
+    "docs/adr/README.md"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
