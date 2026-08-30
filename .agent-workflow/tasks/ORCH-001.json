@@ -3,7 +3,7 @@
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
   "objective": "Atomically reserve a controller-derived Git branch at the exact approved base commit",
-  "nonGoals": ["Create a worktree", "Checkout a branch", "Materialize files", "Commit changes", "Push a branch"],
+  "nonGoals": ["Defend against code already running as the trusted controller UID", "Create a worktree", "Checkout a branch", "Materialize files", "Commit changes"],
   "dependsOn": ["ORCH-003D1B0J2", "ORCH-003A"],
   "acceptanceCriteria": [
     "atomic-ref|WHEN an absent derived branch is reserved|ASSERT TEST_PASS git-reservation-proof",

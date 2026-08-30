@@ -74,14 +74,20 @@ def reserve_git_branch(
 def _validate_object_storage(root: Path) -> None:
     git_dir = root / ".git"
     objects = git_dir / "objects"
-    for path in (git_dir, objects):
+    metadata_paths = (
+        git_dir, objects, git_dir / "refs", git_dir / "refs" / "heads",
+        git_dir / "logs", git_dir / "logs" / "refs",
+        git_dir / "logs" / "refs" / "heads",
+    )
+    for path in metadata_paths:
         metadata = path.stat(follow_symlinks=False)
         if (
             not stat.S_ISDIR(metadata.st_mode)
             or metadata.st_uid != os.getuid()
+            or stat.S_IMODE(metadata.st_mode) & 0o022
             or path.is_symlink()
         ):
-            raise OSError("unsafe Git object storage")
+            raise OSError("unsafe Git metadata storage")
     alternates = objects / "info" / "alternates"
     if alternates.exists() or alternates.is_symlink():
         raise OSError("Git object alternates are prohibited")
@@ -90,14 +96,16 @@ def _validate_object_storage(root: Path) -> None:
 def _reserve_held(
     root: Path, identity: WorkspaceIdentity, base_sha: str
 ) -> GitBranchReservation:
-    ref_name = f"refs/heads/agent/{identity.task_id.lower()}/{identity.generation}"
+    ref_name = (
+        f"refs/heads/agent-{identity.task_id.lower()}-{identity.generation}"
+    )
     executor = SubprocessExecutor(lambda _: _environment())
     try:
         commit = executor.run(
-            [GIT, "cat-file", "-e", f"{base_sha}^{{commit}}"],
+            [GIT, "cat-file", "-t", base_sha],
             input_bytes=b"", cwd=root, timeout_seconds=10,
         )
-        if commit.returncode != 0 or commit.stdout or commit.stderr:
+        if commit.returncode != 0 or commit.stdout != b"commit\n" or commit.stderr:
             raise GitReservationError("reservation base commit is unavailable")
         created = executor.run(
             [GIT, "update-ref", "--create-reflog", ref_name, base_sha, ZERO_SHA],

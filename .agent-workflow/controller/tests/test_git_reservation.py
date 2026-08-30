@@ -23,6 +23,7 @@ class GitReservationTests(unittest.TestCase):
             "GIT_AUTHOR_NAME": "TD", "GIT_AUTHOR_EMAIL": "td@example.invalid",
             "GIT_COMMITTER_NAME": "TD", "GIT_COMMITTER_EMAIL": "td@example.invalid",
         }
+        self.environment = environment
         subprocess.run([GIT, "init", "-q", str(self.root)], check=True, env=environment)
         (self.root / "tracked.txt").write_text("base\n", encoding="utf-8")
         subprocess.run([GIT, "add", "tracked.txt"], cwd=self.root, check=True, env=environment)
@@ -61,7 +62,7 @@ class GitReservationTests(unittest.TestCase):
 
         self.assertEqual(
             reservation.ref_name,
-            "refs/heads/agent/orch-003d1b0k/" + "a" * 32,
+            "refs/heads/agent-orch-003d1b0k-" + "a" * 32,
         )
         value = subprocess.check_output(
             [GIT, "rev-parse", reservation.ref_name], cwd=self.root,
@@ -95,6 +96,29 @@ class GitReservationTests(unittest.TestCase):
             env=_environment(),
         )
         self.assertEqual(refs, b"")
+
+    def test_annotated_tag_object_is_not_accepted_as_base_commit(self) -> None:
+        subprocess.run(
+            [GIT, "tag", "-a", "base-tag", "-m", "tag"], cwd=self.root,
+            check=True, env=self.environment,
+        )
+        tag_sha = subprocess.check_output(
+            [GIT, "rev-parse", "base-tag^{tag}"], cwd=self.root,
+            env=_environment(),
+        ).decode().strip()
+        with self.assertRaisesRegex(GitReservationError, "base commit"):
+            reserve_git_branch(self.root, self.handle, base_sha=tag_sha)
+
+    def test_symlinked_ref_parent_cannot_redirect_write(self) -> None:
+        heads = self.root / ".git" / "refs" / "heads"
+        held = heads.with_name("held-heads")
+        external = self.root / "external"
+        external.mkdir()
+        heads.rename(held)
+        heads.symlink_to(external, target_is_directory=True)
+        with self.assertRaisesRegex(GitReservationError, "layout"):
+            reserve_git_branch(self.root, self.handle, base_sha=self.base)
+        self.assertEqual(tuple(external.iterdir()), ())
 
     def test_object_alternates_are_rejected_before_ref_creation(self) -> None:
         info = self.root / ".git" / "objects" / "info"
