@@ -97,15 +97,31 @@ class WorkspaceStorage:
         name = f"{logical_name}-{generation}"
         try:
             os.mkdir(lock_name, mode=0o700, dir_fd=root_fd)
+        except FileExistsError as exc:
+            raise WorkspaceStorageError("workspace is already reserved") from exc
+        except OSError as exc:
+            raise WorkspaceStorageError("workspace lock failed") from exc
+        try:
             os.mkdir(name, mode=0o700, dir_fd=root_fd)
+        except OSError as exc:
+            try:
+                os.rmdir(lock_name, dir_fd=root_fd)
+            except OSError as cleanup_error:
+                raise WorkspaceStorageError("workspace lock cleanup failed") from cleanup_error
+            raise WorkspaceStorageError("workspace reservation failed") from exc
+        try:
             descriptor = os.open(
                 name,
                 os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
                 dir_fd=root_fd,
             )
-        except FileExistsError as exc:
-            raise WorkspaceStorageError("workspace is already reserved") from exc
         except OSError as exc:
+            failed = f".failed-{generation}"
+            try:
+                os.rename(name, failed, src_dir_fd=root_fd, dst_dir_fd=root_fd)
+                os.rmdir(lock_name, dir_fd=root_fd)
+            except OSError as cleanup_error:
+                raise WorkspaceStorageError("workspace quarantine failed") from cleanup_error
             raise WorkspaceStorageError("workspace reservation failed") from exc
         try:
             metadata = os.fstat(descriptor)
@@ -138,13 +154,6 @@ class WorkspaceStorage:
             os.close(descriptor)
             raise WorkspaceStorageError("workspace anchor identity changed")
         return descriptor
-
-    def duplicate_root(self) -> int:
-        """Return a duplicate pinned root descriptor for a bounded child process."""
-        try:
-            return os.dup(self._require_open())
-        except OSError as exc:
-            raise WorkspaceStorageError("workspace root duplication failed") from exc
 
     def release_empty(self, anchor: WorkspaceAnchor) -> None:
         """Quarantine, reverify, and remove the exact empty anchored directory."""

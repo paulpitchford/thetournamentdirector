@@ -34,13 +34,10 @@ class WorkspaceStorageTests(unittest.TestCase):
         with self.storage() as storage:
             anchor = storage.reserve("DOC-001", attempt=1)
             descriptor = storage.open_anchor(anchor)
-            duplicate = storage.duplicate_root()
 
             self.assertEqual(os.listdir(descriptor), [])
             self.assertEqual(os.fstat(descriptor).st_ino, anchor.inode)
-            self.assertEqual(os.fstat(duplicate).st_ino, os.stat(self.root).st_ino)
             os.close(descriptor)
-            os.close(duplicate)
             storage.release_empty(anchor)
             self.assertFalse((self.root / anchor.name).exists())
             replacement = storage.reserve("DOC-001", attempt=1)
@@ -119,7 +116,7 @@ class WorkspaceStorageTests(unittest.TestCase):
         with self.assertRaisesRegex(WorkspaceStorageError, "root name"):
             self.storage(self.parent / "bad name")
 
-    def test_partial_descriptor_open_failure_retains_reservation_quarantine(self) -> None:
+    def test_partial_descriptor_open_failure_quarantines_and_retries(self) -> None:
         with self.storage() as storage:
             real_open = os.open
 
@@ -133,10 +130,9 @@ class WorkspaceStorageTests(unittest.TestCase):
                     storage.reserve("DOC-001", attempt=1)
 
             names = {path.name for path in self.root.iterdir()}
-            self.assertEqual(
-                names,
-                {".doc-001-attempt-1.lock", "doc-001-attempt-1-generation-0001"},
-            )
+            self.assertEqual(names, {".failed-generation-0001"})
+            anchor = storage.reserve("DOC-001", attempt=1)
+            self.assertEqual(anchor.generation, "generation-0002")
 
     def test_closed_storage_rejects_operations_idempotently(self) -> None:
         storage = self.storage()
