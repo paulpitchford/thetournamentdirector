@@ -27,6 +27,10 @@ class GitReservationError(RuntimeError):
     """Raised when an exact branch reservation cannot be created."""
 
 
+class GitReservationIndeterminateError(GitReservationError):
+    """Raised when a created ref requires controller reconciliation."""
+
+
 @dataclass(frozen=True)
 class GitBranchReservation:
     """Exact reserved ref and approved base commit."""
@@ -110,12 +114,48 @@ def _reserve_held(
             or commit_type != type(commit_type)(0, b"commit\n", b"")
         ):
             raise GitReservationError("repository format or base is invalid")
+        git_argv = list(command.argv)
+        update_index = git_argv.index("update-ref")
+        git_argv[update_index:update_index] = [
+            "-c", "core.sharedRepository=0",
+        ]
         created = executor.run(
-            list(command.argv), input_bytes=b"", cwd=root,
-            timeout_seconds=10,
+            [
+                "/bin/sh", "-c", 'umask 077; exec "$@"',
+                "td-exact-ref", *git_argv,
+            ],
+            input_bytes=b"", cwd=root, timeout_seconds=10,
         )
     except (CodexReviewError, OSError):
         raise GitReservationError("branch reservation process failed") from None
     if created.returncode != 0 or created.stdout or created.stderr:
         raise GitReservationError("branch reservation was not created")
+    try:
+        _verify_created_ref(root, ref_name, base_sha)
+    except (GitReservationError, OSError):
+        raise GitReservationIndeterminateError(
+            "created branch requires reconciliation"
+        ) from None
     return GitBranchReservation(ref_name, base_sha)
+
+
+def _verify_created_ref(root: Path, ref_name: str, base_sha: str) -> None:
+    relative = Path(*ref_name.split("/")[2:])
+    ref_path = root / ".git" / "refs" / "heads" / relative
+    log_path = root / ".git" / "logs" / "refs" / "heads" / relative
+    for path in (ref_path, log_path):
+        metadata = path.stat(follow_symlinks=False)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != os.getuid()
+            or stat.S_IMODE(metadata.st_mode) & 0o077
+            or path.is_symlink()
+        ):
+            raise GitReservationError("created ref metadata is invalid")
+    if ref_path.read_bytes() != f"{base_sha}\n".encode("ascii"):
+        raise GitReservationError("created ref value is invalid")
+    log = log_path.read_bytes()
+    if len(log) > 4096 or not log.startswith(
+        f"{'0' * 40} {base_sha} ".encode("ascii")
+    ):
+        raise GitReservationError("created reflog is invalid")

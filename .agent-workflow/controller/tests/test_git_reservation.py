@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import stat
 import subprocess
 import tempfile
 import unittest
@@ -55,6 +56,10 @@ class GitReservationTests(unittest.TestCase):
         before = subprocess.check_output(
             [GIT, "symbolic-ref", "HEAD"], cwd=self.root, env=_environment()
         )
+        subprocess.run(
+            [GIT, "config", "core.sharedRepository", "group"],
+            cwd=self.root, check=True, env=self.environment,
+        )
 
         reservation = reserve_git_branch(
             self.root, self.handle, base_sha=self.base
@@ -73,6 +78,12 @@ class GitReservationTests(unittest.TestCase):
         )
         self.assertEqual(value, self.base)
         self.assertEqual(after, before)
+        relative = reservation.ref_name.removeprefix("refs/heads/")
+        for path in (
+            self.root / ".git" / "refs" / "heads" / relative,
+            self.root / ".git" / "logs" / "refs" / "heads" / relative,
+        ):
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
 
     def test_duplicate_reservation_fails_without_moving_ref(self) -> None:
         reservation = reserve_git_branch(
