@@ -95,6 +95,7 @@ def _reserve_held(
     root: Path, identity: WorkspaceIdentity, base_sha: str,
 ) -> GitBranchReservation:
     ref_name = f"refs/heads/agent-{identity.task_id.lower()}-{identity.generation}"
+    _require_exact_leaves_absent(root, ref_name)
     command = build_exact_ref_command(ref_name, base_sha)
     executor = SubprocessExecutor(lambda _: dict(command.environment))
     try:
@@ -149,6 +150,22 @@ def _reserve_held(
             "created branch requires reconciliation"
         ) from None
     return GitBranchReservation(ref_name, base_sha)
+
+
+def _require_exact_leaves_absent(root: Path, ref_name: str) -> None:
+    relative = Path(*ref_name.split("/")[2:])
+    leaves = (
+        root / ".git" / "refs" / "heads" / relative,
+        root / ".git" / "logs" / "refs" / "heads" / relative,
+    )
+    for path in leaves:
+        try:
+            path.lstat()
+        except FileNotFoundError:
+            continue
+        except OSError:
+            raise GitReservationError("exact metadata leaf is unsafe") from None
+        raise GitReservationError("exact metadata leaf already exists")
 
 
 def _observe_ref(root: Path, ref_name: str, base_sha: str) -> RefObservation:

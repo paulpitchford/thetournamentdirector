@@ -93,7 +93,7 @@ class GitReservationTests(unittest.TestCase):
         reservation = reserve_git_branch(
             self.root, self.handle, base_sha=self.base
         )
-        with self.assertRaises(GitRefIndeterminateError):
+        with self.assertRaisesRegex(GitReservationError, "leaf"):
             reserve_git_branch(self.root, self.handle, base_sha=self.base)
         value = subprocess.check_output(
             [GIT, "rev-parse", reservation.ref_name], cwd=self.root,
@@ -153,9 +153,22 @@ class GitReservationTests(unittest.TestCase):
         external = self.root / "external-ref"
         external.write_text("sentinel\n", encoding="utf-8")
         ref_path.symlink_to(external)
-        with self.assertRaises(GitRefIndeterminateError):
+        with self.assertRaisesRegex(GitReservationError, "leaf"):
             reserve_git_branch(self.root, self.handle, base_sha=self.base)
         self.assertTrue(ref_path.is_symlink())
+        self.assertEqual(external.read_text(encoding="utf-8"), "sentinel\n")
+
+    def test_reflog_leaf_symlink_cannot_redirect_append(self) -> None:
+        name = "agent-orch-003d1b0k4-" + "a" * 32
+        log_path = self.root / ".git" / "logs" / "refs" / "heads" / name
+        external = self.root / "external-log"
+        external.write_text("sentinel\n", encoding="utf-8")
+        log_path.symlink_to(external)
+        with self.assertRaisesRegex(GitReservationError, "leaf"):
+            reserve_git_branch(self.root, self.handle, base_sha=self.base)
+        self.assertFalse(
+            (self.root / ".git" / "refs" / "heads" / name).exists()
+        )
         self.assertEqual(external.read_text(encoding="utf-8"), "sentinel\n")
 
     def test_repository_hook_and_symbolic_ref_cannot_redirect(self) -> None:
@@ -176,7 +189,7 @@ class GitReservationTests(unittest.TestCase):
             check=True, env=self.environment,
         )
         marker.unlink(missing_ok=True)
-        with self.assertRaises(GitRefIndeterminateError):
+        with self.assertRaisesRegex(GitReservationError, "leaf"):
             reserve_git_branch(self.root, self.handle, base_sha=self.base)
         self.assertFalse(marker.exists())
         self.assertNotEqual(
