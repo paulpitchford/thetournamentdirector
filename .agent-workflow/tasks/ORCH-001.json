@@ -1,32 +1,38 @@
 {
-  "id": "ORCH-003D1B0N2A",
+  "id": "ORCH-003D1B0N5",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Ensure the exact no-checkout worktree command attaches HEAD to the reserved branch rather than detaching at its commit",
-  "nonGoals": ["Replace the descriptor marker", "Run against the project repository", "Checkout tracked files", "Commit or push"],
-  "dependsOn": ["ORCH-003D1B0N2", "ORCH-003D1B0N4"],
+  "objective": "Register and directly observe one no-checkout task worktree through live workspace and repository capabilities",
+  "nonGoals": ["Checkout tracked files", "Run filters", "Commit changes", "Push a branch", "Open a pull request"],
+  "dependsOn": ["ORCH-003D1B0M", "ORCH-003D1B0N2A", "ORCH-003D1B0N4"],
   "acceptanceCriteria": [
-    "short-branch-argument|WHEN a full reserved ref is supplied|ASSERT VALUE \"agent branch short name\"",
-    "symbolic-head|WHEN the real disposable command runs|ASSERT VALUE \"HEAD equals reserved full ref\"",
-    "no-checkout|WHEN the attached worktree is registered|ASSERT ABSENT tracked.txt",
-    "hook-filter-denial|WHEN malicious hook and filter are configured|ASSERT ABSENT hook-ran"
+    "dual-capability|WHEN exact registration runs|ASSERT TEST_PASS worktree-registration-tests",
+    "dual-substitution|WHEN repository and workspace paths are replaced|ASSERT ABSENT replacement-git-marker",
+    "direct-state|WHEN symbolic HEAD and commit are observed|ASSERT VALUE \"registered exact branch\"",
+    "no-checkout|WHEN exact registration succeeds|ASSERT ABSENT tracked.txt",
+    "ambiguous-replay|WHEN exact registration already exists|ASSERT ERROR WorktreeRegistrationIndeterminateError",
+    "partial-registration|WHEN repository registration lacks workspace marker|ASSERT ERROR WorktreeRegistrationIndeterminateError",
+    "missing-branch|WHEN reserved branch is absent|ASSERT ERROR WorktreeRegistrationRejectedError"
   ],
   "acceptanceEvidenceIds": {
-    "short-branch-argument|WHEN a full reserved ref is supplied|ASSERT VALUE \"agent branch short name\"": ["exact-worktree-attached-branch-tests"],
-    "symbolic-head|WHEN the real disposable command runs|ASSERT VALUE \"HEAD equals reserved full ref\"": ["exact-worktree-attached-branch-tests"],
-    "no-checkout|WHEN the attached worktree is registered|ASSERT ABSENT tracked.txt": ["exact-worktree-attached-branch-tests"],
-    "hook-filter-denial|WHEN malicious hook and filter are configured|ASSERT ABSENT hook-ran": ["exact-worktree-attached-branch-tests"]
+    "dual-capability|WHEN exact registration runs|ASSERT TEST_PASS worktree-registration-tests": ["worktree-registration-tests"],
+    "dual-substitution|WHEN repository and workspace paths are replaced|ASSERT ABSENT replacement-git-marker": ["worktree-registration-tests"],
+    "direct-state|WHEN symbolic HEAD and commit are observed|ASSERT VALUE \"registered exact branch\"": ["worktree-registration-tests"],
+    "no-checkout|WHEN exact registration succeeds|ASSERT ABSENT tracked.txt": ["worktree-registration-tests"],
+    "ambiguous-replay|WHEN exact registration already exists|ASSERT ERROR WorktreeRegistrationIndeterminateError": ["worktree-registration-tests"],
+    "partial-registration|WHEN repository registration lacks workspace marker|ASSERT ERROR WorktreeRegistrationIndeterminateError": ["worktree-registration-tests"],
+    "missing-branch|WHEN reserved branch is absent|ASSERT ERROR WorktreeRegistrationRejectedError": ["worktree-registration-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/exact_worktree_command.py",
-    ".agent-workflow/controller/tests/test_exact_worktree_command.py",
+    ".agent-workflow/controller/td_controller/worktree_registration.py",
+    ".agent-workflow/controller/tests/test_worktree_registration.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 250,
+  "maxChangedLines": 450,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
