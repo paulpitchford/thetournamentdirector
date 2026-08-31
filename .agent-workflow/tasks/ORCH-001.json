@@ -1,27 +1,27 @@
 {
-  "id": "ORCH-003D1B0N2A",
+  "id": "ORCH-003D1B0N5A",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Ensure the exact no-checkout worktree command attaches HEAD to the reserved branch rather than detaching at its commit",
-  "nonGoals": ["Replace the descriptor marker", "Run against the project repository", "Checkout tracked files", "Commit or push"],
-  "dependsOn": ["ORCH-003D1B0N2", "ORCH-003D1B0N4"],
+  "objective": "Parse bounded canonical Git worktree marker bytes as immutable non-authoritative evidence",
+  "nonGoals": ["Open the marker target", "Authorize a pathname", "Bind repository metadata", "Register a worktree", "Checkout files"],
+  "dependsOn": ["ORCH-003D1B0N2A", "ORCH-003D1B0N4"],
   "acceptanceCriteria": [
-    "short-branch-argument|WHEN a full reserved ref is supplied|ASSERT VALUE \"agent branch short name\"",
-    "symbolic-head|WHEN the real disposable command runs|ASSERT VALUE \"HEAD equals reserved full ref\"",
-    "no-checkout|WHEN the attached worktree is registered|ASSERT ABSENT tracked.txt",
-    "hook-filter-denial|WHEN malicious hook and filter are configured|ASSERT ABSENT hook-ran"
+    "canonical-marker|WHEN one canonical gitdir line is parsed|ASSERT TEST_PASS worktree-marker-contract-tests",
+    "non-authority|WHEN parsed evidence is inspected|ASSERT ABSENT descriptor",
+    "bounded-input|WHEN marker bytes exceed the limit|ASSERT ERROR WorktreeMarkerContractError",
+    "ambiguous-input|WHEN marker has traversal extra lines or invalid target|ASSERT ERROR WorktreeMarkerContractError"
   ],
   "acceptanceEvidenceIds": {
-    "short-branch-argument|WHEN a full reserved ref is supplied|ASSERT VALUE \"agent branch short name\"": ["exact-worktree-attached-branch-tests"],
-    "symbolic-head|WHEN the real disposable command runs|ASSERT VALUE \"HEAD equals reserved full ref\"": ["exact-worktree-attached-branch-tests"],
-    "no-checkout|WHEN the attached worktree is registered|ASSERT ABSENT tracked.txt": ["exact-worktree-attached-branch-tests"],
-    "hook-filter-denial|WHEN malicious hook and filter are configured|ASSERT ABSENT hook-ran": ["exact-worktree-attached-branch-tests"]
+    "canonical-marker|WHEN one canonical gitdir line is parsed|ASSERT TEST_PASS worktree-marker-contract-tests": ["worktree-marker-contract-tests"],
+    "non-authority|WHEN parsed evidence is inspected|ASSERT ABSENT descriptor": ["worktree-marker-contract-tests"],
+    "bounded-input|WHEN marker bytes exceed the limit|ASSERT ERROR WorktreeMarkerContractError": ["worktree-marker-contract-tests"],
+    "ambiguous-input|WHEN marker has traversal extra lines or invalid target|ASSERT ERROR WorktreeMarkerContractError": ["worktree-marker-contract-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/exact_worktree_command.py",
-    ".agent-workflow/controller/tests/test_exact_worktree_command.py",
+    ".agent-workflow/controller/td_controller/worktree_marker_contract.py",
+    ".agent-workflow/controller/tests/test_worktree_marker_contract.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
