@@ -135,18 +135,25 @@ def _observe_workspace(
 ) -> WorkspaceObservation:
     if isinstance(descriptor, bool) or not isinstance(descriptor, int):
         return WorkspaceObservation.UNSAFE
-    duplicate = -1
     try:
         duplicate = os.dup(descriptor)
         metadata = os.fstat(duplicate)
         entries = os.listdir(duplicate)
     except OSError:
-        if duplicate >= 0:
+        if "duplicate" in locals():
             try:
                 os.close(duplicate)
             except OSError:
                 pass
         return WorkspaceObservation.UNSAFE
+
+    def finish(state: WorkspaceObservation) -> WorkspaceObservation:
+        try:
+            os.close(duplicate)
+        except OSError:
+            return WorkspaceObservation.UNSAFE
+        return state
+
     valid_directory = (
         stat.S_ISDIR(metadata.st_mode)
         and stat.S_IMODE(metadata.st_mode) == 0o700
@@ -155,33 +162,29 @@ def _observe_workspace(
     )
     try:
         marker = os.stat(".git", dir_fd=duplicate, follow_symlinks=False)
-        marker_absent = False
     except FileNotFoundError:
-        marker = None
-        marker_absent = True
-    except OSError:
-        marker = None
-        marker_absent = False
-        valid_directory = False
-    try:
-        os.close(duplicate)
-    except OSError:
-        return WorkspaceObservation.UNSAFE
-    registered = _branch_is_registered(repository, environment, branch.ref_name)
-    if registered is None:
-        return WorkspaceObservation.UNSAFE
-    if marker_absent:
-        return (
+        registration = _branch_registration(
+            repository, environment, branch.ref_name, identity
+        )
+        return finish(
             WorkspaceObservation.ABSENT
-            if valid_directory and not entries and not registered
+            if valid_directory and not entries
+            and registration is WorkspaceObservation.ABSENT
             else WorkspaceObservation.OTHER
         )
+    except OSError:
+        return finish(WorkspaceObservation.UNSAFE)
     if (
-        not registered or not valid_directory or entries != [".git"] or marker is None
+        not valid_directory or entries != [".git"]
         or not stat.S_ISREG(marker.st_mode) or marker.st_uid != os.geteuid()
         or not 0 < marker.st_size <= 4096
     ):
-        return WorkspaceObservation.OTHER
+        return finish(WorkspaceObservation.OTHER)
+    registration = _branch_registration(
+        repository, environment, branch.ref_name, identity
+    )
+    if registration is not WorkspaceObservation.EXACT:
+        return finish(registration)
     commands = (
         ([GIT, "-c", "core.hooksPath=/dev/null", "-C",
           WORKSPACE_DESCRIPTOR_MARKER, "symbolic-ref", "-q", "HEAD"],
@@ -193,21 +196,27 @@ def _observe_workspace(
     for argv, expected in commands:
         try:
             output = repository.run_with_workspace_descriptor(
-                argv, environment=dict(environment), descriptor=descriptor,
+                argv, environment=dict(environment), descriptor=duplicate,
                 expected_identity=identity, timeout_seconds=30,
             )
         except PinnedDirectoryExecutorError:
-            return WorkspaceObservation.UNSAFE
+            return finish(WorkspaceObservation.UNSAFE)
         if output.returncode != 0 or output.stderr or output.stdout != expected:
-            return WorkspaceObservation.OTHER
-    return WorkspaceObservation.EXACT
+            return finish(WorkspaceObservation.OTHER)
+    try:
+        marker_after = os.stat(".git", dir_fd=duplicate, follow_symlinks=False)
+    except OSError:
+        return finish(WorkspaceObservation.UNSAFE)
+    if (marker_after.st_dev, marker_after.st_ino) != (marker.st_dev, marker.st_ino):
+        return finish(WorkspaceObservation.OTHER)
+    return finish(WorkspaceObservation.EXACT)
 
-
-def _branch_is_registered(
+def _branch_registration(
     repository: PinnedDirectoryExecutor,
     environment: Mapping[str, str],
     ref_name: str,
-) -> bool | None:
+    identity: WorkspaceIdentity,
+) -> WorkspaceObservation:
     try:
         output = repository.run(
             [
@@ -217,9 +226,32 @@ def _branch_is_registered(
             environment=dict(environment), timeout_seconds=30,
         )
     except PinnedDirectoryExecutorError:
-        return None
+        return WorkspaceObservation.UNSAFE
     if output.returncode != 0 or output.stderr:
-        return None
-    token = b"branch " + ref_name.encode("ascii")
-    count = output.stdout.split(b"\x00").count(token)
-    return count == 1 if count <= 1 else None
+        return WorkspaceObservation.UNSAFE
+    branch_field = b"branch " + ref_name.encode("ascii")
+    matches: list[bytes] = []
+    for record in output.stdout.split(b"\x00\x00"):
+        fields = record.split(b"\x00")
+        if branch_field in fields:
+            paths = [field[9:] for field in fields if field.startswith(b"worktree ")]
+            if len(paths) != 1:
+                return WorkspaceObservation.UNSAFE
+            matches.append(paths[0])
+    if not matches:
+        return WorkspaceObservation.ABSENT
+    if len(matches) != 1:
+        return WorkspaceObservation.UNSAFE
+    try:
+        descriptor = os.open(
+            matches[0], os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        )
+        metadata = os.fstat(descriptor)
+        os.close(descriptor)
+    except OSError:
+        return WorkspaceObservation.UNSAFE
+    return (
+        WorkspaceObservation.EXACT
+        if (metadata.st_dev, metadata.st_ino) == (identity.device, identity.inode)
+        else WorkspaceObservation.OTHER
+    )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -115,9 +116,10 @@ class WorktreeRegistrationTests(unittest.TestCase):
             ],
             check=True,
         )
+        shutil.copyfile(other / ".git", self.workspace_path / ".git")
         with self.assertRaises(WorktreeRegistrationIndeterminateError):
             self.register()
-        self.assertEqual(os.listdir(self.workspace_path), [])
+        self.assertEqual(os.listdir(self.workspace_path), [".git"])
 
     def test_missing_branch_and_wrong_descriptor_fail_without_effect(self) -> None:
         subprocess.run(
