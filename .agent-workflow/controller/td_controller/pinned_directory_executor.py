@@ -9,7 +9,7 @@ import threading
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from .effective_identity import (
     EffectiveIdentity,
@@ -19,6 +19,10 @@ from .effective_identity import (
 from .review_contract import CodexReviewError
 from .review_runtime import MAX_INPUT_BYTES, ProcessOutput, SubprocessExecutor
 from .workspace_identity_handle import WorkspaceIdentity
+from .worktree_marker_contract import (
+    WorktreeMarkerContractError,
+    parse_worktree_marker,
+)
 
 ENV_KEY = re.compile(r"[A-Z][A-Z0-9_]{0,63}")
 ENV_KEYS = frozenset({
@@ -38,6 +42,17 @@ class PinnedDirectoryIdentity:
     device: int
     inode: int
     uid: int
+
+
+@dataclass(frozen=True, slots=True)
+class WorktreeAdminBinding:
+    """Confirmed marker/admin identity without pathname authority."""
+
+    admin_name: str
+    admin_device: int
+    admin_inode: int
+    marker_device: int
+    marker_inode: int
 
 
 class PinnedDirectoryExecutor:
@@ -151,6 +166,122 @@ class PinnedDirectoryExecutor:
             self._verify_locked()
             return output
 
+    def verify_worktree_admin_binding(
+        self, *, descriptor: int, expected_identity: WorkspaceIdentity
+    ) -> WorktreeAdminBinding:
+        """Bind a pinned workspace marker to this repository's admin entry."""
+        if (
+            isinstance(descriptor, bool)
+            or not isinstance(descriptor, int)
+            or type(expected_identity) is not WorkspaceIdentity
+        ):
+            raise PinnedDirectoryExecutorError("worktree binding input is invalid")
+        with self._lock:
+            self._verify_locked()
+            opened: list[int] = []
+            failed = False
+            try:
+                workspace_fd = os.dup(descriptor)
+                opened.append(workspace_fd)
+                workspace_stat = os.fstat(workspace_fd)
+                if (
+                    not stat.S_ISDIR(workspace_stat.st_mode)
+                    or stat.S_IMODE(workspace_stat.st_mode) != 0o700
+                    or workspace_stat.st_uid != self._process_identity.uid
+                    or (workspace_stat.st_dev, workspace_stat.st_ino)
+                    != (expected_identity.device, expected_identity.inode)
+                ):
+                    raise OSError("workspace identity mismatch")
+                marker_fd = os.open(
+                    ".git", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=workspace_fd
+                )
+                opened.append(marker_fd)
+                marker_stat = os.fstat(marker_fd)
+                marker_payload = os.read(marker_fd, 4097)
+                if (
+                    not stat.S_ISREG(marker_stat.st_mode)
+                    or marker_stat.st_uid != self._process_identity.uid
+                    or marker_stat.st_size != len(marker_payload)
+                ):
+                    raise OSError("workspace marker is unsafe")
+                target = parse_worktree_marker(marker_payload)
+                git_fd = os.open(
+                    ".git", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                    dir_fd=self._descriptor,
+                )
+                opened.append(git_fd)
+                worktrees_fd = os.open(
+                    "worktrees", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                    dir_fd=git_fd,
+                )
+                opened.append(worktrees_fd)
+                admin_fd = os.open(
+                    target.admin_name,
+                    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                    dir_fd=worktrees_fd,
+                )
+                opened.append(admin_fd)
+                target_fd = os.open(
+                    target.admin_path,
+                    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                )
+                opened.append(target_fd)
+                admin_stat = os.fstat(admin_fd)
+                if (admin_stat.st_dev, admin_stat.st_ino) != (
+                    os.fstat(target_fd).st_dev, os.fstat(target_fd).st_ino
+                ):
+                    raise OSError("admin target mismatch")
+                backlink_fd = os.open(
+                    "gitdir", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=admin_fd
+                )
+                opened.append(backlink_fd)
+                backlink_stat = os.fstat(backlink_fd)
+                backlink = os.read(backlink_fd, 4097)
+                parent = self._parse_worktree_backlink(backlink)
+                if (
+                    not stat.S_ISREG(backlink_stat.st_mode)
+                    or backlink_stat.st_uid != self._process_identity.uid
+                    or backlink_stat.st_size != len(backlink)
+                ):
+                    raise OSError("admin backlink is unsafe")
+                parent_fd = os.open(
+                    parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+                )
+                opened.append(parent_fd)
+                parent_stat = os.fstat(parent_fd)
+                if (parent_stat.st_dev, parent_stat.st_ino) != (
+                    expected_identity.device, expected_identity.inode
+                ):
+                    raise OSError("admin backlink mismatch")
+                marker_after = os.fstat(marker_fd)
+                if (
+                    marker_after.st_dev, marker_after.st_ino,
+                    marker_after.st_size, marker_after.st_mtime_ns,
+                ) != (
+                    marker_stat.st_dev, marker_stat.st_ino,
+                    marker_stat.st_size, marker_stat.st_mtime_ns,
+                ):
+                    raise OSError("workspace marker changed")
+                binding = WorktreeAdminBinding(
+                    target.admin_name, admin_stat.st_dev, admin_stat.st_ino,
+                    marker_stat.st_dev, marker_stat.st_ino,
+                )
+            except (OSError, WorktreeMarkerContractError):
+                failed = True
+                binding = None
+            cleanup_failed = False
+            for opened_fd in reversed(opened):
+                try:
+                    os.close(opened_fd)
+                except OSError:
+                    cleanup_failed = True
+            if failed or cleanup_failed or binding is None:
+                raise PinnedDirectoryExecutorError(
+                    "worktree admin binding failed"
+                ) from None
+            self._verify_locked()
+            return binding
+
     def verify(self) -> None:
         """Verify the pinned descriptor without pathname lookup."""
         with self._lock:
@@ -263,6 +394,24 @@ class PinnedDirectoryExecutor:
             or stat.S_IMODE(metadata.st_mode) & 0o022
         ):
             raise PinnedDirectoryExecutorError("directory ownership is unsafe")
+
+    @staticmethod
+    def _parse_worktree_backlink(payload: bytes) -> PurePosixPath:
+        if (
+            not isinstance(payload, bytes)
+            or not 7 <= len(payload) <= 4096
+            or not payload.endswith(b"/.git\n")
+            or not payload.startswith(b"/")
+            or not payload[:-1].isascii()
+        ):
+            raise OSError("admin backlink is invalid")
+        raw_parent = payload[:-6]
+        if not re.fullmatch(rb"/[A-Za-z0-9._/+:-]{1,4000}", raw_parent):
+            raise OSError("admin backlink path is invalid")
+        parent = PurePosixPath(raw_parent.decode("ascii"))
+        if parent.as_posix().encode("ascii") != raw_parent or ".." in parent.parts:
+            raise OSError("admin backlink is not canonical")
+        return parent
 
     @staticmethod
     def _validated_command(

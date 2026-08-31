@@ -1,32 +1,34 @@
 {
-  "id": "ORCH-003D1B0N5A",
+  "id": "ORCH-003D1B0N5B",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Parse bounded canonical Git worktree marker bytes as immutable non-authoritative evidence",
-  "nonGoals": ["Open the marker target", "Authorize a pathname", "Bind repository metadata", "Register a worktree", "Checkout files"],
-  "dependsOn": ["ORCH-003D1B0N2A", "ORCH-003D1B0N4"],
+  "objective": "Structurally bind a pinned workspace marker to the exact pinned-repository worktree admin entry and backlink",
+  "nonGoals": ["Register a worktree", "Checkout tracked files", "Authorize marker path evidence alone", "Commit or push"],
+  "dependsOn": ["ORCH-003D1B0N1", "ORCH-003D1B0N5A"],
   "acceptanceCriteria": [
-    "canonical-marker|WHEN one canonical gitdir line is parsed|ASSERT TEST_PASS worktree-marker-contract-tests",
-    "non-authority|WHEN parsed evidence is inspected|ASSERT ABSENT descriptor",
-    "bounded-input|WHEN marker bytes exceed the limit|ASSERT ERROR WorktreeMarkerContractError",
-    "ambiguous-input|WHEN marker has traversal extra lines or invalid target|ASSERT ERROR WorktreeMarkerContractError"
+    "exact-admin|WHEN a valid marker is verified|ASSERT TEST_PASS worktree-admin-binding-tests",
+    "copied-marker|WHEN marker targets another repository|ASSERT ERROR PinnedDirectoryExecutorError",
+    "backlink-binding|WHEN admin backlink targets another workspace|ASSERT ERROR PinnedDirectoryExecutorError",
+    "nofollow-marker|WHEN workspace marker is a symlink|ASSERT ERROR PinnedDirectoryExecutorError",
+    "no-authority-export|WHEN binding evidence is returned|ASSERT ABSENT descriptor"
   ],
   "acceptanceEvidenceIds": {
-    "canonical-marker|WHEN one canonical gitdir line is parsed|ASSERT TEST_PASS worktree-marker-contract-tests": ["worktree-marker-contract-tests"],
-    "non-authority|WHEN parsed evidence is inspected|ASSERT ABSENT descriptor": ["worktree-marker-contract-tests"],
-    "bounded-input|WHEN marker bytes exceed the limit|ASSERT ERROR WorktreeMarkerContractError": ["worktree-marker-contract-tests"],
-    "ambiguous-input|WHEN marker has traversal extra lines or invalid target|ASSERT ERROR WorktreeMarkerContractError": ["worktree-marker-contract-tests"]
+    "exact-admin|WHEN a valid marker is verified|ASSERT TEST_PASS worktree-admin-binding-tests": ["worktree-admin-binding-tests"],
+    "copied-marker|WHEN marker targets another repository|ASSERT ERROR PinnedDirectoryExecutorError": ["worktree-admin-binding-tests"],
+    "backlink-binding|WHEN admin backlink targets another workspace|ASSERT ERROR PinnedDirectoryExecutorError": ["worktree-admin-binding-tests"],
+    "nofollow-marker|WHEN workspace marker is a symlink|ASSERT ERROR PinnedDirectoryExecutorError": ["worktree-admin-binding-tests"],
+    "no-authority-export|WHEN binding evidence is returned|ASSERT ABSENT descriptor": ["worktree-admin-binding-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/worktree_marker_contract.py",
-    ".agent-workflow/controller/tests/test_worktree_marker_contract.py",
+    ".agent-workflow/controller/td_controller/pinned_directory_executor.py",
+    ".agent-workflow/controller/tests/test_worktree_admin_binding.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 250,
+  "maxChangedLines": 450,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
