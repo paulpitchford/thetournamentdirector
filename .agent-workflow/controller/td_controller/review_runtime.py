@@ -22,7 +22,9 @@ from .effective_identity import (
     EffectiveIdentityError,
     validate_effective_identity,
 )
+from .exact_worktree_command import WORKSPACE_DESCRIPTOR_MARKER
 from .review_contract import CodexReviewError
+from .workspace_identity_handle import WorkspaceIdentity
 
 CGROUP_ROOT = Path("/sys/fs/cgroup")
 CLEAN_ENV_LAUNCHER = Path(__file__).parent.parent / "bin" / "td-clean-env"
@@ -340,6 +342,85 @@ class SubprocessExecutor:
         cwd: Path,
         timeout_seconds: int,
     ) -> ProcessOutput:
+        return self._run(
+            command, input_bytes=input_bytes, cwd=cwd,
+            timeout_seconds=timeout_seconds, pass_fds=(),
+        )
+
+    def run_with_workspace_descriptor(
+        self,
+        command: list[str],
+        *,
+        descriptor: int,
+        expected_identity: WorkspaceIdentity,
+        input_bytes: bytes,
+        cwd: Path,
+        timeout_seconds: int,
+    ) -> ProcessOutput:
+        """Replace one fixed marker and keep a verified workspace fd through exec."""
+        if (
+            self._process_identity is None
+            or isinstance(descriptor, bool)
+            or not isinstance(descriptor, int)
+            or type(expected_identity) is not WorkspaceIdentity
+            or type(command) is not list
+        ):
+            raise CodexReviewError("workspace descriptor command is invalid")
+        snapshot = tuple(command)
+        if snapshot.count(WORKSPACE_DESCRIPTOR_MARKER) != 1:
+            raise CodexReviewError("workspace descriptor command is invalid")
+        try:
+            duplicate = os.dup(descriptor)
+            metadata = os.fstat(duplicate)
+        except OSError:
+            raise CodexReviewError("workspace descriptor is unavailable") from None
+        if (
+            not stat.S_ISDIR(metadata.st_mode)
+            or stat.S_IMODE(metadata.st_mode) != 0o700
+            or metadata.st_uid != self._process_identity.uid
+            or (metadata.st_dev, metadata.st_ino)
+            != (expected_identity.device, expected_identity.inode)
+        ):
+            try:
+                os.close(duplicate)
+            except OSError:
+                raise CodexReviewError(
+                    "workspace descriptor cleanup failed"
+                ) from None
+            raise CodexReviewError("workspace descriptor identity is invalid")
+        substituted = [
+            f"/proc/self/fd/{duplicate}"
+            if item == WORKSPACE_DESCRIPTOR_MARKER else item
+            for item in snapshot
+        ]
+        process_error: BaseException | None = None
+        output: ProcessOutput | None = None
+        try:
+            output = self._run(
+                substituted, input_bytes=input_bytes, cwd=cwd,
+                timeout_seconds=timeout_seconds, pass_fds=(duplicate,),
+            )
+        except BaseException as error:
+            process_error = error
+        try:
+            os.close(duplicate)
+        except OSError:
+            raise CodexReviewError("workspace descriptor cleanup failed") from None
+        if process_error is not None:
+            raise process_error
+        if output is None:
+            raise CodexReviewError("workspace descriptor command failed")
+        return output
+
+    def _run(
+        self,
+        command: list[str],
+        *,
+        input_bytes: bytes,
+        cwd: Path,
+        timeout_seconds: int,
+        pass_fds: tuple[int, ...],
+    ) -> ProcessOutput:
         if len(input_bytes) > MAX_INPUT_BYTES:
             raise CodexReviewError("local Codex review exceeded the input limit")
         command = _absolute_command(command)
@@ -359,6 +440,7 @@ class SubprocessExecutor:
             cwd=cwd,
             env=self._environment_factory(command[0]),
             start_new_session=True,
+            pass_fds=pass_fds,
             **identity_arguments,
         )
         if process.stdin is None or process.stdout is None or process.stderr is None:

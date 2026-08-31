@@ -1,29 +1,29 @@
 {
-  "id": "ORCH-003D1B0N2",
+  "id": "ORCH-003D1B0N3",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Define one immutable hook-disabled no-checkout worktree registration command with an internal descriptor marker",
-  "nonGoals": ["Replace the descriptor marker", "Run against the project repository", "Checkout tracked files", "Run filters", "Commit or push"],
-  "dependsOn": ["ORCH-003D1B0M", "ORCH-003D1B0N1"],
+  "objective": "Replace one fixed workspace marker with a verified inherited directory descriptor for bounded child execution",
+  "nonGoals": ["Authorize command shape", "Run against the project repository", "Register a worktree", "Checkout files", "Commit or push"],
+  "dependsOn": ["ORCH-003D1B0L4", "ORCH-003D1B0N2"],
   "acceptanceCriteria": [
-    "exact-command|WHEN a canonical task ref is supplied|ASSERT TEST_PASS exact-worktree-command-tests",
-    "descriptor-marker|WHEN argv is inspected|ASSERT VALUE \"{PINNED_WORKSPACE_DESCRIPTOR}\"",
-    "no-checkout|WHEN the real disposable command runs|ASSERT ABSENT tracked.txt",
-    "hook-filter-denial|WHEN malicious hook and smudge filter are configured|ASSERT ABSENT hook-ran",
-    "invalid-ref|WHEN a noncanonical ref is supplied|ASSERT ERROR ExactWorktreeCommandError"
+    "descriptor-substitution|WHEN a workspace pathname is replaced|ASSERT TEST_PASS descriptor-argument-subprocess-tests",
+    "replacement-isolation|WHEN the child writes through the marker|ASSERT ABSENT replacement-marker",
+    "identity-binding|WHEN descriptor identity differs|ASSERT ERROR CodexReviewError",
+    "single-marker|WHEN marker count is not one|ASSERT ERROR CodexReviewError",
+    "child-lifetime|WHEN the child launches|ASSERT VALUE \"one inherited descriptor\""
   ],
   "acceptanceEvidenceIds": {
-    "exact-command|WHEN a canonical task ref is supplied|ASSERT TEST_PASS exact-worktree-command-tests": ["exact-worktree-command-tests"],
-    "descriptor-marker|WHEN argv is inspected|ASSERT VALUE \"{PINNED_WORKSPACE_DESCRIPTOR}\"": ["exact-worktree-command-tests"],
-    "no-checkout|WHEN the real disposable command runs|ASSERT ABSENT tracked.txt": ["exact-worktree-command-tests"],
-    "hook-filter-denial|WHEN malicious hook and smudge filter are configured|ASSERT ABSENT hook-ran": ["exact-worktree-command-tests"],
-    "invalid-ref|WHEN a noncanonical ref is supplied|ASSERT ERROR ExactWorktreeCommandError": ["exact-worktree-command-tests"]
+    "descriptor-substitution|WHEN a workspace pathname is replaced|ASSERT TEST_PASS descriptor-argument-subprocess-tests": ["descriptor-argument-subprocess-tests"],
+    "replacement-isolation|WHEN the child writes through the marker|ASSERT ABSENT replacement-marker": ["descriptor-argument-subprocess-tests"],
+    "identity-binding|WHEN descriptor identity differs|ASSERT ERROR CodexReviewError": ["descriptor-argument-subprocess-tests"],
+    "single-marker|WHEN marker count is not one|ASSERT ERROR CodexReviewError": ["descriptor-argument-subprocess-tests"],
+    "child-lifetime|WHEN the child launches|ASSERT VALUE \"one inherited descriptor\"": ["descriptor-argument-subprocess-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/exact_worktree_command.py",
-    ".agent-workflow/controller/tests/test_exact_worktree_command.py",
+    ".agent-workflow/controller/td_controller/review_runtime.py",
+    ".agent-workflow/controller/tests/test_review_runtime.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],

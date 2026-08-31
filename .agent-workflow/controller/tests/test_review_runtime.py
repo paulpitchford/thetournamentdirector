@@ -16,6 +16,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from td_controller.effective_identity import EffectiveIdentity
+from td_controller.exact_worktree_command import WORKSPACE_DESCRIPTOR_MARKER
 from td_controller.review_contract import CodexReviewError
 from td_controller.review_runtime import (
     ProcessOutput,
@@ -28,6 +29,7 @@ from td_controller.review_runtime import (
     _stage_file,
     execute_attested_codex,
 )
+from td_controller.workspace_identity_handle import WorkspaceIdentity
 
 class FakeExecutor:
     def __init__(self, output: ProcessOutput) -> None:
@@ -136,6 +138,84 @@ class SubprocessExecutorTests(unittest.TestCase):
             with self.subTest(identity=identity):
                 with self.assertRaisesRegex(CodexReviewError, "identity"):
                     SubprocessExecutor(process_identity=identity)
+
+    def test_workspace_descriptor_marker_is_pinned_through_exec(self) -> None:
+        identity = EffectiveIdentity(os.geteuid(), os.getegid())
+        executor = SubprocessExecutor(process_identity=identity)
+        with tempfile.TemporaryDirectory(prefix="td-descriptor-argument-") as temporary:
+            root = Path(temporary).resolve()
+            root.chmod(0o700)
+            descriptor = os.open(
+                root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+            )
+            metadata = os.fstat(descriptor)
+            expected = WorkspaceIdentity(
+                "ORCH-TEST", 1, "a" * 32,
+                metadata.st_dev, metadata.st_ino,
+            )
+            held = root.with_name(root.name + "-held")
+            root.rename(held)
+            root.mkdir(mode=0o700)
+            script = (
+                "import pathlib,sys; "
+                "pathlib.Path(sys.argv[1], 'marker').write_text('pinned')"
+            )
+            try:
+                with patch(
+                    "td_controller.review_runtime.subprocess.Popen",
+                    wraps=subprocess.Popen,
+                ) as popen:
+                    output = executor.run_with_workspace_descriptor(
+                        [sys.executable, "-c", script,
+                         WORKSPACE_DESCRIPTOR_MARKER],
+                        descriptor=descriptor, expected_identity=expected,
+                        input_bytes=b"", cwd=Path("/tmp"), timeout_seconds=5,
+                    )
+                self.assertEqual(output.returncode, 0)
+                self.assertTrue((held / "marker").exists())
+                self.assertFalse((root / "marker").exists())
+                self.assertEqual(len(popen.call_args.kwargs["pass_fds"]), 1)
+            finally:
+                os.close(descriptor)
+                root.rmdir()
+                held.rename(root)
+
+    def test_workspace_descriptor_input_is_rejected_before_launch(self) -> None:
+        identity = EffectiveIdentity(os.geteuid(), os.getegid())
+        executor = SubprocessExecutor(process_identity=identity)
+        with tempfile.TemporaryDirectory(prefix="td-descriptor-argument-") as temporary:
+            root = Path(temporary).resolve()
+            root.chmod(0o700)
+            descriptor = os.open(
+                root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+            )
+            metadata = os.fstat(descriptor)
+            wrong = WorkspaceIdentity(
+                "ORCH-TEST", 1, "a" * 32,
+                metadata.st_dev, metadata.st_ino + 1,
+            )
+            try:
+                with patch("td_controller.review_runtime.subprocess.Popen") as popen:
+                    with self.assertRaisesRegex(CodexReviewError, "identity"):
+                        executor.run_with_workspace_descriptor(
+                            [sys.executable, WORKSPACE_DESCRIPTOR_MARKER],
+                            descriptor=descriptor, expected_identity=wrong,
+                            input_bytes=b"", cwd=Path("/tmp"), timeout_seconds=5,
+                        )
+                    for command in (
+                        [sys.executable],
+                        [sys.executable, WORKSPACE_DESCRIPTOR_MARKER,
+                         WORKSPACE_DESCRIPTOR_MARKER],
+                    ):
+                        with self.assertRaisesRegex(CodexReviewError, "command"):
+                            executor.run_with_workspace_descriptor(
+                                command, descriptor=descriptor,
+                                expected_identity=wrong, input_bytes=b"",
+                                cwd=Path("/tmp"), timeout_seconds=5,
+                            )
+                popen.assert_not_called()
+            finally:
+                os.close(descriptor)
 
     def test_input_at_limit_is_accepted(self) -> None:
         executor = SubprocessExecutor()
