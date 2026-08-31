@@ -1,32 +1,34 @@
 {
-  "id": "ORCH-003D1B0N1",
+  "id": "ORCH-003D1B0N2",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Expose immutable non-authoritative pinned-directory identity evidence for later capability composition",
-  "nonGoals": ["Expose a pathname", "Expose a descriptor", "Authorize an operation from identity evidence", "Run Git", "Create a worktree"],
-  "dependsOn": ["ORCH-003D1B0L6"],
+  "objective": "Define one immutable hook-disabled no-checkout worktree registration command with an internal descriptor marker",
+  "nonGoals": ["Replace the descriptor marker", "Run against the project repository", "Checkout tracked files", "Run filters", "Commit or push"],
+  "dependsOn": ["ORCH-003D1B0M", "ORCH-003D1B0N1"],
   "acceptanceCriteria": [
-    "frozen-identity|WHEN pinned directory identity is read|ASSERT TEST_PASS pinned-directory-identity-tests",
-    "no-authority|WHEN identity fields are inspected|ASSERT ABSENT descriptor",
-    "closed-capability|WHEN identity survives close|ASSERT ERROR PinnedDirectoryExecutorError",
-    "substitution-evidence|WHEN two directories are pinned|ASSERT VALUE \"identities differ\""
+    "exact-command|WHEN a canonical task ref is supplied|ASSERT TEST_PASS exact-worktree-command-tests",
+    "descriptor-marker|WHEN argv is inspected|ASSERT VALUE \"{PINNED_WORKSPACE_DESCRIPTOR}\"",
+    "no-checkout|WHEN the real disposable command runs|ASSERT ABSENT tracked.txt",
+    "hook-filter-denial|WHEN malicious hook and smudge filter are configured|ASSERT ABSENT hook-ran",
+    "invalid-ref|WHEN a noncanonical ref is supplied|ASSERT ERROR ExactWorktreeCommandError"
   ],
   "acceptanceEvidenceIds": {
-    "frozen-identity|WHEN pinned directory identity is read|ASSERT TEST_PASS pinned-directory-identity-tests": ["pinned-directory-identity-tests"],
-    "no-authority|WHEN identity fields are inspected|ASSERT ABSENT descriptor": ["pinned-directory-identity-tests"],
-    "closed-capability|WHEN identity survives close|ASSERT ERROR PinnedDirectoryExecutorError": ["pinned-directory-identity-tests"],
-    "substitution-evidence|WHEN two directories are pinned|ASSERT VALUE \"identities differ\"": ["pinned-directory-identity-tests"]
+    "exact-command|WHEN a canonical task ref is supplied|ASSERT TEST_PASS exact-worktree-command-tests": ["exact-worktree-command-tests"],
+    "descriptor-marker|WHEN argv is inspected|ASSERT VALUE \"{PINNED_WORKSPACE_DESCRIPTOR}\"": ["exact-worktree-command-tests"],
+    "no-checkout|WHEN the real disposable command runs|ASSERT ABSENT tracked.txt": ["exact-worktree-command-tests"],
+    "hook-filter-denial|WHEN malicious hook and smudge filter are configured|ASSERT ABSENT hook-ran": ["exact-worktree-command-tests"],
+    "invalid-ref|WHEN a noncanonical ref is supplied|ASSERT ERROR ExactWorktreeCommandError": ["exact-worktree-command-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/pinned_directory_executor.py",
-    ".agent-workflow/controller/tests/test_pinned_directory_identity.py",
+    ".agent-workflow/controller/td_controller/exact_worktree_command.py",
+    ".agent-workflow/controller/tests/test_exact_worktree_command.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 250,
+  "maxChangedLines": 350,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
