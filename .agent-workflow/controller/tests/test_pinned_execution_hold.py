@@ -64,18 +64,18 @@ class PinnedExecutionHoldTests(unittest.TestCase):
                 self.executor.close()
         self.executor.verify()
 
-    def test_post_operation_verification_runs_when_body_raises(self) -> None:
-        with self.assertRaisesRegex(
-            PinnedDirectoryExecutorError, "verification"
-        ) as raised:
+    def test_failed_body_is_preserved_and_executor_is_poisoned(self) -> None:
+        body_error = ValueError("caller-owned-body-failure")
+        body_error.add_note("caller-owned-note")
+        with self.assertRaises(ValueError) as raised:
             with self.executor.hold_execution():
                 self.root.chmod(0o777)
-                raise ValueError("secret-body-diagnostic")
-        self.assertNotIn("secret-body-diagnostic", str(raised.exception))
-        self.assertIsNone(raised.exception.__cause__)
-        self.assertIsNotNone(raised.exception.__context__)
-        self.assertEqual(
-            str(raised.exception.__context__), "held operation failed"
-        )
+                raise body_error
+        self.assertIs(raised.exception, body_error)
         self.root.chmod(0o755)
-        self.executor.verify()
+        with self.assertRaisesRegex(
+            PinnedDirectoryExecutorError, "poisoned"
+        ) as poisoned:
+            self.executor.verify()
+        self.assertIsNone(poisoned.exception.__cause__)
+        self.assertIsNone(poisoned.exception.__context__)

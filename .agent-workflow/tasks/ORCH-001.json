@@ -9,13 +9,13 @@
     "multi-command|WHEN two trusted commands run in one hold|ASSERT TEST_PASS pinned-execution-hold-tests",
     "close-serialization|WHEN close overlaps a held operation|ASSERT VALUE \"close waits\"",
     "nested-hold|WHEN the same thread nests a hold|ASSERT ERROR PinnedDirectoryExecutorError",
-    "post-verification|WHEN held code fails and directory mode changes|ASSERT ERROR PinnedDirectoryExecutorError"
+    "post-verification|WHEN held code fails and directory mode changes|ASSERT VALUE \"executor poisoned\""
   ],
   "acceptanceEvidenceIds": {
     "multi-command|WHEN two trusted commands run in one hold|ASSERT TEST_PASS pinned-execution-hold-tests": ["pinned-execution-hold-tests"],
     "close-serialization|WHEN close overlaps a held operation|ASSERT VALUE \"close waits\"": ["pinned-execution-hold-tests"],
     "nested-hold|WHEN the same thread nests a hold|ASSERT ERROR PinnedDirectoryExecutorError": ["pinned-execution-hold-tests"],
-    "post-verification|WHEN held code fails and directory mode changes|ASSERT ERROR PinnedDirectoryExecutorError": ["pinned-execution-hold-tests"]
+    "post-verification|WHEN held code fails and directory mode changes|ASSERT VALUE \"executor poisoned\"": ["pinned-execution-hold-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],

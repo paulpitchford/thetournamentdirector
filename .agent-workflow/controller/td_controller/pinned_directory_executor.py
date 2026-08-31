@@ -39,6 +39,7 @@ class PinnedDirectoryExecutor:
         self._descriptor = -1
         self._closed = False
         self._cleanup_failed = False
+        self._poisoned = False
         self._hold_owner: int | None = None
         process_identity = self._current_process_identity()
         try:
@@ -140,11 +141,11 @@ class PinnedDirectoryExecutor:
             finally:
                 self._hold_owner = None
             if verification_failed:
-                if operation_error is not None:
-                    self._sanitize_error_chain(operation_error)
-                raise PinnedDirectoryExecutorError(
-                    "directory hold verification failed"
-                ) from None
+                self._poisoned = True
+                if operation_error is None:
+                    raise PinnedDirectoryExecutorError(
+                        "directory hold verification failed"
+                    ) from None
             if operation_error is not None:
                 raise operation_error
         finally:
@@ -177,6 +178,8 @@ class PinnedDirectoryExecutor:
     def _verify_locked(self) -> None:
         if self._closed:
             raise PinnedDirectoryExecutorError("directory executor is closed")
+        if self._poisoned:
+            raise PinnedDirectoryExecutorError("directory executor is poisoned")
         process_identity = self._current_process_identity()
         if process_identity != self._process_identity:
             raise PinnedDirectoryExecutorError("process identity changed")
@@ -203,24 +206,6 @@ class PinnedDirectoryExecutor:
                 "process identity verification failed"
             ) from None
         return identity
-
-    @staticmethod
-    def _sanitize_error_chain(error: BaseException) -> None:
-        pending = [error]
-        seen: set[int] = set()
-        while pending and len(seen) < 32:
-            current = pending.pop()
-            if id(current) in seen:
-                continue
-            seen.add(id(current))
-            if current.__cause__ is not None:
-                pending.append(current.__cause__)
-            if current.__context__ is not None:
-                pending.append(current.__context__)
-            current.args = ("held operation failed",)
-            current.__traceback__ = None
-            current.__cause__ = None
-            current.__context__ = None
 
     @staticmethod
     def _validate_directory(metadata: os.stat_result, expected_uid: int) -> None:
