@@ -1,34 +1,32 @@
 {
-  "id": "ORCH-003D1B0L5",
+  "id": "ORCH-003D1B0L6",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Execute bounded child-identity-bound commands from a pinned directory descriptor",
-  "nonGoals": ["Expose a repository pathname", "Expose a descriptor", "Run Git mutation", "Create a worktree", "Accept model commands"],
-  "dependsOn": ["ORCH-003D1B0K3", "ORCH-003D1B0K5", "ORCH-003D1B0L2", "ORCH-003D1B0L4"],
+  "objective": "Serialize a trusted multi-command operation across one pinned directory descriptor lifetime",
+  "nonGoals": ["Expose a pathname", "Expose a descriptor", "Define Git commands", "Run Git mutation", "Create a worktree"],
+  "dependsOn": ["ORCH-003D1B0L5"],
   "acceptanceCriteria": [
-    "descriptor-cwd|WHEN the original pathname is replaced|ASSERT TEST_PASS pinned-directory-executor-proof",
-    "replacement-isolation|WHEN a command writes a relative marker|ASSERT ABSENT replacement-marker",
-    "child-identity|WHEN a bounded command launches|ASSERT TEST_PASS identity-bound-subprocess-tests",
-    "effective-owner|WHEN directory ownership differs from effective UID|ASSERT ERROR PinnedDirectoryExecutorError",
-    "bounded-input|WHEN environment command stdin or timeout is invalid|ASSERT ERROR PinnedDirectoryExecutorError"
+    "multi-command|WHEN two trusted commands run in one hold|ASSERT TEST_PASS pinned-execution-hold-tests",
+    "close-serialization|WHEN close overlaps a held operation|ASSERT VALUE \"close waits\"",
+    "nested-hold|WHEN the same thread nests a hold|ASSERT ERROR PinnedDirectoryExecutorError",
+    "post-verification|WHEN held code fails and directory mode changes|ASSERT ERROR PinnedDirectoryExecutorError"
   ],
   "acceptanceEvidenceIds": {
-    "descriptor-cwd|WHEN the original pathname is replaced|ASSERT TEST_PASS pinned-directory-executor-proof": ["pinned-directory-executor-proof"],
-    "replacement-isolation|WHEN a command writes a relative marker|ASSERT ABSENT replacement-marker": ["pinned-directory-executor-proof"],
-    "child-identity|WHEN a bounded command launches|ASSERT TEST_PASS identity-bound-subprocess-tests": ["identity-bound-subprocess-tests"],
-    "effective-owner|WHEN directory ownership differs from effective UID|ASSERT ERROR PinnedDirectoryExecutorError": ["pinned-directory-executor-tests"],
-    "bounded-input|WHEN environment command stdin or timeout is invalid|ASSERT ERROR PinnedDirectoryExecutorError": ["pinned-directory-executor-tests"]
+    "multi-command|WHEN two trusted commands run in one hold|ASSERT TEST_PASS pinned-execution-hold-tests": ["pinned-execution-hold-tests"],
+    "close-serialization|WHEN close overlaps a held operation|ASSERT VALUE \"close waits\"": ["pinned-execution-hold-tests"],
+    "nested-hold|WHEN the same thread nests a hold|ASSERT ERROR PinnedDirectoryExecutorError": ["pinned-execution-hold-tests"],
+    "post-verification|WHEN held code fails and directory mode changes|ASSERT ERROR PinnedDirectoryExecutorError": ["pinned-execution-hold-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
     ".agent-workflow/controller/td_controller/pinned_directory_executor.py",
-    ".agent-workflow/controller/tests/test_pinned_directory_executor.py",
+    ".agent-workflow/controller/tests/test_pinned_execution_hold.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 450,
+  "maxChangedLines": 250,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
