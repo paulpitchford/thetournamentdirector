@@ -35,8 +35,10 @@ def read_bounded_regular_at(
     if (
         isinstance(parent_descriptor, bool)
         or not isinstance(parent_descriptor, int)
+        or parent_descriptor < 0
         or not isinstance(name, str)
         or not LEAF_NAME.fullmatch(name)
+        or name in (".", "..")
         or isinstance(expected_uid, bool)
         or not isinstance(expected_uid, int)
         or expected_uid < 0

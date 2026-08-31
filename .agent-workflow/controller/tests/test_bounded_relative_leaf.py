@@ -81,9 +81,14 @@ class BoundedRelativeLeafTests(unittest.TestCase):
 
     def test_invalid_inputs_fail_before_open(self) -> None:
         with patch("td_controller.bounded_relative_leaf.os.open") as opened:
-            for name in ("../leaf", "nested/leaf", "", "é"):
+            for name in ("../leaf", "nested/leaf", "", ".", "..", "é"):
                 with self.assertRaises(BoundedRelativeLeafError):
                     read_bounded_regular_at(
                         self.descriptor, name, expected_uid=os.geteuid()
+                    )
+            for descriptor in (-1, -100):
+                with self.assertRaises(BoundedRelativeLeafError):
+                    read_bounded_regular_at(
+                        descriptor, "leaf", expected_uid=os.geteuid()
                     )
         opened.assert_not_called()
