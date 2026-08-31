@@ -18,6 +18,10 @@ from .review_contract import CodexReviewError
 from .review_runtime import MAX_INPUT_BYTES, ProcessOutput, SubprocessExecutor
 
 ENV_KEY = re.compile(r"[A-Z][A-Z0-9_]{0,63}")
+ENV_KEYS = frozenset({
+    "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM", "GIT_NO_REPLACE_OBJECTS",
+    "HOME", "LANG", "LC_ALL", "PATH",
+})
 
 
 class PinnedDirectoryExecutorError(RuntimeError):
@@ -25,7 +29,7 @@ class PinnedDirectoryExecutorError(RuntimeError):
 
 
 class PinnedDirectoryExecutor:
-    """Own one descriptor and use only its procfd alias as subprocess cwd."""
+    """Run trusted calls from procfd; callers enforce a reviewed allowlist."""
 
     def __init__(self, *, descriptor: int) -> None:
         if isinstance(descriptor, bool) or not isinstance(descriptor, int):
@@ -63,18 +67,20 @@ class PinnedDirectoryExecutor:
         timeout_seconds: int = 30,
     ) -> ProcessOutput:
         """Run while the descriptor remains live; export no path or descriptor."""
+        if type(command) is not list:
+            raise PinnedDirectoryExecutorError("directory command is invalid")
+        command_snapshot = tuple(command)
         clean_environment = self._validate_environment(environment)
         if (
-            not isinstance(command, list)
-            or not 1 <= len(command) <= 64
-            or not isinstance(command[0], str)
-            or not Path(command[0]).is_absolute()
+            not 1 <= len(command_snapshot) <= 64
+            or not isinstance(command_snapshot[0], str)
+            or not Path(command_snapshot[0]).is_absolute()
             or any(
                 not isinstance(argument, str)
                 or not argument.isascii()
                 or "\x00" in argument
                 or len(argument) > 4096
-                for argument in command
+                for argument in command_snapshot
             )
             or not isinstance(input_bytes, bytes)
             or len(input_bytes) > MAX_INPUT_BYTES
@@ -92,7 +98,7 @@ class PinnedDirectoryExecutor:
             )
             try:
                 output = executor.run(
-                    command, input_bytes=input_bytes, cwd=cwd,
+                    list(command_snapshot), input_bytes=input_bytes, cwd=cwd,
                     timeout_seconds=timeout_seconds,
                 )
             except (CodexReviewError, OSError):
@@ -175,6 +181,7 @@ class PinnedDirectoryExecutor:
             if (
                 not isinstance(key, str)
                 or not ENV_KEY.fullmatch(key)
+                or key not in ENV_KEYS
                 or not isinstance(value, str)
                 or "\x00" in value
             ):

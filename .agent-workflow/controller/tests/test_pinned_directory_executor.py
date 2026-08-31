@@ -57,15 +57,21 @@ class PinnedDirectoryExecutorTests(unittest.TestCase):
 
     def test_caller_descriptor_can_close_and_environment_is_exact(self) -> None:
         executor = self.make_executor()
+        command = ["/usr/bin/env"]
+
+        def mutate_after_snapshot(*args, **kwargs):
+            command[:] = ["/bin/sh", "-c", "exit 99"]
+            return SubprocessExecutor(*args, **kwargs)
+
         try:
             with patch(
                 "td_controller.pinned_directory_executor.SubprocessExecutor",
-                wraps=SubprocessExecutor,
+                side_effect=mutate_after_snapshot,
             ) as constructor:
                 output = executor.run(
-                    ["/usr/bin/env"], environment={"ONLY_VALUE": "exact"}
+                    command, environment={"HOME": "/nonexistent"}
                 )
-            self.assertEqual(output, type(output)(0, b"ONLY_VALUE=exact\n", b""))
+            self.assertEqual(output, type(output)(0, b"HOME=/nonexistent\n", b""))
             self.assertEqual(
                 constructor.call_args.kwargs["process_identity"],
                 EffectiveIdentity(os.geteuid(), os.getegid()),
@@ -180,8 +186,9 @@ class PinnedDirectoryExecutorTests(unittest.TestCase):
         executor = self.make_executor()
         try:
             invalid_environments = (
-                {"lower": "value"}, {"GOOD": "bad\x00value"},
-                {"GOOD": "\ud800"}, {"GOOD": "x" * 4097},
+                {"lower": "value"}, {"LD_PRELOAD": "/tmp/evil.so"},
+                {"HOME": "bad\x00value"}, {"HOME": "\ud800"},
+                {"HOME": "x" * 4097},
             )
             for environment in invalid_environments:
                 with self.subTest(environment=environment):
