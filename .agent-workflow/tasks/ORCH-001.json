@@ -1,32 +1,34 @@
 {
-  "id": "ORCH-003D1B0N5A",
+  "id": "ORCH-003D1B0N5C",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Parse bounded canonical Git worktree marker bytes as immutable non-authoritative evidence",
-  "nonGoals": ["Open the marker target", "Authorize a pathname", "Bind repository metadata", "Register a worktree", "Checkout files"],
-  "dependsOn": ["ORCH-003D1B0N2A", "ORCH-003D1B0N4"],
+  "objective": "Read one descriptor-relative metadata leaf nonblockingly with complete stable version evidence",
+  "nonGoals": ["Parse Git marker content", "Authorize parent identity", "Register a worktree", "Checkout files"],
+  "dependsOn": ["ORCH-003D1B0N5A"],
   "acceptanceCriteria": [
-    "canonical-marker|WHEN one canonical gitdir line is parsed|ASSERT TEST_PASS worktree-marker-contract-tests",
-    "non-authority|WHEN parsed evidence is inspected|ASSERT ABSENT descriptor",
-    "bounded-input|WHEN marker bytes exceed the limit|ASSERT ERROR WorktreeMarkerContractError",
-    "ambiguous-input|WHEN marker has traversal extra lines or invalid target|ASSERT ERROR WorktreeMarkerContractError"
+    "stable-leaf|WHEN one safe regular leaf is read|ASSERT TEST_PASS bounded-relative-leaf-tests",
+    "fifo-denial|WHEN an owner FIFO has no writer|ASSERT ERROR BoundedRelativeLeafError",
+    "nofollow-leaf|WHEN the leaf is a symlink|ASSERT ERROR BoundedRelativeLeafError",
+    "safe-mode|WHEN the leaf is group or world writable|ASSERT ERROR BoundedRelativeLeafError",
+    "ctime-binding|WHEN equal-size content changes with restored mtime|ASSERT ERROR BoundedRelativeLeafError"
   ],
   "acceptanceEvidenceIds": {
-    "canonical-marker|WHEN one canonical gitdir line is parsed|ASSERT TEST_PASS worktree-marker-contract-tests": ["worktree-marker-contract-tests"],
-    "non-authority|WHEN parsed evidence is inspected|ASSERT ABSENT descriptor": ["worktree-marker-contract-tests"],
-    "bounded-input|WHEN marker bytes exceed the limit|ASSERT ERROR WorktreeMarkerContractError": ["worktree-marker-contract-tests"],
-    "ambiguous-input|WHEN marker has traversal extra lines or invalid target|ASSERT ERROR WorktreeMarkerContractError": ["worktree-marker-contract-tests"]
+    "stable-leaf|WHEN one safe regular leaf is read|ASSERT TEST_PASS bounded-relative-leaf-tests": ["bounded-relative-leaf-tests"],
+    "fifo-denial|WHEN an owner FIFO has no writer|ASSERT ERROR BoundedRelativeLeafError": ["bounded-relative-leaf-tests"],
+    "nofollow-leaf|WHEN the leaf is a symlink|ASSERT ERROR BoundedRelativeLeafError": ["bounded-relative-leaf-tests"],
+    "safe-mode|WHEN the leaf is group or world writable|ASSERT ERROR BoundedRelativeLeafError": ["bounded-relative-leaf-tests"],
+    "ctime-binding|WHEN equal-size content changes with restored mtime|ASSERT ERROR BoundedRelativeLeafError": ["bounded-relative-leaf-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/worktree_marker_contract.py",
-    ".agent-workflow/controller/tests/test_worktree_marker_contract.py",
+    ".agent-workflow/controller/td_controller/bounded_relative_leaf.py",
+    ".agent-workflow/controller/tests/test_bounded_relative_leaf.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 250,
+  "maxChangedLines": 300,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
