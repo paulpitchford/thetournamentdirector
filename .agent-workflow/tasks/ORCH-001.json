@@ -1,34 +1,32 @@
 {
-  "id": "ORCH-003D1B0N4",
+  "id": "ORCH-003D1B0N2A",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Compose pinned repository cwd and verified workspace-descriptor substitution in one bounded trusted call",
-  "nonGoals": ["Require a live workspace handle", "Observe worktree state", "Run against the project repository", "Checkout files", "Commit or push"],
-  "dependsOn": ["ORCH-003D1B0L6", "ORCH-003D1B0N3"],
+  "objective": "Ensure the exact no-checkout worktree command attaches HEAD to the reserved branch rather than detaching at its commit",
+  "nonGoals": ["Replace the descriptor marker", "Run against the project repository", "Checkout tracked files", "Commit or push"],
+  "dependsOn": ["ORCH-003D1B0N2", "ORCH-003D1B0N4"],
   "acceptanceCriteria": [
-    "dual-descriptor|WHEN an exact disposable command runs|ASSERT TEST_PASS pinned-workspace-argument-tests",
-    "repository-cwd|WHEN Git resolves its repository|ASSERT VALUE \"pinned repository\"",
-    "workspace-substitution|WHEN workspace pathname is replaced|ASSERT ABSENT replacement-git-marker",
-    "identity-mismatch|WHEN workspace evidence differs|ASSERT ERROR PinnedDirectoryExecutorError",
-    "diagnostic-boundary|WHEN descriptor substitution fails|ASSERT ABSENT raw-cause"
+    "short-branch-argument|WHEN a full reserved ref is supplied|ASSERT VALUE \"agent branch short name\"",
+    "symbolic-head|WHEN the real disposable command runs|ASSERT VALUE \"HEAD equals reserved full ref\"",
+    "no-checkout|WHEN the attached worktree is registered|ASSERT ABSENT tracked.txt",
+    "hook-filter-denial|WHEN malicious hook and filter are configured|ASSERT ABSENT hook-ran"
   ],
   "acceptanceEvidenceIds": {
-    "dual-descriptor|WHEN an exact disposable command runs|ASSERT TEST_PASS pinned-workspace-argument-tests": ["pinned-workspace-argument-tests"],
-    "repository-cwd|WHEN Git resolves its repository|ASSERT VALUE \"pinned repository\"": ["pinned-workspace-argument-tests"],
-    "workspace-substitution|WHEN workspace pathname is replaced|ASSERT ABSENT replacement-git-marker": ["pinned-workspace-argument-tests"],
-    "identity-mismatch|WHEN workspace evidence differs|ASSERT ERROR PinnedDirectoryExecutorError": ["pinned-workspace-argument-tests"],
-    "diagnostic-boundary|WHEN descriptor substitution fails|ASSERT ABSENT raw-cause": ["pinned-workspace-argument-tests"]
+    "short-branch-argument|WHEN a full reserved ref is supplied|ASSERT VALUE \"agent branch short name\"": ["exact-worktree-attached-branch-tests"],
+    "symbolic-head|WHEN the real disposable command runs|ASSERT VALUE \"HEAD equals reserved full ref\"": ["exact-worktree-attached-branch-tests"],
+    "no-checkout|WHEN the attached worktree is registered|ASSERT ABSENT tracked.txt": ["exact-worktree-attached-branch-tests"],
+    "hook-filter-denial|WHEN malicious hook and filter are configured|ASSERT ABSENT hook-ran": ["exact-worktree-attached-branch-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/pinned_directory_executor.py",
-    ".agent-workflow/controller/tests/test_pinned_workspace_argument.py",
+    ".agent-workflow/controller/td_controller/exact_worktree_command.py",
+    ".agent-workflow/controller/tests/test_exact_worktree_command.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 350,
+  "maxChangedLines": 250,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
