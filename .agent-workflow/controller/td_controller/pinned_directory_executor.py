@@ -6,7 +6,8 @@ import os
 import re
 import stat
 import threading
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from pathlib import Path
 
 from .effective_identity import (
@@ -38,6 +39,8 @@ class PinnedDirectoryExecutor:
         self._descriptor = -1
         self._closed = False
         self._cleanup_failed = False
+        self._poisoned = False
+        self._hold_owner: int | None = None
         process_identity = self._current_process_identity()
         try:
             duplicate = os.dup(descriptor)
@@ -113,9 +116,48 @@ class PinnedDirectoryExecutor:
         with self._lock:
             self._verify_locked()
 
+    @contextmanager
+    def hold_execution(self) -> Iterator[None]:
+        """Serialize a trusted multi-command operation without exporting authority."""
+        self._lock.acquire()
+        try:
+            if self._hold_owner is not None:
+                raise PinnedDirectoryExecutorError(
+                    "directory execution is already held"
+                )
+            self._verify_locked()
+            self._hold_owner = threading.get_ident()
+            operation_error: BaseException | None = None
+            verification_failed = False
+            try:
+                try:
+                    yield
+                except BaseException as error:
+                    operation_error = error
+                try:
+                    self._verify_locked()
+                except PinnedDirectoryExecutorError:
+                    verification_failed = True
+            finally:
+                self._hold_owner = None
+            if verification_failed:
+                self._poisoned = True
+                if operation_error is None:
+                    raise PinnedDirectoryExecutorError(
+                        "directory hold verification failed"
+                    ) from None
+            if operation_error is not None:
+                raise operation_error
+        finally:
+            self._lock.release()
+
     def close(self) -> None:
         """Synchronously and idempotently release command authority."""
         with self._lock:
+            if self._hold_owner == threading.get_ident():
+                raise PinnedDirectoryExecutorError(
+                    "directory execution hold is active"
+                )
             if self._closed:
                 if self._cleanup_failed:
                     raise PinnedDirectoryExecutorError(
@@ -136,6 +178,8 @@ class PinnedDirectoryExecutor:
     def _verify_locked(self) -> None:
         if self._closed:
             raise PinnedDirectoryExecutorError("directory executor is closed")
+        if self._poisoned:
+            raise PinnedDirectoryExecutorError("directory executor is poisoned")
         process_identity = self._current_process_identity()
         if process_identity != self._process_identity:
             raise PinnedDirectoryExecutorError("process identity changed")
