@@ -15,6 +15,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from td_controller.effective_identity import EffectiveIdentity
 from td_controller.review_contract import CodexReviewError
 from td_controller.review_runtime import (
     ProcessOutput,
@@ -102,6 +103,39 @@ class SubprocessExecutorTests(unittest.TestCase):
                         timeout_seconds=1,
                     )
         popen.assert_not_called()
+
+    def test_child_exec_applies_explicit_effective_identity(self) -> None:
+        identity = EffectiveIdentity(os.geteuid(), os.getegid())
+        executor = SubprocessExecutor(process_identity=identity)
+        script = "import os; print(os.geteuid(), os.getegid())"
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch(
+                "td_controller.review_runtime.subprocess.Popen",
+                wraps=subprocess.Popen,
+            ) as popen:
+                output = executor.run(
+                    [sys.executable, "-c", script],
+                    input_bytes=b"",
+                    cwd=Path(temporary),
+                    timeout_seconds=5,
+                )
+        self.assertEqual(
+            output.stdout.strip(), f"{identity.uid} {identity.gid}".encode()
+        )
+        self.assertEqual(popen.call_args.kwargs["user"], identity.uid)
+        self.assertEqual(popen.call_args.kwargs["group"], identity.gid)
+
+    def test_invalid_explicit_process_identity_is_rejected(self) -> None:
+        for identity in (
+            EffectiveIdentity(True, 1000),
+            EffectiveIdentity(-1, 1000),
+            EffectiveIdentity(1000, True),
+            EffectiveIdentity(1000, -1),
+            EffectiveIdentity(os.geteuid() + 1, os.getegid()),
+        ):
+            with self.subTest(identity=identity):
+                with self.assertRaisesRegex(CodexReviewError, "identity"):
+                    SubprocessExecutor(process_identity=identity)
 
     def test_input_at_limit_is_accepted(self) -> None:
         executor = SubprocessExecutor()

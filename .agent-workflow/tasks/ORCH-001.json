@@ -1,27 +1,27 @@
 {
-  "id": "ORCH-003D1B0L2",
+  "id": "ORCH-003D1B0L4",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Require matching real and effective process identities before trusted filesystem effects",
-  "nonGoals": ["Execute a subprocess", "Inspect a directory", "Drop privileges", "Run Git", "Create a worktree"],
-  "dependsOn": ["ORCH-003D1B0K3", "ORCH-003D1B0K5"],
+  "objective": "Apply a validated pinned UID and GID in the subprocess child immediately before exec",
+  "nonGoals": ["Change parent credentials", "Inspect a directory", "Run Git", "Create a worktree", "Clear supplementary groups"],
+  "dependsOn": ["ORCH-003D1B0L2"],
   "acceptanceCriteria": [
-    "current-identity|WHEN real and effective credentials match|ASSERT TEST_PASS effective-identity-tests",
-    "uid-transition|WHEN real and effective UIDs differ|ASSERT ERROR EffectiveIdentityError",
-    "gid-transition|WHEN real and effective GIDs differ|ASSERT ERROR EffectiveIdentityError",
-    "diagnostic-boundary|WHEN an identity getter fails|ASSERT ABSENT identity-diagnostic"
+    "child-uid|WHEN an explicit effective identity is supplied|ASSERT VALUE \"child euid equals pin\"",
+    "child-gid|WHEN an explicit effective identity is supplied|ASSERT VALUE \"child egid equals pin\"",
+    "popen-binding|WHEN the process is launched|ASSERT TEST_PASS identity-popen-proof",
+    "invalid-pin|WHEN UID or GID is boolean or negative|ASSERT ERROR CodexReviewError"
   ],
   "acceptanceEvidenceIds": {
-    "current-identity|WHEN real and effective credentials match|ASSERT TEST_PASS effective-identity-tests": ["effective-identity-tests"],
-    "uid-transition|WHEN real and effective UIDs differ|ASSERT ERROR EffectiveIdentityError": ["effective-identity-tests"],
-    "gid-transition|WHEN real and effective GIDs differ|ASSERT ERROR EffectiveIdentityError": ["effective-identity-tests"],
-    "diagnostic-boundary|WHEN an identity getter fails|ASSERT ABSENT identity-diagnostic": ["effective-identity-tests"]
+    "child-uid|WHEN an explicit effective identity is supplied|ASSERT VALUE \"child euid equals pin\"": ["identity-bound-subprocess-tests"],
+    "child-gid|WHEN an explicit effective identity is supplied|ASSERT VALUE \"child egid equals pin\"": ["identity-bound-subprocess-tests"],
+    "popen-binding|WHEN the process is launched|ASSERT TEST_PASS identity-popen-proof": ["identity-popen-proof"],
+    "invalid-pin|WHEN UID or GID is boolean or negative|ASSERT ERROR CodexReviewError": ["identity-bound-subprocess-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/effective_identity.py",
-    ".agent-workflow/controller/tests/test_effective_identity.py",
+    ".agent-workflow/controller/td_controller/review_runtime.py",
+    ".agent-workflow/controller/tests/test_review_runtime.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
