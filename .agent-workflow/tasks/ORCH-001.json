@@ -1,34 +1,36 @@
 {
-  "id": "ORCH-003D1B0N5C",
+  "id": "ORCH-003D1B0N5D",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Read one descriptor-relative metadata leaf nonblockingly with complete stable version evidence",
-  "nonGoals": ["Parse Git marker content", "Authorize parent identity", "Register a worktree", "Checkout files"],
-  "dependsOn": ["ORCH-003D1B0N5A"],
+  "objective": "Bind a stable nonblocking workspace marker to the exact pinned-repository admin directory and stable backlink",
+  "nonGoals": ["Register a worktree", "Checkout files", "Authorize pathname evidence alone", "Commit or push"],
+  "dependsOn": ["ORCH-003D1B0N5A", "ORCH-003D1B0N5C"],
   "acceptanceCriteria": [
-    "stable-leaf|WHEN one safe regular leaf is read|ASSERT TEST_PASS bounded-relative-leaf-tests",
-    "fifo-denial|WHEN an owner FIFO has no writer|ASSERT ERROR BoundedRelativeLeafError",
-    "nofollow-leaf|WHEN the leaf is a symlink|ASSERT ERROR BoundedRelativeLeafError",
-    "safe-mode|WHEN the leaf is group or world writable|ASSERT ERROR BoundedRelativeLeafError",
-    "ctime-binding|WHEN equal-size content changes with restored mtime|ASSERT ERROR BoundedRelativeLeafError"
+    "exact-binding|WHEN valid marker and admin metadata are verified|ASSERT TEST_PASS worktree-admin-binding-tests",
+    "copied-marker|WHEN marker targets another repository|ASSERT ERROR PinnedDirectoryExecutorError",
+    "stable-leaves|WHEN marker or backlink changes|ASSERT ERROR PinnedDirectoryExecutorError",
+    "fifo-denial|WHEN marker or backlink is a FIFO|ASSERT ERROR PinnedDirectoryExecutorError",
+    "safe-metadata|WHEN backlink or admin directory is writable|ASSERT ERROR PinnedDirectoryExecutorError",
+    "no-authority|WHEN binding evidence is returned|ASSERT ABSENT descriptor"
   ],
   "acceptanceEvidenceIds": {
-    "stable-leaf|WHEN one safe regular leaf is read|ASSERT TEST_PASS bounded-relative-leaf-tests": ["bounded-relative-leaf-tests"],
-    "fifo-denial|WHEN an owner FIFO has no writer|ASSERT ERROR BoundedRelativeLeafError": ["bounded-relative-leaf-tests"],
-    "nofollow-leaf|WHEN the leaf is a symlink|ASSERT ERROR BoundedRelativeLeafError": ["bounded-relative-leaf-tests"],
-    "safe-mode|WHEN the leaf is group or world writable|ASSERT ERROR BoundedRelativeLeafError": ["bounded-relative-leaf-tests"],
-    "ctime-binding|WHEN equal-size content changes with restored mtime|ASSERT ERROR BoundedRelativeLeafError": ["bounded-relative-leaf-tests"]
+    "exact-binding|WHEN valid marker and admin metadata are verified|ASSERT TEST_PASS worktree-admin-binding-tests": ["worktree-admin-binding-tests"],
+    "copied-marker|WHEN marker targets another repository|ASSERT ERROR PinnedDirectoryExecutorError": ["worktree-admin-binding-tests"],
+    "stable-leaves|WHEN marker or backlink changes|ASSERT ERROR PinnedDirectoryExecutorError": ["worktree-admin-binding-tests"],
+    "fifo-denial|WHEN marker or backlink is a FIFO|ASSERT ERROR PinnedDirectoryExecutorError": ["worktree-admin-binding-tests"],
+    "safe-metadata|WHEN backlink or admin directory is writable|ASSERT ERROR PinnedDirectoryExecutorError": ["worktree-admin-binding-tests"],
+    "no-authority|WHEN binding evidence is returned|ASSERT ABSENT descriptor": ["worktree-admin-binding-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/bounded_relative_leaf.py",
-    ".agent-workflow/controller/tests/test_bounded_relative_leaf.py",
+    ".agent-workflow/controller/td_controller/pinned_directory_executor.py",
+    ".agent-workflow/controller/tests/test_worktree_admin_binding.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 300,
+  "maxChangedLines": 450,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
