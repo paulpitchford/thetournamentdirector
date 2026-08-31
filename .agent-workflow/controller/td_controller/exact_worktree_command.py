@@ -27,6 +27,7 @@ def build_exact_worktree_command(ref_name: str) -> ExactWorktreeCommand:
     """Build a command whose descriptor marker must be replaced internally."""
     if not isinstance(ref_name, str) or not REF.fullmatch(ref_name):
         raise ExactWorktreeCommandError("worktree branch ref is invalid")
+    branch_name = ref_name.removeprefix("refs/heads/")
     return ExactWorktreeCommand(
         (
             GIT,
@@ -38,7 +39,7 @@ def build_exact_worktree_command(ref_name: str) -> ExactWorktreeCommand:
             "--quiet",
             "--no-guess-remote",
             WORKSPACE_DESCRIPTOR_MARKER,
-            ref_name,
+            branch_name,
         ),
         MappingProxyType({
             "GIT_CONFIG_GLOBAL": "/dev/null",

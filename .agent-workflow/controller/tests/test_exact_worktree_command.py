@@ -23,7 +23,8 @@ class ExactWorktreeCommandTests(unittest.TestCase):
             (
                 "/usr/bin/git", "-c", "core.hooksPath=/dev/null",
                 "worktree", "add", "--no-checkout", "--quiet",
-                "--no-guess-remote", WORKSPACE_DESCRIPTOR_MARKER, REF_NAME,
+                "--no-guess-remote", WORKSPACE_DESCRIPTOR_MARKER,
+                REF_NAME.removeprefix("refs/heads/"),
             ),
         )
         self.assertEqual(
@@ -108,6 +109,11 @@ class ExactWorktreeCommandTests(unittest.TestCase):
             self.assertEqual(result.stdout, b"")
             self.assertEqual(result.stderr, b"")
             self.assertTrue((target / ".git").is_file())
+            symbolic_head = subprocess.check_output(
+                ["/usr/bin/git", "-C", str(target), "symbolic-ref", "HEAD"],
+                text=True,
+            ).strip()
+            self.assertEqual(symbolic_head, REF_NAME)
             self.assertFalse((target / "tracked.txt").exists())
             self.assertFalse(hook_marker.exists())
             self.assertFalse(filter_marker.exists())
