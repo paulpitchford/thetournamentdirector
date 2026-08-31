@@ -1,29 +1,29 @@
 {
-  "id": "ORCH-003D1B0N3",
+  "id": "ORCH-003D1B0N4",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Replace one fixed workspace marker with a verified inherited directory descriptor for bounded child execution",
-  "nonGoals": ["Authorize command shape", "Run against the project repository", "Register a worktree", "Checkout files", "Commit or push"],
-  "dependsOn": ["ORCH-003D1B0L4", "ORCH-003D1B0N2"],
+  "objective": "Compose pinned repository cwd and verified workspace-descriptor substitution in one bounded trusted call",
+  "nonGoals": ["Require a live workspace handle", "Observe worktree state", "Run against the project repository", "Checkout files", "Commit or push"],
+  "dependsOn": ["ORCH-003D1B0L6", "ORCH-003D1B0N3"],
   "acceptanceCriteria": [
-    "descriptor-substitution|WHEN a workspace pathname is replaced|ASSERT TEST_PASS descriptor-argument-subprocess-tests",
-    "replacement-isolation|WHEN the child writes through the marker|ASSERT ABSENT replacement-marker",
-    "identity-binding|WHEN descriptor identity differs|ASSERT ERROR CodexReviewError",
-    "single-marker|WHEN marker count is not one|ASSERT ERROR CodexReviewError",
-    "child-lifetime|WHEN the child launches|ASSERT VALUE \"one inherited descriptor\""
+    "dual-descriptor|WHEN an exact disposable command runs|ASSERT TEST_PASS pinned-workspace-argument-tests",
+    "repository-cwd|WHEN Git resolves its repository|ASSERT VALUE \"pinned repository\"",
+    "workspace-substitution|WHEN workspace pathname is replaced|ASSERT ABSENT replacement-git-marker",
+    "identity-mismatch|WHEN workspace evidence differs|ASSERT ERROR PinnedDirectoryExecutorError",
+    "diagnostic-boundary|WHEN descriptor substitution fails|ASSERT ABSENT raw-cause"
   ],
   "acceptanceEvidenceIds": {
-    "descriptor-substitution|WHEN a workspace pathname is replaced|ASSERT TEST_PASS descriptor-argument-subprocess-tests": ["descriptor-argument-subprocess-tests"],
-    "replacement-isolation|WHEN the child writes through the marker|ASSERT ABSENT replacement-marker": ["descriptor-argument-subprocess-tests"],
-    "identity-binding|WHEN descriptor identity differs|ASSERT ERROR CodexReviewError": ["descriptor-argument-subprocess-tests"],
-    "single-marker|WHEN marker count is not one|ASSERT ERROR CodexReviewError": ["descriptor-argument-subprocess-tests"],
-    "child-lifetime|WHEN the child launches|ASSERT VALUE \"one inherited descriptor\"": ["descriptor-argument-subprocess-tests"]
+    "dual-descriptor|WHEN an exact disposable command runs|ASSERT TEST_PASS pinned-workspace-argument-tests": ["pinned-workspace-argument-tests"],
+    "repository-cwd|WHEN Git resolves its repository|ASSERT VALUE \"pinned repository\"": ["pinned-workspace-argument-tests"],
+    "workspace-substitution|WHEN workspace pathname is replaced|ASSERT ABSENT replacement-git-marker": ["pinned-workspace-argument-tests"],
+    "identity-mismatch|WHEN workspace evidence differs|ASSERT ERROR PinnedDirectoryExecutorError": ["pinned-workspace-argument-tests"],
+    "diagnostic-boundary|WHEN descriptor substitution fails|ASSERT ABSENT raw-cause": ["pinned-workspace-argument-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/review_runtime.py",
-    ".agent-workflow/controller/tests/test_review_runtime.py",
+    ".agent-workflow/controller/td_controller/pinned_directory_executor.py",
+    ".agent-workflow/controller/tests/test_pinned_workspace_argument.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
