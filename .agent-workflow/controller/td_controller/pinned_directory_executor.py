@@ -8,6 +8,7 @@ import stat
 import threading
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 
 from .effective_identity import (
@@ -27,6 +28,15 @@ ENV_KEYS = frozenset({
 
 class PinnedDirectoryExecutorError(RuntimeError):
     """Raised when pinned directory command authority is unavailable."""
+
+
+@dataclass(frozen=True, slots=True)
+class PinnedDirectoryIdentity:
+    """Non-authoritative identity evidence for capability composition."""
+
+    device: int
+    inode: int
+    uid: int
 
 
 class PinnedDirectoryExecutor:
@@ -58,8 +68,15 @@ class PinnedDirectoryExecutor:
                 "directory executor initialization failed"
             ) from None
         self._descriptor = duplicate
-        self._directory_identity = (metadata.st_dev, metadata.st_ino)
+        self._directory_identity = PinnedDirectoryIdentity(
+            metadata.st_dev, metadata.st_ino, process_identity.uid
+        )
         self._process_identity = process_identity
+
+    @property
+    def identity(self) -> PinnedDirectoryIdentity:
+        """Return immutable identity evidence without pathname or descriptor."""
+        return self._directory_identity
 
     def run(
         self,
@@ -190,7 +207,15 @@ class PinnedDirectoryExecutor:
             raise PinnedDirectoryExecutorError(
                 "directory executor verification failed"
             ) from None
-        if (metadata.st_dev, metadata.st_ino) != self._directory_identity:
+        if (
+            metadata.st_dev,
+            metadata.st_ino,
+            metadata.st_uid,
+        ) != (
+            self._directory_identity.device,
+            self._directory_identity.inode,
+            self._directory_identity.uid,
+        ):
             raise PinnedDirectoryExecutorError("directory identity changed")
 
     @staticmethod

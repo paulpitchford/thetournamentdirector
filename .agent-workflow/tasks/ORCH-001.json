@@ -1,34 +1,32 @@
 {
-  "id": "ORCH-003D1B0M",
+  "id": "ORCH-003D1B0N1",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Reserve one workspace-derived direct Git branch through live workspace and pinned repository capabilities",
-  "nonGoals": ["Create a worktree", "Commit changes", "Push a branch", "Open a pull request", "Merge"],
-  "dependsOn": ["ORCH-003D1B0K5", "ORCH-003D1B0L6"],
+  "objective": "Expose immutable non-authoritative pinned-directory identity evidence for later capability composition",
+  "nonGoals": ["Expose a pathname", "Expose a descriptor", "Authorize an operation from identity evidence", "Run Git", "Create a worktree"],
+  "dependsOn": ["ORCH-003D1B0L6"],
   "acceptanceCriteria": [
-    "dual-capability|WHEN branch reservation runs|ASSERT TEST_PASS exact-branch-reservation-tests",
-    "repository-substitution|WHEN repository pathname is replaced|ASSERT ABSENT replacement-branch",
-    "hook-denial|WHEN reference-transaction hook is configured|ASSERT ABSENT hook-ran",
-    "direct-observation|WHEN exact direct ref is observed|ASSERT VALUE \"created at requested SHA\"",
-    "ambiguous-ref|WHEN an existing symbolic or exact ref is observed|ASSERT ERROR ExactBranchIndeterminateError"
+    "frozen-identity|WHEN pinned directory identity is read|ASSERT TEST_PASS pinned-directory-identity-tests",
+    "no-authority|WHEN identity fields are inspected|ASSERT ABSENT descriptor",
+    "closed-capability|WHEN identity survives close|ASSERT ERROR PinnedDirectoryExecutorError",
+    "substitution-evidence|WHEN two directories are pinned|ASSERT VALUE \"identities differ\""
   ],
   "acceptanceEvidenceIds": {
-    "dual-capability|WHEN branch reservation runs|ASSERT TEST_PASS exact-branch-reservation-tests": ["exact-branch-reservation-tests"],
-    "repository-substitution|WHEN repository pathname is replaced|ASSERT ABSENT replacement-branch": ["exact-branch-reservation-tests"],
-    "hook-denial|WHEN reference-transaction hook is configured|ASSERT ABSENT hook-ran": ["exact-branch-reservation-tests"],
-    "direct-observation|WHEN exact direct ref is observed|ASSERT VALUE \"created at requested SHA\"": ["exact-branch-reservation-tests"],
-    "ambiguous-ref|WHEN an existing symbolic or exact ref is observed|ASSERT ERROR ExactBranchIndeterminateError": ["exact-branch-reservation-tests"]
+    "frozen-identity|WHEN pinned directory identity is read|ASSERT TEST_PASS pinned-directory-identity-tests": ["pinned-directory-identity-tests"],
+    "no-authority|WHEN identity fields are inspected|ASSERT ABSENT descriptor": ["pinned-directory-identity-tests"],
+    "closed-capability|WHEN identity survives close|ASSERT ERROR PinnedDirectoryExecutorError": ["pinned-directory-identity-tests"],
+    "substitution-evidence|WHEN two directories are pinned|ASSERT VALUE \"identities differ\"": ["pinned-directory-identity-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/exact_branch_reservation.py",
-    ".agent-workflow/controller/tests/test_exact_branch_reservation.py",
+    ".agent-workflow/controller/td_controller/pinned_directory_executor.py",
+    ".agent-workflow/controller/tests/test_pinned_directory_identity.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 450,
+  "maxChangedLines": 250,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
