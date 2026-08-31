@@ -1,32 +1,34 @@
 {
-  "id": "ORCH-003D1B0L4",
+  "id": "ORCH-003D1B0L5",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Apply a validated pinned UID and GID in the subprocess child immediately before exec",
-  "nonGoals": ["Change parent credentials", "Inspect a directory", "Run Git", "Create a worktree", "Clear supplementary groups"],
-  "dependsOn": ["ORCH-003D1B0L2"],
+  "objective": "Execute bounded child-identity-bound commands from a pinned directory descriptor",
+  "nonGoals": ["Expose a repository pathname", "Expose a descriptor", "Run Git mutation", "Create a worktree", "Accept model commands"],
+  "dependsOn": ["ORCH-003D1B0K3", "ORCH-003D1B0K5", "ORCH-003D1B0L2", "ORCH-003D1B0L4"],
   "acceptanceCriteria": [
-    "child-uid|WHEN an explicit effective identity is supplied|ASSERT VALUE \"child euid equals pin\"",
-    "child-gid|WHEN an explicit effective identity is supplied|ASSERT VALUE \"child egid equals pin\"",
-    "popen-binding|WHEN the process is launched|ASSERT TEST_PASS identity-popen-proof",
-    "invalid-pin|WHEN UID or GID is boolean or negative|ASSERT ERROR CodexReviewError"
+    "descriptor-cwd|WHEN the original pathname is replaced|ASSERT TEST_PASS pinned-directory-executor-proof",
+    "replacement-isolation|WHEN a command writes a relative marker|ASSERT ABSENT replacement-marker",
+    "child-identity|WHEN a bounded command launches|ASSERT TEST_PASS identity-bound-subprocess-tests",
+    "effective-owner|WHEN directory ownership differs from effective UID|ASSERT ERROR PinnedDirectoryExecutorError",
+    "bounded-input|WHEN environment command stdin or timeout is invalid|ASSERT ERROR PinnedDirectoryExecutorError"
   ],
   "acceptanceEvidenceIds": {
-    "child-uid|WHEN an explicit effective identity is supplied|ASSERT VALUE \"child euid equals pin\"": ["identity-bound-subprocess-tests"],
-    "child-gid|WHEN an explicit effective identity is supplied|ASSERT VALUE \"child egid equals pin\"": ["identity-bound-subprocess-tests"],
-    "popen-binding|WHEN the process is launched|ASSERT TEST_PASS identity-popen-proof": ["identity-popen-proof"],
-    "invalid-pin|WHEN UID or GID is boolean or negative|ASSERT ERROR CodexReviewError": ["identity-bound-subprocess-tests"]
+    "descriptor-cwd|WHEN the original pathname is replaced|ASSERT TEST_PASS pinned-directory-executor-proof": ["pinned-directory-executor-proof"],
+    "replacement-isolation|WHEN a command writes a relative marker|ASSERT ABSENT replacement-marker": ["pinned-directory-executor-proof"],
+    "child-identity|WHEN a bounded command launches|ASSERT TEST_PASS identity-bound-subprocess-tests": ["identity-bound-subprocess-tests"],
+    "effective-owner|WHEN directory ownership differs from effective UID|ASSERT ERROR PinnedDirectoryExecutorError": ["pinned-directory-executor-tests"],
+    "bounded-input|WHEN environment command stdin or timeout is invalid|ASSERT ERROR PinnedDirectoryExecutorError": ["pinned-directory-executor-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/review_runtime.py",
-    ".agent-workflow/controller/tests/test_review_runtime.py",
+    ".agent-workflow/controller/td_controller/pinned_directory_executor.py",
+    ".agent-workflow/controller/tests/test_pinned_directory_executor.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 250,
+  "maxChangedLines": 450,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
