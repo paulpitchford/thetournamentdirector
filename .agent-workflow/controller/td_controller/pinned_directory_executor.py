@@ -201,6 +201,7 @@ class PinnedDirectoryExecutor:
                 if (
                     not stat.S_ISREG(marker_stat.st_mode)
                     or marker_stat.st_uid != self._process_identity.uid
+                    or stat.S_IMODE(marker_stat.st_mode) & 0o022
                     or marker_stat.st_size != len(marker_payload)
                 ):
                     raise OSError("workspace marker is unsafe")
@@ -215,6 +216,8 @@ class PinnedDirectoryExecutor:
                     dir_fd=git_fd,
                 )
                 opened.append(worktrees_fd)
+                git_stat = os.fstat(git_fd)
+                worktrees_stat = os.fstat(worktrees_fd)
                 admin_fd = os.open(
                     target.admin_name,
                     os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
@@ -227,8 +230,15 @@ class PinnedDirectoryExecutor:
                 )
                 opened.append(target_fd)
                 admin_stat = os.fstat(admin_fd)
+                target_stat = os.fstat(target_fd)
+                for directory_stat in (git_stat, worktrees_stat, admin_stat):
+                    if (
+                        directory_stat.st_uid != self._process_identity.uid
+                        or stat.S_IMODE(directory_stat.st_mode) & 0o022
+                    ):
+                        raise OSError("repository metadata mode is unsafe")
                 if (admin_stat.st_dev, admin_stat.st_ino) != (
-                    os.fstat(target_fd).st_dev, os.fstat(target_fd).st_ino
+                    target_stat.st_dev, target_stat.st_ino
                 ):
                     raise OSError("admin target mismatch")
                 backlink_fd = os.open(
@@ -241,6 +251,7 @@ class PinnedDirectoryExecutor:
                 if (
                     not stat.S_ISREG(backlink_stat.st_mode)
                     or backlink_stat.st_uid != self._process_identity.uid
+                    or stat.S_IMODE(backlink_stat.st_mode) & 0o022
                     or backlink_stat.st_size != len(backlink)
                 ):
                     raise OSError("admin backlink is unsafe")
@@ -249,10 +260,24 @@ class PinnedDirectoryExecutor:
                 )
                 opened.append(parent_fd)
                 parent_stat = os.fstat(parent_fd)
-                if (parent_stat.st_dev, parent_stat.st_ino) != (
-                    expected_identity.device, expected_identity.inode
+                if (
+                    (parent_stat.st_dev, parent_stat.st_ino)
+                    != (expected_identity.device, expected_identity.inode)
+                    or parent_stat.st_uid != self._process_identity.uid
+                    or stat.S_IMODE(parent_stat.st_mode) != 0o700
                 ):
                     raise OSError("admin backlink mismatch")
+                backlink_after = os.fstat(backlink_fd)
+                if (
+                    backlink_after.st_dev, backlink_after.st_ino,
+                    backlink_after.st_size, backlink_after.st_mtime_ns,
+                    backlink_after.st_ctime_ns,
+                ) != (
+                    backlink_stat.st_dev, backlink_stat.st_ino,
+                    backlink_stat.st_size, backlink_stat.st_mtime_ns,
+                    backlink_stat.st_ctime_ns,
+                ):
+                    raise OSError("admin backlink changed")
                 marker_after = os.fstat(marker_fd)
                 if (
                     marker_after.st_dev, marker_after.st_ino,

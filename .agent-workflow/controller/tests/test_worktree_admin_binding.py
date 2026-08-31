@@ -95,6 +95,25 @@ class WorktreeAdminBindingTests(unittest.TestCase):
                 descriptor=self.workspace_fd, expected_identity=self.identity
             )
 
+    def test_writable_backlink_and_metadata_directory_are_rejected(self) -> None:
+        binding = self.repository.verify_worktree_admin_binding(
+            descriptor=self.workspace_fd, expected_identity=self.identity
+        )
+        admin = self.repository_path / ".git/worktrees" / binding.admin_name
+        backlink = admin / "gitdir"
+        backlink.chmod(0o666)
+        with self.assertRaises(PinnedDirectoryExecutorError):
+            self.repository.verify_worktree_admin_binding(
+                descriptor=self.workspace_fd, expected_identity=self.identity
+            )
+        backlink.chmod(0o644)
+        admin.chmod(0o777)
+        with self.assertRaises(PinnedDirectoryExecutorError):
+            self.repository.verify_worktree_admin_binding(
+                descriptor=self.workspace_fd, expected_identity=self.identity
+            )
+        admin.chmod(0o755)
+
     def test_changed_backlink_and_symlink_marker_are_rejected(self) -> None:
         binding = self.repository.verify_worktree_admin_binding(
             descriptor=self.workspace_fd, expected_identity=self.identity

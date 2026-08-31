@@ -10,6 +10,7 @@
     "copied-marker|WHEN marker targets another repository|ASSERT ERROR PinnedDirectoryExecutorError",
     "backlink-binding|WHEN admin backlink targets another workspace|ASSERT ERROR PinnedDirectoryExecutorError",
     "nofollow-marker|WHEN workspace marker is a symlink|ASSERT ERROR PinnedDirectoryExecutorError",
+    "metadata-mode|WHEN backlink or admin directory is writable|ASSERT ERROR PinnedDirectoryExecutorError",
     "no-authority-export|WHEN binding evidence is returned|ASSERT ABSENT descriptor"
   ],
   "acceptanceEvidenceIds": {
@@ -17,6 +18,7 @@
     "copied-marker|WHEN marker targets another repository|ASSERT ERROR PinnedDirectoryExecutorError": ["worktree-admin-binding-tests"],
     "backlink-binding|WHEN admin backlink targets another workspace|ASSERT ERROR PinnedDirectoryExecutorError": ["worktree-admin-binding-tests"],
     "nofollow-marker|WHEN workspace marker is a symlink|ASSERT ERROR PinnedDirectoryExecutorError": ["worktree-admin-binding-tests"],
+    "metadata-mode|WHEN backlink or admin directory is writable|ASSERT ERROR PinnedDirectoryExecutorError": ["worktree-admin-binding-tests"],
     "no-authority-export|WHEN binding evidence is returned|ASSERT ABSENT descriptor": ["worktree-admin-binding-tests"]
   },
   "acceptanceEvidenceRequirements": {},
