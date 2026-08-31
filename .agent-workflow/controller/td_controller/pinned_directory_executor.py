@@ -18,6 +18,7 @@ from .effective_identity import (
 )
 from .review_contract import CodexReviewError
 from .review_runtime import MAX_INPUT_BYTES, ProcessOutput, SubprocessExecutor
+from .workspace_identity_handle import WorkspaceIdentity
 
 ENV_KEY = re.compile(r"[A-Z][A-Z0-9_]{0,63}")
 ENV_KEYS = frozenset({
@@ -87,28 +88,10 @@ class PinnedDirectoryExecutor:
         timeout_seconds: int = 30,
     ) -> ProcessOutput:
         """Run while the descriptor remains live; export no path or descriptor."""
-        if type(command) is not list:
-            raise PinnedDirectoryExecutorError("directory command is invalid")
-        command_snapshot = tuple(command)
+        command_snapshot = self._validated_command(
+            command, input_bytes, timeout_seconds
+        )
         clean_environment = self._validate_environment(environment)
-        if (
-            not 1 <= len(command_snapshot) <= 64
-            or not isinstance(command_snapshot[0], str)
-            or not Path(command_snapshot[0]).is_absolute()
-            or any(
-                not isinstance(argument, str)
-                or not argument.isascii()
-                or "\x00" in argument
-                or len(argument) > 4096
-                for argument in command_snapshot
-            )
-            or not isinstance(input_bytes, bytes)
-            or len(input_bytes) > MAX_INPUT_BYTES
-            or isinstance(timeout_seconds, bool)
-            or not isinstance(timeout_seconds, int)
-            or not 1 <= timeout_seconds <= 600
-        ):
-            raise PinnedDirectoryExecutorError("directory command is invalid")
         with self._lock:
             self._verify_locked()
             cwd = Path(f"/proc/self/fd/{self._descriptor}")
@@ -124,6 +107,46 @@ class PinnedDirectoryExecutor:
             except (CodexReviewError, OSError):
                 raise PinnedDirectoryExecutorError(
                     "directory command process failed"
+                ) from None
+            self._verify_locked()
+            return output
+
+    def run_with_workspace_descriptor(
+        self,
+        command: list[str],
+        *,
+        environment: Mapping[str, str],
+        descriptor: int,
+        expected_identity: WorkspaceIdentity,
+        input_bytes: bytes = b"",
+        timeout_seconds: int = 30,
+    ) -> ProcessOutput:
+        """Run a trusted call with one internally substituted workspace fd."""
+        command_snapshot = self._validated_command(
+            command, input_bytes, timeout_seconds
+        )
+        clean_environment = self._validate_environment(environment)
+        with self._lock:
+            self._verify_locked()
+            cwd = Path(f"/proc/self/fd/{self._descriptor}")
+            executor = SubprocessExecutor(
+                lambda _: clean_environment,
+                process_identity=self._process_identity,
+            )
+            process_failed = False
+            try:
+                output = executor.run_with_workspace_descriptor(
+                    list(command_snapshot), descriptor=descriptor,
+                    expected_identity=expected_identity,
+                    input_bytes=input_bytes, cwd=cwd,
+                    timeout_seconds=timeout_seconds,
+                )
+            except (CodexReviewError, OSError):
+                process_failed = True
+                output = None
+            if process_failed or output is None:
+                raise PinnedDirectoryExecutorError(
+                    "workspace argument process failed"
                 ) from None
             self._verify_locked()
             return output
@@ -240,6 +263,33 @@ class PinnedDirectoryExecutor:
             or stat.S_IMODE(metadata.st_mode) & 0o022
         ):
             raise PinnedDirectoryExecutorError("directory ownership is unsafe")
+
+    @staticmethod
+    def _validated_command(
+        command: list[str], input_bytes: bytes, timeout_seconds: int
+    ) -> tuple[str, ...]:
+        if type(command) is not list:
+            raise PinnedDirectoryExecutorError("directory command is invalid")
+        snapshot = tuple(command)
+        if (
+            not 1 <= len(snapshot) <= 64
+            or not isinstance(snapshot[0], str)
+            or not Path(snapshot[0]).is_absolute()
+            or any(
+                not isinstance(argument, str)
+                or not argument.isascii()
+                or "\x00" in argument
+                or len(argument) > 4096
+                for argument in snapshot
+            )
+            or not isinstance(input_bytes, bytes)
+            or len(input_bytes) > MAX_INPUT_BYTES
+            or isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, int)
+            or not 1 <= timeout_seconds <= 600
+        ):
+            raise PinnedDirectoryExecutorError("directory command is invalid")
+        return snapshot
 
     @staticmethod
     def _validate_environment(environment: Mapping[str, str]) -> dict[str, str]:
