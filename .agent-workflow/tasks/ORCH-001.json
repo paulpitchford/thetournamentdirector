@@ -1,34 +1,34 @@
 {
-  "id": "ORCH-003D1B0O5",
+  "id": "ORCH-003D1B0O6A",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Materialize every allowed entry from one canonical Git tree manifest",
-  "nonGoals": ["Write denied recovered roots", "Verify absence of unrelated workspace files", "Commit or push"],
-  "dependsOn": ["ORCH-003D1B0O3C", "ORCH-003D1B0O4"],
+  "objective": "Enumerate descriptor-relative directory names with a lazy hard bound",
+  "nonGoals": ["Inspect entry metadata", "Traverse child directories", "Modify filesystem state"],
+  "dependsOn": ["ORCH-003D1B0O5"],
   "acceptanceCriteria": [
-    "complete-allowed|WHEN canonical manifest contains regular and executable blobs|ASSERT TEST_PASS workspace-tree-materializer-tests",
-    "denied-skipped|WHEN manifest contains denied recovered path|ASSERT ABSENT denied-file",
-    "canonical-only|WHEN manifest is unordered aliased or forged|ASSERT ERROR WorkspaceTreeRejectedError",
-    "partial|WHEN later blob retrieval fails after publication|ASSERT ERROR WorkspaceTreeIndeterminateError",
-    "held-tree|WHEN tree operation runs|ASSERT VALUE \"one live workspace hold across all entries\""
+    "real-directory|WHEN bounded directory is enumerated|ASSERT TEST_PASS bounded-directory-entry-tests",
+    "lazy-bound|WHEN iterator exceeds limit|ASSERT VALUE \"consume only first excess entry\"",
+    "cleanup|WHEN enumeration succeeds or fails|ASSERT VALUE \"iterator closed\"",
+    "unsafe-name|WHEN entry name is malformed|ASSERT ERROR BoundedDirectoryEntriesError",
+    "invalid-input|WHEN descriptor or bound is invalid|ASSERT ERROR BoundedDirectoryEntriesError"
   ],
   "acceptanceEvidenceIds": {
-    "complete-allowed|WHEN canonical manifest contains regular and executable blobs|ASSERT TEST_PASS workspace-tree-materializer-tests": ["workspace-tree-materializer-tests"],
-    "denied-skipped|WHEN manifest contains denied recovered path|ASSERT ABSENT denied-file": ["workspace-tree-materializer-tests"],
-    "canonical-only|WHEN manifest is unordered aliased or forged|ASSERT ERROR WorkspaceTreeRejectedError": ["workspace-tree-materializer-tests"],
-    "partial|WHEN later blob retrieval fails after publication|ASSERT ERROR WorkspaceTreeIndeterminateError": ["workspace-tree-materializer-tests"],
-    "held-tree|WHEN tree operation runs|ASSERT VALUE \"one live workspace hold across all entries\"": ["workspace-tree-materializer-tests"]
+    "real-directory|WHEN bounded directory is enumerated|ASSERT TEST_PASS bounded-directory-entry-tests": ["bounded-directory-entry-tests"],
+    "lazy-bound|WHEN iterator exceeds limit|ASSERT VALUE \"consume only first excess entry\"": ["bounded-directory-entry-tests"],
+    "cleanup|WHEN enumeration succeeds or fails|ASSERT VALUE \"iterator closed\"": ["bounded-directory-entry-tests"],
+    "unsafe-name|WHEN entry name is malformed|ASSERT ERROR BoundedDirectoryEntriesError": ["bounded-directory-entry-tests"],
+    "invalid-input|WHEN descriptor or bound is invalid|ASSERT ERROR BoundedDirectoryEntriesError": ["bounded-directory-entry-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/workspace_tree_materializer.py",
-    ".agent-workflow/controller/tests/test_workspace_tree_materializer.py",
+    ".agent-workflow/controller/td_controller/bounded_directory_entries.py",
+    ".agent-workflow/controller/tests/test_bounded_directory_entries.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 450,
+  "maxChangedLines": 300,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
