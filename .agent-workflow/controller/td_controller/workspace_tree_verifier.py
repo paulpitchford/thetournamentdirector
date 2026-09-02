@@ -10,6 +10,11 @@ from pathlib import PurePosixPath
 from .bounded_fd_read import BoundedFdReadError, MAX_FD_READ_BYTES, read_exact_fd
 from .exact_git_blob import ExactGitBlobError, verify_exact_git_blob
 from .git_tree_manifest import GitTreeEntry
+from .pinned_directory_executor import (
+    PinnedDirectoryExecutor,
+    PinnedDirectoryExecutorError,
+    WorktreeAdminBinding,
+)
 from .workspace_identity_handle import (
     WorkspaceIdentity,
     WorkspaceIdentityHandle,
@@ -30,13 +35,15 @@ class VerifiedWorkspaceTree:
 
 def verify_workspace_tree(
     *,
+    repository: PinnedDirectoryExecutor,
     workspace: WorkspaceIdentityHandle,
     descriptor: int,
     manifest: tuple[GitTreeEntry, ...],
 ) -> VerifiedWorkspaceTree:
-    """Verify modes, bytes and absence of extras under controller exclusion."""
+    """Verify binding, modes, bytes and no extras under controller exclusion."""
     if (
-        type(workspace) is not WorkspaceIdentityHandle
+        type(repository) is not PinnedDirectoryExecutor
+        or type(workspace) is not WorkspaceIdentityHandle
         or isinstance(descriptor, bool)
         or not isinstance(descriptor, int)
         or descriptor < 0
@@ -52,11 +59,15 @@ def verify_workspace_tree(
     }
     try:
         with workspace.hold_identity() as identity:
+            binding = repository.verify_worktree_admin_binding(
+                descriptor=descriptor, expected_identity=identity
+            )
             seen_files: set[PurePosixPath] = set()
             seen_directories: set[PurePosixPath] = set()
             _verify_directory(
-                descriptor, identity, PurePosixPath("."), files, directories,
-                seen_files, seen_directories, is_root=True,
+                descriptor, identity, binding, PurePosixPath("."),
+                files, directories, seen_files, seen_directories,
+                is_root=True,
             )
             if seen_files != set(files) or seen_directories != directories:
                 raise OSError("workspace tree is incomplete")
@@ -64,6 +75,7 @@ def verify_workspace_tree(
         BoundedFdReadError,
         ExactGitBlobError,
         OSError,
+        PinnedDirectoryExecutorError,
         WorkspaceIdentityHandleError,
     ):
         raise WorkspaceTreeVerificationError(
@@ -75,6 +87,7 @@ def verify_workspace_tree(
 def _verify_directory(
     descriptor: int,
     identity: WorkspaceIdentity,
+    binding: WorktreeAdminBinding,
     relative: PurePosixPath,
     files: dict[PurePosixPath, GitTreeEntry],
     directories: set[PurePosixPath],
@@ -84,7 +97,6 @@ def _verify_directory(
     is_root: bool,
 ) -> None:
     directory_fd = os.dup(descriptor)
-    opened: list[int] = [directory_fd]
     failed = False
     try:
         metadata = os.fstat(directory_fd)
@@ -92,9 +104,11 @@ def _verify_directory(
             not stat.S_ISDIR(metadata.st_mode)
             or metadata.st_uid != os.geteuid()
             or stat.S_IMODE(metadata.st_mode) != 0o700
-            or is_root
-            and (metadata.st_dev, metadata.st_ino)
-            != (identity.device, identity.inode)
+            or (
+                is_root
+                and (metadata.st_dev, metadata.st_ino)
+                != (identity.device, identity.inode)
+            )
         ):
             raise OSError("workspace directory metadata is invalid")
         names = os.listdir(directory_fd)
@@ -106,44 +120,50 @@ def _verify_directory(
             if is_root and name == ".git":
                 marker_seen = True
                 marker_fd = os.open(
-                    name, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                    name,
+                    os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC,
                     dir_fd=directory_fd,
                 )
-                opened.append(marker_fd)
-                _require_marker(marker_fd)
+                try:
+                    _require_marker(marker_fd, binding)
+                finally:
+                    os.close(marker_fd)
             elif path in directories:
                 child_fd = os.open(
                     name,
                     os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
                     dir_fd=directory_fd,
                 )
-                opened.append(child_fd)
-                seen_directories.add(path)
-                _verify_directory(
-                    child_fd, identity, path, files, directories,
-                    seen_files, seen_directories, is_root=False,
-                )
+                try:
+                    seen_directories.add(path)
+                    _verify_directory(
+                        child_fd, identity, binding, path, files, directories,
+                        seen_files, seen_directories, is_root=False,
+                    )
+                finally:
+                    os.close(child_fd)
             elif path in files:
                 file_fd = os.open(
-                    name, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                    name,
+                    os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC,
                     dir_fd=directory_fd,
                 )
-                opened.append(file_fd)
-                _verify_file(file_fd, files[path])
-                seen_files.add(path)
+                try:
+                    _verify_file(file_fd, files[path])
+                    seen_files.add(path)
+                finally:
+                    os.close(file_fd)
             else:
                 raise OSError("workspace tree has an unexpected path")
         if is_root and not marker_seen:
             raise OSError("workspace marker is absent")
     except (BoundedFdReadError, ExactGitBlobError, OSError):
         failed = True
-    cleanup_failed = False
-    for opened_fd in reversed(opened):
-        try:
-            os.close(opened_fd)
-        except OSError:
-            cleanup_failed = True
-    if failed or cleanup_failed:
+    try:
+        os.close(directory_fd)
+    except OSError:
+        failed = True
+    if failed:
         raise OSError("workspace directory verification failed")
 
 
@@ -162,7 +182,9 @@ def _verify_file(descriptor: int, entry: GitTreeEntry) -> None:
     verify_exact_git_blob(entry, payload)
 
 
-def _require_marker(descriptor: int) -> None:
+def _require_marker(
+    descriptor: int, binding: WorktreeAdminBinding
+) -> None:
     metadata = os.fstat(descriptor)
     if (
         not stat.S_ISREG(metadata.st_mode)
@@ -170,5 +192,7 @@ def _require_marker(descriptor: int) -> None:
         or metadata.st_nlink != 1
         or stat.S_IMODE(metadata.st_mode) & 0o022
         or not 1 <= metadata.st_size <= 4096
+        or (metadata.st_dev, metadata.st_ino)
+        != (binding.marker_device, binding.marker_inode)
     ):
         raise OSError("workspace marker metadata is invalid")
