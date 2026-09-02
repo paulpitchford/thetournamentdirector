@@ -11,6 +11,7 @@
     "mode-binding|WHEN executable and regular blobs are written|ASSERT VALUE \"0755 and 0644\"",
     "no-overwrite|WHEN target already exists|ASSERT ERROR WorkspaceBlobRejectedError",
     "nofollow-parent|WHEN parent component is a symlink|ASSERT ERROR WorkspaceBlobRejectedError",
+    "parent-race|WHEN opened parent is renamed during publish|ASSERT ERROR WorkspaceBlobIndeterminateError",
     "write-failure|WHEN partial write fails|ASSERT ERROR WorkspaceBlobIndeterminateError"
   ],
   "acceptanceEvidenceIds": {
@@ -19,6 +20,7 @@
     "mode-binding|WHEN executable and regular blobs are written|ASSERT VALUE \"0755 and 0644\"": ["workspace-blob-writer-tests"],
     "no-overwrite|WHEN target already exists|ASSERT ERROR WorkspaceBlobRejectedError": ["workspace-blob-writer-tests"],
     "nofollow-parent|WHEN parent component is a symlink|ASSERT ERROR WorkspaceBlobRejectedError": ["workspace-blob-writer-tests"],
+    "parent-race|WHEN opened parent is renamed during publish|ASSERT ERROR WorkspaceBlobIndeterminateError": ["workspace-blob-writer-tests"],
     "write-failure|WHEN partial write fails|ASSERT ERROR WorkspaceBlobIndeterminateError": ["workspace-blob-writer-tests"]
   },
   "acceptanceEvidenceRequirements": {},

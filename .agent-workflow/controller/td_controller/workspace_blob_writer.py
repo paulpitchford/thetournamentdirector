@@ -102,7 +102,6 @@ def write_workspace_blob(
             if written <= 0:
                 raise OSError("workspace blob write made no progress")
             pending = pending[written:]
-        os.fsync(file_fd)
         final_mode = 0o755 if entry.executable else 0o644
         os.fchmod(file_fd, final_mode)
         file_stat = os.fstat(file_fd)
@@ -113,6 +112,7 @@ def write_workspace_blob(
             or file_stat.st_size != len(blob.payload)
         ):
             raise OSError("workspace blob metadata is invalid")
+        os.fsync(file_fd)
         os.link(
             temporary, name,
             src_dir_fd=parent_fd, dst_dir_fd=parent_fd,
@@ -128,6 +128,11 @@ def write_workspace_blob(
         file_stat = os.fstat(file_fd)
         if file_stat.st_nlink != 1:
             raise OSError("published workspace link count is invalid")
+        resolved_stat = _resolve_published(root_fd, entry.path)
+        if (resolved_stat.st_dev, resolved_stat.st_ino) != (
+            file_stat.st_dev, file_stat.st_ino
+        ):
+            raise OSError("published workspace path changed")
         for directory_fd in reversed(opened[:-1]):
             os.fsync(directory_fd)
         result = WrittenWorkspaceBlob(
@@ -135,6 +140,12 @@ def write_workspace_blob(
             file_stat.st_dev, file_stat.st_ino,
         )
     except (ExactGitBlobError, OSError):
+        if published and parent_fd >= 0:
+            try:
+                os.unlink(entry.path.name, dir_fd=parent_fd)
+                published = False
+            except OSError:
+                pass
         if temporary_created and parent_fd >= 0:
             try:
                 os.unlink(temporary, dir_fd=parent_fd)
@@ -181,6 +192,39 @@ def _valid_inputs(
         and blob.blob_sha == entry.blob_sha
         and blob.executable is entry.executable
     )
+
+
+def _resolve_published(
+    root_descriptor: int, path: PurePosixPath
+) -> os.stat_result:
+    opened: list[int] = []
+    try:
+        parent_fd = os.dup(root_descriptor)
+        opened.append(parent_fd)
+        for component in path.parts[:-1]:
+            parent_fd = os.open(
+                component,
+                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                dir_fd=parent_fd,
+            )
+            opened.append(parent_fd)
+        file_fd = os.open(
+            path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC,
+            dir_fd=parent_fd,
+        )
+        opened.append(file_fd)
+        metadata = os.fstat(file_fd)
+    except OSError:
+        metadata = None
+    cleanup_failed = False
+    for opened_fd in reversed(opened):
+        try:
+            os.close(opened_fd)
+        except OSError:
+            cleanup_failed = True
+    if metadata is None or cleanup_failed:
+        raise OSError("published workspace path is unavailable")
+    return metadata
 
 
 def _require_directory(descriptor: int, identity: WorkspaceIdentity) -> None:

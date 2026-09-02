@@ -105,6 +105,29 @@ class WorkspaceBlobWriterTests(unittest.TestCase):
                 entry=entry, blob=forged,
             )
 
+    def test_parent_rename_during_publish_is_indeterminate_and_cleaned(self) -> None:
+        entry, blob = self.entry("nested/file.txt", b"content")
+        moved = self.root / "moved-parent"
+        real_link = os.link
+
+        def move_parent(*args, **kwargs):
+            real_link(*args, **kwargs)
+            (self.root / "nested").rename(moved)
+            (self.root / "nested").mkdir(mode=0o700)
+
+        with patch(
+            "td_controller.workspace_blob_writer.os.link",
+            side_effect=move_parent,
+        ):
+            with self.assertRaises(WorkspaceBlobIndeterminateError):
+                write_workspace_blob(
+                    descriptor=self.descriptor,
+                    expected_identity=self.identity,
+                    entry=entry, blob=blob,
+                )
+        self.assertFalse((moved / "file.txt").exists())
+        self.assertFalse((self.root / "nested/file.txt").exists())
+
     def test_write_failure_is_indeterminate_and_partial_is_removed(self) -> None:
         entry, blob = self.entry("failed.txt", b"content")
         with patch(
