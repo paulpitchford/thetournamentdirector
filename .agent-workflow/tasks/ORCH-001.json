@@ -1,36 +1,34 @@
 {
-  "id": "ORCH-003D1B0O6C",
+  "id": "ORCH-003D1B0O7",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Verify an exact held workspace tree with lazy bounded traversal and bound worktree metadata",
-  "nonGoals": ["Modify workspace content", "Revalidate repository object storage", "Commit or push"],
-  "dependsOn": ["ORCH-003D1B0O6B", "ORCH-003D1B0O5"],
+  "objective": "Load a commit-bound canonical tree manifest through the pinned repository",
+  "nonGoals": ["Read blob payloads", "Write workspace content", "Commit or push"],
+  "dependsOn": ["ORCH-003D1B0O6C"],
   "acceptanceCriteria": [
-    "exact-tree|WHEN workspace exactly matches allowed manifest|ASSERT TEST_PASS workspace-tree-verifier-tests",
-    "lazy-enumeration|WHEN directory contains excess entries|ASSERT ERROR WorkspaceTreeVerificationError",
-    "bound-marker|WHEN marker does not match live repository admin binding|ASSERT ERROR WorkspaceTreeVerificationError",
-    "nonblocking-leaf|WHEN expected file or marker is FIFO|ASSERT ERROR WorkspaceTreeVerificationError",
-    "bounded-fds|WHEN wide tree is traversed|ASSERT VALUE \"child descriptor closed before next sibling\"",
-    "bytes-modes|WHEN exact files are verified|ASSERT VALUE \"blob digests modes and no extras\""
+    "real-manifest|WHEN exact commit exists|ASSERT TEST_PASS repository-manifest-loader-tests",
+    "commit-binding|WHEN exact manifest loads|ASSERT VALUE \"requested exact commit SHA\"",
+    "stderr|WHEN ls-tree emits stderr|ASSERT ERROR RepositoryManifestLoadError",
+    "malformed|WHEN ls-tree bytes are malformed|ASSERT ERROR RepositoryManifestLoadError",
+    "invalid-sha|WHEN commit identity is invalid|ASSERT ERROR RepositoryManifestLoadError"
   ],
   "acceptanceEvidenceIds": {
-    "exact-tree|WHEN workspace exactly matches allowed manifest|ASSERT TEST_PASS workspace-tree-verifier-tests": ["workspace-tree-verifier-tests"],
-    "lazy-enumeration|WHEN directory contains excess entries|ASSERT ERROR WorkspaceTreeVerificationError": ["workspace-tree-verifier-tests"],
-    "bound-marker|WHEN marker does not match live repository admin binding|ASSERT ERROR WorkspaceTreeVerificationError": ["workspace-tree-verifier-tests"],
-    "nonblocking-leaf|WHEN expected file or marker is FIFO|ASSERT ERROR WorkspaceTreeVerificationError": ["workspace-tree-verifier-tests"],
-    "bounded-fds|WHEN wide tree is traversed|ASSERT VALUE \"child descriptor closed before next sibling\"": ["workspace-tree-verifier-tests"],
-    "bytes-modes|WHEN exact files are verified|ASSERT VALUE \"blob digests modes and no extras\"": ["workspace-tree-verifier-tests"]
+    "real-manifest|WHEN exact commit exists|ASSERT TEST_PASS repository-manifest-loader-tests": ["repository-manifest-loader-tests"],
+    "commit-binding|WHEN exact manifest loads|ASSERT VALUE \"requested exact commit SHA\"": ["repository-manifest-loader-tests"],
+    "stderr|WHEN ls-tree emits stderr|ASSERT ERROR RepositoryManifestLoadError": ["repository-manifest-loader-tests"],
+    "malformed|WHEN ls-tree bytes are malformed|ASSERT ERROR RepositoryManifestLoadError": ["repository-manifest-loader-tests"],
+    "invalid-sha|WHEN commit identity is invalid|ASSERT ERROR RepositoryManifestLoadError": ["repository-manifest-loader-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/workspace_tree_verifier.py",
-    ".agent-workflow/controller/tests/test_workspace_tree_verifier.py",
+    ".agent-workflow/controller/td_controller/repository_manifest_loader.py",
+    ".agent-workflow/controller/tests/test_repository_manifest_loader.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 450,
+  "maxChangedLines": 300,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
