@@ -133,6 +133,11 @@ def write_workspace_blob(
             file_stat.st_dev, file_stat.st_ino
         ):
             raise OSError("published workspace path changed")
+        os.lseek(file_fd, 0, os.SEEK_SET)
+        final_payload = os.read(file_fd, len(blob.payload) + 1)
+        if verify_exact_git_blob(entry, final_payload) != blob:
+            raise OSError("published workspace blob changed")
+        file_stat = os.fstat(file_fd)
         for directory_fd in reversed(opened[:-1]):
             os.fsync(directory_fd)
         result = WrittenWorkspaceBlob(

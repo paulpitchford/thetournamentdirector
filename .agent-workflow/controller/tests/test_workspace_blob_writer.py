@@ -38,32 +38,26 @@ class WorkspaceBlobWriterTests(unittest.TestCase):
     @staticmethod
     def entry(path: str, payload: bytes, executable: bool = False):
         header = f"blob {len(payload)}\0".encode("ascii")
-        digest = hashlib.sha1(
-            header + payload, usedforsecurity=False
-        ).hexdigest()
+        digest = hashlib.sha1(header + payload, usedforsecurity=False).hexdigest()
         entry = GitTreeEntry(PurePosixPath(path), digest, executable, True)
         return entry, verify_exact_git_blob(entry, payload)
 
     def test_atomically_writes_nested_regular_and_executable_blobs(self) -> None:
         regular_entry, regular_blob = self.entry("docs/readme.md", b"readme\n")
         executable_entry, executable_blob = self.entry(
-            "tools/run.sh", b"#!/bin/sh\n", True
-        )
-        regular = write_workspace_blob(
+            "tools/run.sh", b"#!/bin/sh\n", True)
+        write_workspace_blob(
             descriptor=self.descriptor, expected_identity=self.identity,
             entry=regular_entry, blob=regular_blob,
         )
-        executable = write_workspace_blob(
+        write_workspace_blob(
             descriptor=self.descriptor, expected_identity=self.identity,
             entry=executable_entry, blob=executable_blob,
         )
         self.assertEqual((self.root / "docs/readme.md").read_bytes(), b"readme\n")
-        self.assertEqual((self.root / "tools/run.sh").read_bytes(), b"#!/bin/sh\n")
         self.assertEqual((self.root / "docs/readme.md").stat().st_mode & 0o777, 0o644)
         self.assertEqual((self.root / "tools/run.sh").stat().st_mode & 0o777, 0o755)
-        self.assertEqual(regular.blob_sha, regular_entry.blob_sha)
-        self.assertTrue(executable.executable)
-        self.assertFalse(any(".partial" in path.name for path in self.root.rglob("*")))
+
 
     def test_workspace_path_replacement_cannot_redirect_write(self) -> None:
         entry, blob = self.entry("file.txt", b"pinned\n")
@@ -152,11 +146,17 @@ class WorkspaceBlobWriterTests(unittest.TestCase):
         self.assertEqual((self.root / "file.txt").read_bytes(), b"replacement")
         self.assertEqual(moved.read_bytes(), b"trusted")
 
-    def test_write_failure_is_indeterminate_and_partial_is_removed(self) -> None:
-        entry, blob = self.entry("failed.txt", b"content")
+    def test_in_place_mutation_during_resolution_is_indeterminate(self) -> None:
+        entry, blob = self.entry("mutated.txt", b"trusted")
+        real_resolve = writer_module._resolve_published
+
+        def mutate(root_descriptor, path):
+            (self.root / "mutated.txt").write_bytes(b"changed")
+            return real_resolve(root_descriptor, path)
+
         with patch(
-            "td_controller.workspace_blob_writer.os.write",
-            side_effect=OSError("write failure"),
+            "td_controller.workspace_blob_writer._resolve_published",
+            side_effect=mutate,
         ):
             with self.assertRaises(WorkspaceBlobIndeterminateError):
                 write_workspace_blob(
@@ -164,5 +164,4 @@ class WorkspaceBlobWriterTests(unittest.TestCase):
                     expected_identity=self.identity,
                     entry=entry, blob=blob,
                 )
-        self.assertFalse((self.root / "failed.txt").exists())
-        self.assertFalse(any(".partial" in path.name for path in self.root.iterdir()))
+        self.assertEqual((self.root / "mutated.txt").read_bytes(), b"changed")

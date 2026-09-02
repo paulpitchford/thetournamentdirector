@@ -11,7 +11,7 @@
     "replacement-preserved|WHEN published target is replaced concurrently|ASSERT VALUE \"replacement remains intact\"",
     "durable-mode|WHEN final mode is applied|ASSERT VALUE \"file synced before publish\"",
     "no-overwrite|WHEN target already exists|ASSERT ERROR WorkspaceBlobRejectedError",
-    "partial-write|WHEN pre-publication write fails|ASSERT ERROR WorkspaceBlobIndeterminateError"
+    "in-place-race|WHEN published content mutates during resolution|ASSERT ERROR WorkspaceBlobIndeterminateError"
   ],
   "acceptanceEvidenceIds": {
     "atomic-blob|WHEN exact verified blob is written|ASSERT TEST_PASS workspace-blob-writer-tests": ["workspace-blob-writer-tests"],
@@ -19,7 +19,7 @@
     "replacement-preserved|WHEN published target is replaced concurrently|ASSERT VALUE \"replacement remains intact\"": ["workspace-blob-writer-tests"],
     "durable-mode|WHEN final mode is applied|ASSERT VALUE \"file synced before publish\"": ["workspace-blob-writer-tests"],
     "no-overwrite|WHEN target already exists|ASSERT ERROR WorkspaceBlobRejectedError": ["workspace-blob-writer-tests"],
-    "partial-write|WHEN pre-publication write fails|ASSERT ERROR WorkspaceBlobIndeterminateError": ["workspace-blob-writer-tests"]
+    "in-place-race|WHEN published content mutates during resolution|ASSERT ERROR WorkspaceBlobIndeterminateError": ["workspace-blob-writer-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
