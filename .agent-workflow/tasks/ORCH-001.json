@@ -1,34 +1,34 @@
 {
-  "id": "ORCH-003D1B0O4",
+  "id": "ORCH-003D1B0O5",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Load one exact Git blob through a live pinned repository capability",
-  "nonGoals": ["Write workspace files", "Load denied entries", "Materialize a tree", "Commit or push"],
-  "dependsOn": ["ORCH-003D1B0O3B", "ORCH-003D1B0O2"],
+  "objective": "Materialize every allowed entry from one canonical Git tree manifest",
+  "nonGoals": ["Write denied recovered roots", "Verify absence of unrelated workspace files", "Commit or push"],
+  "dependsOn": ["ORCH-003D1B0O3C", "ORCH-003D1B0O4"],
   "acceptanceCriteria": [
-    "real-load|WHEN exact object exists in pinned repository|ASSERT TEST_PASS repository-blob-loader-tests",
-    "binary|WHEN blob contains arbitrary binary bytes|ASSERT VALUE \"digest-verified exact bytes\"",
-    "stderr|WHEN cat-file emits stderr|ASSERT ERROR RepositoryBlobLoadError",
-    "wrong-bytes|WHEN command bytes do not match SHA|ASSERT ERROR RepositoryBlobLoadError",
-    "denied|WHEN entry is non-materializable|ASSERT ERROR RepositoryBlobLoadError"
+    "complete-allowed|WHEN canonical manifest contains regular and executable blobs|ASSERT TEST_PASS workspace-tree-materializer-tests",
+    "denied-skipped|WHEN manifest contains denied recovered path|ASSERT ABSENT denied-file",
+    "canonical-only|WHEN manifest is unordered aliased or forged|ASSERT ERROR WorkspaceTreeRejectedError",
+    "partial|WHEN later blob retrieval fails after publication|ASSERT ERROR WorkspaceTreeIndeterminateError",
+    "held-tree|WHEN tree operation runs|ASSERT VALUE \"one live workspace hold across all entries\""
   ],
   "acceptanceEvidenceIds": {
-    "real-load|WHEN exact object exists in pinned repository|ASSERT TEST_PASS repository-blob-loader-tests": ["repository-blob-loader-tests"],
-    "binary|WHEN blob contains arbitrary binary bytes|ASSERT VALUE \"digest-verified exact bytes\"": ["repository-blob-loader-tests"],
-    "stderr|WHEN cat-file emits stderr|ASSERT ERROR RepositoryBlobLoadError": ["repository-blob-loader-tests"],
-    "wrong-bytes|WHEN command bytes do not match SHA|ASSERT ERROR RepositoryBlobLoadError": ["repository-blob-loader-tests"],
-    "denied|WHEN entry is non-materializable|ASSERT ERROR RepositoryBlobLoadError": ["repository-blob-loader-tests"]
+    "complete-allowed|WHEN canonical manifest contains regular and executable blobs|ASSERT TEST_PASS workspace-tree-materializer-tests": ["workspace-tree-materializer-tests"],
+    "denied-skipped|WHEN manifest contains denied recovered path|ASSERT ABSENT denied-file": ["workspace-tree-materializer-tests"],
+    "canonical-only|WHEN manifest is unordered aliased or forged|ASSERT ERROR WorkspaceTreeRejectedError": ["workspace-tree-materializer-tests"],
+    "partial|WHEN later blob retrieval fails after publication|ASSERT ERROR WorkspaceTreeIndeterminateError": ["workspace-tree-materializer-tests"],
+    "held-tree|WHEN tree operation runs|ASSERT VALUE \"one live workspace hold across all entries\"": ["workspace-tree-materializer-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/repository_blob_loader.py",
-    ".agent-workflow/controller/tests/test_repository_blob_loader.py",
+    ".agent-workflow/controller/td_controller/workspace_tree_materializer.py",
+    ".agent-workflow/controller/tests/test_workspace_tree_materializer.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 300,
+  "maxChangedLines": 450,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
