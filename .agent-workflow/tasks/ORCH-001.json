@@ -1,34 +1,36 @@
 {
-  "id": "ORCH-003D1B0O3B",
+  "id": "ORCH-003D1B0O3C",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Read exactly bounded descriptor bytes while correctly accumulating legal short reads",
-  "nonGoals": ["Open a pathname", "Validate descriptor identity", "Write workspace files", "Commit or push"],
-  "dependsOn": ["ORCH-003D1B0O2"],
+  "objective": "Publish one verified blob at a defined workspace-hold linearization point",
+  "nonGoals": ["Defend against the trusted same-UID host controller", "Materialize a full tree", "Commit or push"],
+  "dependsOn": ["ORCH-003D1B0O3B", "ORCH-003D1B0O2"],
   "acceptanceCriteria": [
-    "exact-read|WHEN real binary descriptor has expected bytes|ASSERT TEST_PASS bounded-fd-read-tests",
-    "short-read|WHEN multiple legal short reads occur|ASSERT VALUE \"exact accumulated payload\"",
-    "short-eof|WHEN EOF occurs before expected size|ASSERT ERROR BoundedFdReadError",
-    "long-content|WHEN content exceeds expected size|ASSERT ERROR BoundedFdReadError",
-    "invalid-bound|WHEN descriptor or size is invalid|ASSERT ERROR BoundedFdReadError"
+    "held-publish|WHEN live workspace handle and exact blob are supplied|ASSERT TEST_PASS workspace-blob-writer-tests",
+    "linearization|WHEN all durability work completes|ASSERT VALUE \"path-open descriptor exact bytes and inode\"",
+    "short-read|WHEN descriptor returns legal short reads|ASSERT VALUE \"exact verified payload\"",
+    "path-race|WHEN parent or target changes before path-open|ASSERT ERROR WorkspaceBlobIndeterminateError",
+    "non-destructive|WHEN target is concurrently replaced|ASSERT VALUE \"replacement remains intact\"",
+    "no-overwrite|WHEN target already exists|ASSERT ERROR WorkspaceBlobRejectedError"
   ],
   "acceptanceEvidenceIds": {
-    "exact-read|WHEN real binary descriptor has expected bytes|ASSERT TEST_PASS bounded-fd-read-tests": ["bounded-fd-read-tests"],
-    "short-read|WHEN multiple legal short reads occur|ASSERT VALUE \"exact accumulated payload\"": ["bounded-fd-read-tests"],
-    "short-eof|WHEN EOF occurs before expected size|ASSERT ERROR BoundedFdReadError": ["bounded-fd-read-tests"],
-    "long-content|WHEN content exceeds expected size|ASSERT ERROR BoundedFdReadError": ["bounded-fd-read-tests"],
-    "invalid-bound|WHEN descriptor or size is invalid|ASSERT ERROR BoundedFdReadError": ["bounded-fd-read-tests"]
+    "held-publish|WHEN live workspace handle and exact blob are supplied|ASSERT TEST_PASS workspace-blob-writer-tests": ["workspace-blob-writer-tests"],
+    "linearization|WHEN all durability work completes|ASSERT VALUE \"path-open descriptor exact bytes and inode\"": ["workspace-blob-writer-tests"],
+    "short-read|WHEN descriptor returns legal short reads|ASSERT VALUE \"exact verified payload\"": ["workspace-blob-writer-tests"],
+    "path-race|WHEN parent or target changes before path-open|ASSERT ERROR WorkspaceBlobIndeterminateError": ["workspace-blob-writer-tests"],
+    "non-destructive|WHEN target is concurrently replaced|ASSERT VALUE \"replacement remains intact\"": ["workspace-blob-writer-tests"],
+    "no-overwrite|WHEN target already exists|ASSERT ERROR WorkspaceBlobRejectedError": ["workspace-blob-writer-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/bounded_fd_read.py",
-    ".agent-workflow/controller/tests/test_bounded_fd_read.py",
+    ".agent-workflow/controller/td_controller/workspace_blob_writer.py",
+    ".agent-workflow/controller/tests/test_workspace_blob_writer.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 250,
+  "maxChangedLines": 550,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
