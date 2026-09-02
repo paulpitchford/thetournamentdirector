@@ -11,6 +11,7 @@
     "short-read|WHEN descriptor returns legal short reads|ASSERT VALUE \"exact verified payload\"",
     "path-race|WHEN parent or target changes before path-open|ASSERT ERROR WorkspaceBlobIndeterminateError",
     "non-destructive|WHEN target is concurrently replaced|ASSERT VALUE \"replacement remains intact\"",
+    "hold-release|WHEN live hold exit fails after publication|ASSERT ERROR WorkspaceBlobIndeterminateError",
     "no-overwrite|WHEN target already exists|ASSERT ERROR WorkspaceBlobRejectedError"
   ],
   "acceptanceEvidenceIds": {
@@ -19,6 +20,7 @@
     "short-read|WHEN descriptor returns legal short reads|ASSERT VALUE \"exact verified payload\"": ["workspace-blob-writer-tests"],
     "path-race|WHEN parent or target changes before path-open|ASSERT ERROR WorkspaceBlobIndeterminateError": ["workspace-blob-writer-tests"],
     "non-destructive|WHEN target is concurrently replaced|ASSERT VALUE \"replacement remains intact\"": ["workspace-blob-writer-tests"],
+    "hold-release|WHEN live hold exit fails after publication|ASSERT ERROR WorkspaceBlobIndeterminateError": ["workspace-blob-writer-tests"],
     "no-overwrite|WHEN target already exists|ASSERT ERROR WorkspaceBlobRejectedError": ["workspace-blob-writer-tests"]
   },
   "acceptanceEvidenceRequirements": {},

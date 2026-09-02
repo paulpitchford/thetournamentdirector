@@ -53,14 +53,21 @@ def write_workspace_blob(
     """Publish while the live workspace hold excludes controller peers."""
     if type(workspace) is not WorkspaceIdentityHandle:
         raise WorkspaceBlobRejectedError("workspace blob input is invalid")
+    hold_entered = False
     try:
         with workspace.hold_identity() as identity:
-            return _write_workspace_blob(
+            hold_entered = True
+            result = _write_workspace_blob(
                 descriptor=descriptor, expected_identity=identity,
                 entry=entry, blob=blob,
             )
     except WorkspaceIdentityHandleError:
+        if hold_entered:
+            raise WorkspaceBlobIndeterminateError(
+                "workspace hold release requires reconciliation"
+            ) from None
         raise WorkspaceBlobRejectedError("workspace hold is unavailable") from None
+    return result
 
 
 def _write_workspace_blob(

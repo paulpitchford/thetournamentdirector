@@ -5,6 +5,7 @@ import os
 import tempfile
 import threading
 import unittest
+from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 from unittest.mock import patch
 
@@ -16,7 +17,10 @@ from td_controller.workspace_blob_writer import (
     WorkspaceBlobRejectedError,
     write_workspace_blob,
 )
-from td_controller.workspace_identity_handle import WorkspaceIdentityHandle
+from td_controller.workspace_identity_handle import (
+    WorkspaceIdentityHandle,
+    WorkspaceIdentityHandleError,
+)
 
 
 class WorkspaceBlobWriterTests(unittest.TestCase):
@@ -79,6 +83,22 @@ class WorkspaceBlobWriterTests(unittest.TestCase):
         thread.join(timeout=2)
         self.assertFalse(thread.is_alive())
         self.assertTrue(completed.is_set())
+
+    def test_hold_exit_failure_after_publish_is_indeterminate(self) -> None:
+        entry, blob = self.entry("exit-failure.txt", b"content")
+
+        @contextmanager
+        def failing_hold():
+            yield self.workspace.identity
+            raise WorkspaceIdentityHandleError("release failed")
+
+        with patch.object(self.workspace, "hold_identity", failing_hold):
+            with self.assertRaises(WorkspaceBlobIndeterminateError):
+                write_workspace_blob(
+                    workspace=self.workspace, descriptor=self.descriptor,
+                    entry=entry, blob=blob,
+                )
+        self.assertEqual((self.root / "exit-failure.txt").read_bytes(), b"content")
 
     def test_workspace_path_replacement_cannot_redirect_write(self) -> None:
         entry, blob = self.entry("file.txt", b"pinned\n")
