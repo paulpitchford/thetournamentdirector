@@ -1,31 +1,31 @@
 {
-  "id": "ORCH-003D1B0N5D",
+  "id": "ORCH-003D1B0N5E",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Bind a stable nonblocking workspace marker to the exact pinned-repository admin directory and stable backlink",
-  "nonGoals": ["Register a worktree", "Checkout files", "Authorize pathname evidence alone", "Commit or push"],
-  "dependsOn": ["ORCH-003D1B0N5A", "ORCH-003D1B0N5C"],
+  "objective": "Register and directly observe one no-checkout task worktree with stable repository-admin binding",
+  "nonGoals": ["Checkout tracked files", "Run filters", "Commit changes", "Push a branch", "Open a pull request"],
+  "dependsOn": ["ORCH-003D1B0M", "ORCH-003D1B0N2A", "ORCH-003D1B0N4", "ORCH-003D1B0N5D"],
   "acceptanceCriteria": [
-    "exact-binding|WHEN valid marker and admin metadata are verified|ASSERT TEST_PASS worktree-admin-binding-tests",
-    "copied-marker|WHEN marker targets another repository|ASSERT ERROR PinnedDirectoryExecutorError",
-    "stable-leaves|WHEN marker or backlink changes|ASSERT ERROR PinnedDirectoryExecutorError",
-    "fifo-denial|WHEN marker or backlink is a FIFO|ASSERT ERROR PinnedDirectoryExecutorError",
-    "safe-metadata|WHEN backlink or admin directory is writable|ASSERT ERROR PinnedDirectoryExecutorError",
-    "no-authority|WHEN binding evidence is returned|ASSERT ABSENT descriptor"
+    "exact-registration|WHEN dual-capability registration runs|ASSERT TEST_PASS worktree-registration-tests",
+    "dual-substitution|WHEN repository and workspace paths are replaced|ASSERT ABSENT replacement-git-marker",
+    "stable-admin-binding|WHEN final HEAD and commit are observed|ASSERT VALUE \"same admin binding\"",
+    "copied-marker|WHEN another worktree marker is copied into workspace|ASSERT ERROR WorktreeRegistrationIndeterminateError",
+    "ambiguous-replay|WHEN registration already exists|ASSERT ERROR WorktreeRegistrationIndeterminateError",
+    "missing-branch|WHEN reserved branch is absent|ASSERT ERROR WorktreeRegistrationRejectedError"
   ],
   "acceptanceEvidenceIds": {
-    "exact-binding|WHEN valid marker and admin metadata are verified|ASSERT TEST_PASS worktree-admin-binding-tests": ["worktree-admin-binding-tests"],
-    "copied-marker|WHEN marker targets another repository|ASSERT ERROR PinnedDirectoryExecutorError": ["worktree-admin-binding-tests"],
-    "stable-leaves|WHEN marker or backlink changes|ASSERT ERROR PinnedDirectoryExecutorError": ["worktree-admin-binding-tests"],
-    "fifo-denial|WHEN marker or backlink is a FIFO|ASSERT ERROR PinnedDirectoryExecutorError": ["worktree-admin-binding-tests"],
-    "safe-metadata|WHEN backlink or admin directory is writable|ASSERT ERROR PinnedDirectoryExecutorError": ["worktree-admin-binding-tests"],
-    "no-authority|WHEN binding evidence is returned|ASSERT ABSENT descriptor": ["worktree-admin-binding-tests"]
+    "exact-registration|WHEN dual-capability registration runs|ASSERT TEST_PASS worktree-registration-tests": ["worktree-registration-tests"],
+    "dual-substitution|WHEN repository and workspace paths are replaced|ASSERT ABSENT replacement-git-marker": ["worktree-registration-tests"],
+    "stable-admin-binding|WHEN final HEAD and commit are observed|ASSERT VALUE \"same admin binding\"": ["worktree-registration-tests"],
+    "copied-marker|WHEN another worktree marker is copied into workspace|ASSERT ERROR WorktreeRegistrationIndeterminateError": ["worktree-registration-tests"],
+    "ambiguous-replay|WHEN registration already exists|ASSERT ERROR WorktreeRegistrationIndeterminateError": ["worktree-registration-tests"],
+    "missing-branch|WHEN reserved branch is absent|ASSERT ERROR WorktreeRegistrationRejectedError": ["worktree-registration-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/pinned_directory_executor.py",
-    ".agent-workflow/controller/tests/test_worktree_admin_binding.py",
+    ".agent-workflow/controller/td_controller/worktree_registration.py",
+    ".agent-workflow/controller/tests/test_worktree_registration.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
