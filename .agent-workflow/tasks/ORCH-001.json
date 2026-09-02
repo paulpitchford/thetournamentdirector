@@ -1,36 +1,34 @@
 {
-  "id": "ORCH-003D1B0O1",
+  "id": "ORCH-003D1B0O2",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Build and parse an exact recursive Git tree manifest without checking out files or invoking filters",
-  "nonGoals": ["Read blob contents", "Write workspace files", "Support symlinks or submodules", "Commit or push"],
-  "dependsOn": ["ORCH-003D1B0N5E"],
+  "objective": "Build an exact Git blob command and cryptographically verify bounded payload bytes against the tree manifest",
+  "nonGoals": ["Write workspace files", "Read denied recovered content", "Batch multiple blobs", "Commit or push"],
+  "dependsOn": ["ORCH-003D1B0O1"],
   "acceptanceCriteria": [
-    "exact-tree-command|WHEN a commit SHA is supplied|ASSERT TEST_PASS git-tree-manifest-tests",
-    "regular-files|WHEN canonical blob entries are parsed|ASSERT VALUE \"immutable manifest\"",
-    "unsafe-path|WHEN traversal git metadata or ambiguous path occurs|ASSERT ERROR GitTreeManifestError",
-    "denied-content|WHEN ignored recovered root occurs|ASSERT VALUE \"excluded from materialization\"",
-    "unsupported-type|WHEN symlink or submodule occurs|ASSERT ERROR GitTreeManifestError",
-    "no-checkout|WHEN real disposable tree is listed|ASSERT TEST_PASS git-tree-real-proof"
+    "exact-blob-command|WHEN a materializable entry is supplied|ASSERT TEST_PASS exact-git-blob-tests",
+    "digest-binding|WHEN exact payload bytes are verified|ASSERT VALUE \"manifest blob SHA\"",
+    "wrong-payload|WHEN payload digest differs|ASSERT ERROR ExactGitBlobError",
+    "denied-content|WHEN non-materializable entry is supplied|ASSERT ERROR ExactGitBlobError",
+    "binary-roundtrip|WHEN real binary Git blob is read|ASSERT TEST_PASS exact-git-blob-real-proof"
   ],
   "acceptanceEvidenceIds": {
-    "exact-tree-command|WHEN a commit SHA is supplied|ASSERT TEST_PASS git-tree-manifest-tests": ["git-tree-manifest-tests"],
-    "regular-files|WHEN canonical blob entries are parsed|ASSERT VALUE \"immutable manifest\"": ["git-tree-manifest-tests"],
-    "unsafe-path|WHEN traversal git metadata or ambiguous path occurs|ASSERT ERROR GitTreeManifestError": ["git-tree-manifest-tests"],
-    "denied-content|WHEN ignored recovered root occurs|ASSERT VALUE \"excluded from materialization\"": ["git-tree-manifest-tests"],
-    "unsupported-type|WHEN symlink or submodule occurs|ASSERT ERROR GitTreeManifestError": ["git-tree-manifest-tests"],
-    "no-checkout|WHEN real disposable tree is listed|ASSERT TEST_PASS git-tree-real-proof": ["git-tree-real-proof"]
+    "exact-blob-command|WHEN a materializable entry is supplied|ASSERT TEST_PASS exact-git-blob-tests": ["exact-git-blob-tests"],
+    "digest-binding|WHEN exact payload bytes are verified|ASSERT VALUE \"manifest blob SHA\"": ["exact-git-blob-tests"],
+    "wrong-payload|WHEN payload digest differs|ASSERT ERROR ExactGitBlobError": ["exact-git-blob-tests"],
+    "denied-content|WHEN non-materializable entry is supplied|ASSERT ERROR ExactGitBlobError": ["exact-git-blob-tests"],
+    "binary-roundtrip|WHEN real binary Git blob is read|ASSERT TEST_PASS exact-git-blob-real-proof": ["exact-git-blob-real-proof"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/git_tree_manifest.py",
-    ".agent-workflow/controller/tests/test_git_tree_manifest.py",
+    ".agent-workflow/controller/td_controller/exact_git_blob.py",
+    ".agent-workflow/controller/tests/test_exact_git_blob.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 350,
+  "maxChangedLines": 300,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
