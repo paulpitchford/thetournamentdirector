@@ -9,6 +9,7 @@
     "real-directory|WHEN bounded directory is enumerated|ASSERT TEST_PASS bounded-directory-entry-tests",
     "lazy-bound|WHEN iterator exceeds limit|ASSERT VALUE \"consume only first excess entry\"",
     "cleanup|WHEN enumeration succeeds or fails|ASSERT VALUE \"iterator closed\"",
+    "filesystem-bytes|WHEN valid name contains non-UTF8 byte|ASSERT VALUE \"os.fsencode round trip\"",
     "unsafe-name|WHEN entry name is malformed|ASSERT ERROR BoundedDirectoryEntriesError",
     "invalid-input|WHEN descriptor or bound is invalid|ASSERT ERROR BoundedDirectoryEntriesError"
   ],
@@ -16,6 +17,7 @@
     "real-directory|WHEN bounded directory is enumerated|ASSERT TEST_PASS bounded-directory-entry-tests": ["bounded-directory-entry-tests"],
     "lazy-bound|WHEN iterator exceeds limit|ASSERT VALUE \"consume only first excess entry\"": ["bounded-directory-entry-tests"],
     "cleanup|WHEN enumeration succeeds or fails|ASSERT VALUE \"iterator closed\"": ["bounded-directory-entry-tests"],
+    "filesystem-bytes|WHEN valid name contains non-UTF8 byte|ASSERT VALUE \"os.fsencode round trip\"": ["bounded-directory-entry-tests"],
     "unsafe-name|WHEN entry name is malformed|ASSERT ERROR BoundedDirectoryEntriesError": ["bounded-directory-entry-tests"],
     "invalid-input|WHEN descriptor or bound is invalid|ASSERT ERROR BoundedDirectoryEntriesError": ["bounded-directory-entry-tests"]
   },

@@ -39,7 +39,7 @@ def list_bounded_directory_names(
                 or name in (".", "..")
                 or "/" in name
                 or "\x00" in name
-                or len(name.encode("utf-8", errors="surrogatepass")) > 255
+                or len(os.fsencode(name)) > 255
             ):
                 raise OSError("directory entry name is invalid")
             names.append(name)
