@@ -1,36 +1,36 @@
 {
-  "id": "ORCH-003D1B0N5E",
+  "id": "ORCH-003D1B0O1",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Register and directly observe one no-checkout task worktree with stable repository-admin binding",
-  "nonGoals": ["Checkout tracked files", "Run filters", "Commit changes", "Push a branch", "Open a pull request"],
-  "dependsOn": ["ORCH-003D1B0M", "ORCH-003D1B0N2A", "ORCH-003D1B0N4", "ORCH-003D1B0N5D"],
+  "objective": "Build and parse an exact recursive Git tree manifest without checking out files or invoking filters",
+  "nonGoals": ["Read blob contents", "Write workspace files", "Support symlinks or submodules", "Commit or push"],
+  "dependsOn": ["ORCH-003D1B0N5E"],
   "acceptanceCriteria": [
-    "exact-registration|WHEN dual-capability registration runs|ASSERT TEST_PASS worktree-registration-tests",
-    "dual-substitution|WHEN repository and workspace paths are replaced|ASSERT ABSENT replacement-git-marker",
-    "stable-admin-binding|WHEN final HEAD and commit are observed|ASSERT VALUE \"same admin binding\"",
-    "copied-marker|WHEN another worktree marker is copied into workspace|ASSERT ERROR WorktreeRegistrationIndeterminateError",
-    "ambiguous-replay|WHEN registration already exists|ASSERT ERROR WorktreeRegistrationIndeterminateError",
-    "missing-branch|WHEN reserved branch is absent|ASSERT ERROR WorktreeRegistrationRejectedError"
+    "exact-tree-command|WHEN a commit SHA is supplied|ASSERT TEST_PASS git-tree-manifest-tests",
+    "regular-files|WHEN canonical blob entries are parsed|ASSERT VALUE \"immutable manifest\"",
+    "unsafe-path|WHEN traversal git metadata or ambiguous path occurs|ASSERT ERROR GitTreeManifestError",
+    "denied-content|WHEN ignored recovered root occurs|ASSERT VALUE \"excluded from materialization\"",
+    "unsupported-type|WHEN symlink or submodule occurs|ASSERT ERROR GitTreeManifestError",
+    "no-checkout|WHEN real disposable tree is listed|ASSERT TEST_PASS git-tree-real-proof"
   ],
   "acceptanceEvidenceIds": {
-    "exact-registration|WHEN dual-capability registration runs|ASSERT TEST_PASS worktree-registration-tests": ["worktree-registration-tests"],
-    "dual-substitution|WHEN repository and workspace paths are replaced|ASSERT ABSENT replacement-git-marker": ["worktree-registration-tests"],
-    "stable-admin-binding|WHEN final HEAD and commit are observed|ASSERT VALUE \"same admin binding\"": ["worktree-registration-tests"],
-    "copied-marker|WHEN another worktree marker is copied into workspace|ASSERT ERROR WorktreeRegistrationIndeterminateError": ["worktree-registration-tests"],
-    "ambiguous-replay|WHEN registration already exists|ASSERT ERROR WorktreeRegistrationIndeterminateError": ["worktree-registration-tests"],
-    "missing-branch|WHEN reserved branch is absent|ASSERT ERROR WorktreeRegistrationRejectedError": ["worktree-registration-tests"]
+    "exact-tree-command|WHEN a commit SHA is supplied|ASSERT TEST_PASS git-tree-manifest-tests": ["git-tree-manifest-tests"],
+    "regular-files|WHEN canonical blob entries are parsed|ASSERT VALUE \"immutable manifest\"": ["git-tree-manifest-tests"],
+    "unsafe-path|WHEN traversal git metadata or ambiguous path occurs|ASSERT ERROR GitTreeManifestError": ["git-tree-manifest-tests"],
+    "denied-content|WHEN ignored recovered root occurs|ASSERT VALUE \"excluded from materialization\"": ["git-tree-manifest-tests"],
+    "unsupported-type|WHEN symlink or submodule occurs|ASSERT ERROR GitTreeManifestError": ["git-tree-manifest-tests"],
+    "no-checkout|WHEN real disposable tree is listed|ASSERT TEST_PASS git-tree-real-proof": ["git-tree-real-proof"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/worktree_registration.py",
-    ".agent-workflow/controller/tests/test_worktree_registration.py",
+    ".agent-workflow/controller/td_controller/git_tree_manifest.py",
+    ".agent-workflow/controller/tests/test_git_tree_manifest.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 450,
+  "maxChangedLines": 350,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
