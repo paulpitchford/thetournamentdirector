@@ -1,29 +1,31 @@
 {
-  "id": "ORCH-003D1B0O5",
+  "id": "ORCH-003D1B0O6",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Materialize every allowed entry from one canonical Git tree manifest",
-  "nonGoals": ["Write denied recovered roots", "Verify absence of unrelated workspace files", "Commit or push"],
-  "dependsOn": ["ORCH-003D1B0O3C", "ORCH-003D1B0O4"],
+  "objective": "Verify the exact allowed manifest beneath a held workspace descriptor",
+  "nonGoals": ["Modify workspace content", "Revalidate repository objects", "Commit or push"],
+  "dependsOn": ["ORCH-003D1B0O5"],
   "acceptanceCriteria": [
-    "complete-allowed|WHEN canonical manifest contains regular and executable blobs|ASSERT TEST_PASS workspace-tree-materializer-tests",
-    "denied-skipped|WHEN manifest contains denied recovered path|ASSERT ABSENT denied-file",
-    "canonical-only|WHEN manifest is unordered aliased or forged|ASSERT ERROR WorkspaceTreeRejectedError",
-    "partial|WHEN later blob retrieval fails after publication|ASSERT ERROR WorkspaceTreeIndeterminateError",
-    "held-tree|WHEN tree operation runs|ASSERT VALUE \"one live workspace hold across all entries\""
+    "exact-tree|WHEN workspace exactly matches allowed manifest|ASSERT TEST_PASS workspace-tree-verifier-tests",
+    "bytes-modes|WHEN regular and executable files are verified|ASSERT VALUE \"exact blob digests and modes\"",
+    "no-extras|WHEN untracked path exists|ASSERT ERROR WorkspaceTreeVerificationError",
+    "no-unsafe|WHEN expected path is symlink or hardlink|ASSERT ERROR WorkspaceTreeVerificationError",
+    "marker|WHEN worktree marker is absent or unsafe|ASSERT ERROR WorkspaceTreeVerificationError",
+    "denied-absent|WHEN denied manifest paths are not materialized|ASSERT VALUE \"verified exact tree\""
   ],
   "acceptanceEvidenceIds": {
-    "complete-allowed|WHEN canonical manifest contains regular and executable blobs|ASSERT TEST_PASS workspace-tree-materializer-tests": ["workspace-tree-materializer-tests"],
-    "denied-skipped|WHEN manifest contains denied recovered path|ASSERT ABSENT denied-file": ["workspace-tree-materializer-tests"],
-    "canonical-only|WHEN manifest is unordered aliased or forged|ASSERT ERROR WorkspaceTreeRejectedError": ["workspace-tree-materializer-tests"],
-    "partial|WHEN later blob retrieval fails after publication|ASSERT ERROR WorkspaceTreeIndeterminateError": ["workspace-tree-materializer-tests"],
-    "held-tree|WHEN tree operation runs|ASSERT VALUE \"one live workspace hold across all entries\"": ["workspace-tree-materializer-tests"]
+    "exact-tree|WHEN workspace exactly matches allowed manifest|ASSERT TEST_PASS workspace-tree-verifier-tests": ["workspace-tree-verifier-tests"],
+    "bytes-modes|WHEN regular and executable files are verified|ASSERT VALUE \"exact blob digests and modes\"": ["workspace-tree-verifier-tests"],
+    "no-extras|WHEN untracked path exists|ASSERT ERROR WorkspaceTreeVerificationError": ["workspace-tree-verifier-tests"],
+    "no-unsafe|WHEN expected path is symlink or hardlink|ASSERT ERROR WorkspaceTreeVerificationError": ["workspace-tree-verifier-tests"],
+    "marker|WHEN worktree marker is absent or unsafe|ASSERT ERROR WorkspaceTreeVerificationError": ["workspace-tree-verifier-tests"],
+    "denied-absent|WHEN denied manifest paths are not materialized|ASSERT VALUE \"verified exact tree\"": ["workspace-tree-verifier-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/workspace_tree_materializer.py",
-    ".agent-workflow/controller/tests/test_workspace_tree_materializer.py",
+    ".agent-workflow/controller/td_controller/workspace_tree_verifier.py",
+    ".agent-workflow/controller/tests/test_workspace_tree_verifier.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
