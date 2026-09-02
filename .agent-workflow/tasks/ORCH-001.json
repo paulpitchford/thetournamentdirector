@@ -1,34 +1,36 @@
 {
-  "id": "ORCH-003D1B0O2",
+  "id": "ORCH-003D1B0O3A",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Build an exact Git blob command and cryptographically verify bounded payload bytes against the tree manifest",
-  "nonGoals": ["Write workspace files", "Read denied recovered content", "Batch multiple blobs", "Commit or push"],
-  "dependsOn": ["ORCH-003D1B0O1"],
+  "objective": "Publish one verified workspace blob without destructive cleanup after publication uncertainty",
+  "nonGoals": ["Materialize a full tree", "Automatically reconcile post-publication races", "Commit or push"],
+  "dependsOn": ["ORCH-003D1B0N5E", "ORCH-003D1B0O2"],
   "acceptanceCriteria": [
-    "exact-blob-command|WHEN a materializable entry is supplied|ASSERT TEST_PASS exact-git-blob-tests",
-    "digest-binding|WHEN exact payload bytes are verified|ASSERT VALUE \"manifest blob SHA\"",
-    "wrong-payload|WHEN payload digest differs|ASSERT ERROR ExactGitBlobError",
-    "denied-content|WHEN non-materializable entry is supplied|ASSERT ERROR ExactGitBlobError",
-    "binary-roundtrip|WHEN real binary Git blob is read|ASSERT TEST_PASS exact-git-blob-real-proof"
+    "atomic-blob|WHEN exact verified blob is written|ASSERT TEST_PASS workspace-blob-writer-tests",
+    "pinned-path|WHEN workspace or parent path is replaced|ASSERT ERROR WorkspaceBlobIndeterminateError",
+    "replacement-preserved|WHEN published target is replaced concurrently|ASSERT VALUE \"replacement remains intact\"",
+    "durable-mode|WHEN final mode is applied|ASSERT VALUE \"file synced before publish\"",
+    "no-overwrite|WHEN target already exists|ASSERT ERROR WorkspaceBlobRejectedError",
+    "partial-write|WHEN pre-publication write fails|ASSERT ERROR WorkspaceBlobIndeterminateError"
   ],
   "acceptanceEvidenceIds": {
-    "exact-blob-command|WHEN a materializable entry is supplied|ASSERT TEST_PASS exact-git-blob-tests": ["exact-git-blob-tests"],
-    "digest-binding|WHEN exact payload bytes are verified|ASSERT VALUE \"manifest blob SHA\"": ["exact-git-blob-tests"],
-    "wrong-payload|WHEN payload digest differs|ASSERT ERROR ExactGitBlobError": ["exact-git-blob-tests"],
-    "denied-content|WHEN non-materializable entry is supplied|ASSERT ERROR ExactGitBlobError": ["exact-git-blob-tests"],
-    "binary-roundtrip|WHEN real binary Git blob is read|ASSERT TEST_PASS exact-git-blob-real-proof": ["exact-git-blob-real-proof"]
+    "atomic-blob|WHEN exact verified blob is written|ASSERT TEST_PASS workspace-blob-writer-tests": ["workspace-blob-writer-tests"],
+    "pinned-path|WHEN workspace or parent path is replaced|ASSERT ERROR WorkspaceBlobIndeterminateError": ["workspace-blob-writer-tests"],
+    "replacement-preserved|WHEN published target is replaced concurrently|ASSERT VALUE \"replacement remains intact\"": ["workspace-blob-writer-tests"],
+    "durable-mode|WHEN final mode is applied|ASSERT VALUE \"file synced before publish\"": ["workspace-blob-writer-tests"],
+    "no-overwrite|WHEN target already exists|ASSERT ERROR WorkspaceBlobRejectedError": ["workspace-blob-writer-tests"],
+    "partial-write|WHEN pre-publication write fails|ASSERT ERROR WorkspaceBlobIndeterminateError": ["workspace-blob-writer-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/exact_git_blob.py",
-    ".agent-workflow/controller/tests/test_exact_git_blob.py",
+    ".agent-workflow/controller/td_controller/workspace_blob_writer.py",
+    ".agent-workflow/controller/tests/test_workspace_blob_writer.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 300,
+  "maxChangedLines": 450,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
