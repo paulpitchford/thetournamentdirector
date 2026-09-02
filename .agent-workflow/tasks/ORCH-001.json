@@ -1,34 +1,34 @@
 {
-  "id": "ORCH-003D1B0O2",
+  "id": "ORCH-003D1B0O3B",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Build an exact Git blob command and cryptographically verify bounded payload bytes against the tree manifest",
-  "nonGoals": ["Write workspace files", "Read denied recovered content", "Batch multiple blobs", "Commit or push"],
-  "dependsOn": ["ORCH-003D1B0O1"],
+  "objective": "Read exactly bounded descriptor bytes while correctly accumulating legal short reads",
+  "nonGoals": ["Open a pathname", "Validate descriptor identity", "Write workspace files", "Commit or push"],
+  "dependsOn": ["ORCH-003D1B0O2"],
   "acceptanceCriteria": [
-    "exact-blob-command|WHEN a materializable entry is supplied|ASSERT TEST_PASS exact-git-blob-tests",
-    "digest-binding|WHEN exact payload bytes are verified|ASSERT VALUE \"manifest blob SHA\"",
-    "wrong-payload|WHEN payload digest differs|ASSERT ERROR ExactGitBlobError",
-    "denied-content|WHEN non-materializable entry is supplied|ASSERT ERROR ExactGitBlobError",
-    "binary-roundtrip|WHEN real binary Git blob is read|ASSERT TEST_PASS exact-git-blob-real-proof"
+    "exact-read|WHEN real binary descriptor has expected bytes|ASSERT TEST_PASS bounded-fd-read-tests",
+    "short-read|WHEN multiple legal short reads occur|ASSERT VALUE \"exact accumulated payload\"",
+    "short-eof|WHEN EOF occurs before expected size|ASSERT ERROR BoundedFdReadError",
+    "long-content|WHEN content exceeds expected size|ASSERT ERROR BoundedFdReadError",
+    "invalid-bound|WHEN descriptor or size is invalid|ASSERT ERROR BoundedFdReadError"
   ],
   "acceptanceEvidenceIds": {
-    "exact-blob-command|WHEN a materializable entry is supplied|ASSERT TEST_PASS exact-git-blob-tests": ["exact-git-blob-tests"],
-    "digest-binding|WHEN exact payload bytes are verified|ASSERT VALUE \"manifest blob SHA\"": ["exact-git-blob-tests"],
-    "wrong-payload|WHEN payload digest differs|ASSERT ERROR ExactGitBlobError": ["exact-git-blob-tests"],
-    "denied-content|WHEN non-materializable entry is supplied|ASSERT ERROR ExactGitBlobError": ["exact-git-blob-tests"],
-    "binary-roundtrip|WHEN real binary Git blob is read|ASSERT TEST_PASS exact-git-blob-real-proof": ["exact-git-blob-real-proof"]
+    "exact-read|WHEN real binary descriptor has expected bytes|ASSERT TEST_PASS bounded-fd-read-tests": ["bounded-fd-read-tests"],
+    "short-read|WHEN multiple legal short reads occur|ASSERT VALUE \"exact accumulated payload\"": ["bounded-fd-read-tests"],
+    "short-eof|WHEN EOF occurs before expected size|ASSERT ERROR BoundedFdReadError": ["bounded-fd-read-tests"],
+    "long-content|WHEN content exceeds expected size|ASSERT ERROR BoundedFdReadError": ["bounded-fd-read-tests"],
+    "invalid-bound|WHEN descriptor or size is invalid|ASSERT ERROR BoundedFdReadError": ["bounded-fd-read-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/exact_git_blob.py",
-    ".agent-workflow/controller/tests/test_exact_git_blob.py",
+    ".agent-workflow/controller/td_controller/bounded_fd_read.py",
+    ".agent-workflow/controller/tests/test_bounded_fd_read.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 300,
+  "maxChangedLines": 250,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
