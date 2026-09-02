@@ -1,34 +1,36 @@
 {
-  "id": "ORCH-003D1B0O6B",
+  "id": "ORCH-003D1B0O6C",
   "status": "APPROVED",
   "parentEpic": "ORCHESTRATION-PILOT",
-  "objective": "Lazily enumerate bounded filesystem names with unconditional iterator cleanup",
-  "nonGoals": ["Inspect entry metadata", "Traverse child directories", "Modify filesystem state"],
-  "dependsOn": ["ORCH-003D1B0O5"],
+  "objective": "Verify an exact held workspace tree with lazy bounded traversal and bound worktree metadata",
+  "nonGoals": ["Modify workspace content", "Revalidate repository object storage", "Commit or push"],
+  "dependsOn": ["ORCH-003D1B0O6B", "ORCH-003D1B0O5"],
   "acceptanceCriteria": [
-    "real-directory|WHEN bounded directory is enumerated|ASSERT TEST_PASS bounded-directory-entry-tests",
-    "lazy-bound|WHEN iterator exceeds limit|ASSERT VALUE \"consume only first excess entry\"",
-    "cleanup|WHEN validation or enumeration fails|ASSERT VALUE \"iterator closed in finally\"",
-    "filesystem-bytes|WHEN valid name contains non-UTF8 byte|ASSERT VALUE \"os.fsencode round trip\"",
-    "unicode-failure|WHEN synthetic name cannot be filesystem-encoded|ASSERT ERROR BoundedDirectoryEntriesError"
+    "exact-tree|WHEN workspace exactly matches allowed manifest|ASSERT TEST_PASS workspace-tree-verifier-tests",
+    "lazy-enumeration|WHEN directory contains excess entries|ASSERT ERROR WorkspaceTreeVerificationError",
+    "bound-marker|WHEN marker does not match live repository admin binding|ASSERT ERROR WorkspaceTreeVerificationError",
+    "nonblocking-leaf|WHEN expected file or marker is FIFO|ASSERT ERROR WorkspaceTreeVerificationError",
+    "bounded-fds|WHEN wide tree is traversed|ASSERT VALUE \"child descriptor closed before next sibling\"",
+    "bytes-modes|WHEN exact files are verified|ASSERT VALUE \"blob digests modes and no extras\""
   ],
   "acceptanceEvidenceIds": {
-    "real-directory|WHEN bounded directory is enumerated|ASSERT TEST_PASS bounded-directory-entry-tests": ["bounded-directory-entry-tests"],
-    "lazy-bound|WHEN iterator exceeds limit|ASSERT VALUE \"consume only first excess entry\"": ["bounded-directory-entry-tests"],
-    "cleanup|WHEN validation or enumeration fails|ASSERT VALUE \"iterator closed in finally\"": ["bounded-directory-entry-tests"],
-    "filesystem-bytes|WHEN valid name contains non-UTF8 byte|ASSERT VALUE \"os.fsencode round trip\"": ["bounded-directory-entry-tests"],
-    "unicode-failure|WHEN synthetic name cannot be filesystem-encoded|ASSERT ERROR BoundedDirectoryEntriesError": ["bounded-directory-entry-tests"]
+    "exact-tree|WHEN workspace exactly matches allowed manifest|ASSERT TEST_PASS workspace-tree-verifier-tests": ["workspace-tree-verifier-tests"],
+    "lazy-enumeration|WHEN directory contains excess entries|ASSERT ERROR WorkspaceTreeVerificationError": ["workspace-tree-verifier-tests"],
+    "bound-marker|WHEN marker does not match live repository admin binding|ASSERT ERROR WorkspaceTreeVerificationError": ["workspace-tree-verifier-tests"],
+    "nonblocking-leaf|WHEN expected file or marker is FIFO|ASSERT ERROR WorkspaceTreeVerificationError": ["workspace-tree-verifier-tests"],
+    "bounded-fds|WHEN wide tree is traversed|ASSERT VALUE \"child descriptor closed before next sibling\"": ["workspace-tree-verifier-tests"],
+    "bytes-modes|WHEN exact files are verified|ASSERT VALUE \"blob digests modes and no extras\"": ["workspace-tree-verifier-tests"]
   },
   "acceptanceEvidenceRequirements": {},
   "requiredTests": [".agent-workflow/scripts/verify_controller.sh", "python3 .agent-workflow/scripts/check_repository.py"],
   "allowedPaths": [
-    ".agent-workflow/controller/td_controller/bounded_directory_entries.py",
-    ".agent-workflow/controller/tests/test_bounded_directory_entries.py",
+    ".agent-workflow/controller/td_controller/workspace_tree_verifier.py",
+    ".agent-workflow/controller/tests/test_workspace_tree_verifier.py",
     ".agent-workflow/tasks/ORCH-001.json"
   ],
   "protectedPaths": [".github/**"],
   "riskClass": "R3",
-  "maxChangedLines": 300,
+  "maxChangedLines": 450,
   "maxAttempts": 2,
   "humanApprovalRequired": true
 }
